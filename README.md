@@ -1,11 +1,11 @@
-# RDX. — Desktop Cinema & Smart TV Streaming Client
+# RDX. — HDRezka Desktop Cinema & Smart TV Client
 
 <p align="center">
   <img src="assets/banner.jpg" width="100%" alt="RDX Hero Banner" />
 </p>
 
 <p align="center">
-  <b>Cross-platform desktop streaming client with an Android TV / Apple TV inspired interface and Spotify Desktop ergonomics.</b><br/>
+  <b>Native cross-platform desktop streaming client for HDRezka (and its mirrors) with an Android TV / Apple TV inspired interface and Spotify Desktop ergonomics.</b><br/>
   Built with <b>Rust (Tauri v2)</b>, <b>React 19</b>, <b>TypeScript</b>, and <b>Tailwind CSS</b>.
 </p>
 
@@ -35,7 +35,8 @@
   - **External Player Handoff**: 1-click launch into **MPV** or **VLC** at the exact current timestamp.
 - **Local Watch Progress & Bookmarks (SQLite)**:
   - Automatically saves playback position (`rdx_data.db`) every 5 seconds along with the selected voiceover studio, season, and episode for 1-click **"Continue Watching"** (`Продовжити перегляд`) from the home screen.
-- **Mirror & Session Manager**:
+- **HDRezka Mirror & Anti-Bot Session Manager**:
+  - Native parser and stream decryptor (`#h` trash-string deobfuscator + AJAX episode/translator resolver) for **HDRezka** (`rezka-tv.org`, `rezka.ag`, `hdrezka.ag`, and custom mirrors).
   - Dynamic mirror switching with real-time latency (ping) checks, custom mirror URLs, and `HTTP` / `SOCKS5` proxy support.
   - Built-in `<1ms` Rust SHA-256 Proof-of-Work (Anubis) solver with persistent cookie jar + fallback WebView Captcha Bridge.
 
@@ -79,4 +80,4 @@ npm run tauri build
 ---
 
 ## ⚠️ Disclaimer
-**RDX** is an unofficial, open-source specialized media browser and streaming player developed strictly for educational and personal use. This application does **not** host, store, archive, or distribute any copyrighted media files on its own servers. All metadata and streams are fetched directly from publicly accessible third-party web mirrors configured by the user.
+**RDX** is an unofficial, open-source third-party desktop client for **HDRezka** developed strictly for educational and personal use. It is not affiliated with or endorsed by HDRezka. This application does **not** host, store, archive, or distribute any copyrighted media files on its own servers — all metadata and video streams are fetched directly from publicly accessible HDRezka mirrors configured by the user.
