@@ -20,7 +20,7 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
   const scrollRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(true);
+  const [canScrollRight, setCanScrollRight] = useState(false);
 
   const checkScroll = useCallback(() => {
     if (rafRef.current !== null) return;
@@ -28,6 +28,7 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
       rafRef.current = null;
       if (scrollRef.current) {
         const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
+        if (clientWidth === 0) return;
         const nextLeft = scrollLeft > 10;
         const nextRight = scrollLeft + clientWidth < scrollWidth - 10;
         setCanScrollLeft((prev) => (prev !== nextLeft ? nextLeft : prev));
@@ -38,7 +39,12 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
 
   useEffect(() => {
     checkScroll();
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => checkScroll());
+    ro.observe(el);
     return () => {
+      ro.disconnect();
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
   }, [items, checkScroll]);
@@ -73,34 +79,36 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
           </h2>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => scroll("left")}
-            disabled={!canScrollLeft}
-            aria-label="Прокрутити вліво"
-            className={cn(
-              "w-8 h-8 rounded-full flex items-center justify-center bg-zinc-900 border border-white/10 text-white transition-colors shadow-sm cursor-pointer",
-              canScrollLeft
-                ? "hover:bg-rose-600 hover:border-rose-500 active:scale-95"
-                : "opacity-30 cursor-not-allowed"
-            )}
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => scroll("right")}
-            disabled={!canScrollRight}
-            aria-label="Прокрутити вправо"
-            className={cn(
-              "w-8 h-8 rounded-full flex items-center justify-center bg-zinc-900 border border-white/10 text-white transition-colors shadow-sm cursor-pointer",
-              canScrollRight
-                ? "hover:bg-rose-600 hover:border-rose-500 active:scale-95"
-                : "opacity-30 cursor-not-allowed"
-            )}
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
+        {(canScrollLeft || canScrollRight) && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => scroll("left")}
+              disabled={!canScrollLeft}
+              aria-label="Прокрутити вліво"
+              className={cn(
+                "w-8 h-8 rounded-full flex items-center justify-center bg-zinc-900 border border-white/10 text-white transition-colors shadow-sm cursor-pointer",
+                canScrollLeft
+                  ? "hover:bg-rose-600 hover:border-rose-500 active:scale-95"
+                  : "opacity-30 cursor-not-allowed"
+              )}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => scroll("right")}
+              disabled={!canScrollRight}
+              aria-label="Прокрутити вправо"
+              className={cn(
+                "w-8 h-8 rounded-full flex items-center justify-center bg-zinc-900 border border-white/10 text-white transition-colors shadow-sm cursor-pointer",
+                canScrollRight
+                  ? "hover:bg-rose-600 hover:border-rose-500 active:scale-95"
+                  : "opacity-30 cursor-not-allowed"
+              )}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Track */}
