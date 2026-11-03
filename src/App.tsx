@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { Loader2, RefreshCw, AlertCircle } from "lucide-react";
 import type {
   AppSettings,
@@ -27,6 +28,7 @@ export default function App() {
   const [mirrorStatus, setMirrorStatus] = useState<MirrorStatus | null>(null);
 
   // Catalog State
+  const [isInitialBoot, setIsInitialBoot] = useState(true);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [continueWatching, setContinueWatching] = useState<WatchProgress[]>([]);
@@ -108,6 +110,7 @@ export default function App() {
       );
     } finally {
       setLoadingCatalog(false);
+      setIsInitialBoot(false);
     }
   }, [activeTab, categoryPage]);
 
@@ -295,7 +298,37 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#090a0f] text-white flex flex-col font-sans selection:bg-rose-500/30 selection:text-white">
+    <div className="min-h-screen bg-[#09090b] text-white flex flex-col font-sans selection:bg-rose-500/30 selection:text-white">
+      {/* Seamless Cinema Startup Splash Overlay (matches index.html pre-React splash) */}
+      <AnimatePresence>
+        {isInitialBoot && loadingCatalog && (
+          <motion.div
+            key="rdx-startup-splash"
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0, scale: 1.05, filter: "blur(10px)" }}
+            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+            className="rdx-boot-splash"
+          >
+            <div className="rdx-logo-box" style={{ animation: "none" }}>
+              <svg width="52" height="52" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M14 10H35C44.3888 10 51 15.8203 51 24.5C51 31.1168 46.8195 36.1912 40.382 37.9818L51.5 54H39.2L29.4 39H24V54H14V10Z" fill="#FFFFFF"/>
+                <path d="M25 19.5L40 28L25 36.5V19.5Z" fill="#09090B"/>
+                <circle className="rdx-dot-pulse" cx="30.5" cy="28" r="4.2" fill="#E11D48"/>
+              </svg>
+            </div>
+            <div className="rdx-wordmark" style={{ width: "4.1ch", animation: "rdxCaretBlink 0.75s step-end infinite" }}>
+              RDX<span>.</span>
+            </div>
+            <div className="rdx-sub" style={{ opacity: 1, animation: "none" }}>
+              Підключення до каталогу...
+            </div>
+            <div className="rdx-laser-track">
+              <div className="rdx-laser-fill" />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Top Android TV Navigation Bar */}
       <TopBar
         activeTab={activeTab}

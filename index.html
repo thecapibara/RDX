@@ -1,13 +1,137 @@
 <!doctype html>
-<html lang="uk" class="dark">
+<html lang="uk" class="dark" style="background-color: #09090b; color: #f4f4f5;">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RDX — Cinema Streaming</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        background-color: #09090b;
+        color: #f4f4f5;
+        font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+        overflow-x: hidden;
+      }
+      .rdx-boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(circle at 50% 42%, rgba(225, 29, 72, 0.08) 0%, #09090b 62%);
+        user-select: none;
+      }
+      .rdx-logo-box {
+        position: relative;
+        width: 96px;
+        height: 96px;
+        border-radius: 24px;
+        background: linear-gradient(145deg, #16161a 0%, #09090b 100%);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 40px rgba(225, 29, 72, 0.14);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: rdxPopIn 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      .rdx-dot-pulse {
+        animation: rdxPulseGlow 1.8s ease-in-out infinite;
+        transform-origin: center;
+      }
+      .rdx-wordmark {
+        margin-top: 28px;
+        font-size: 28px;
+        font-weight: 900;
+        letter-spacing: -0.04em;
+        color: #ffffff;
+        display: flex;
+        align-items: baseline;
+        overflow: hidden;
+        white-space: nowrap;
+        border-right: 2px solid #e11d48;
+        width: 0;
+        animation:
+          rdxTyping 0.55s steps(4, end) 0.15s forwards,
+          rdxCaretBlink 0.75s step-end infinite;
+      }
+      .rdx-wordmark span {
+        color: #e11d48;
+      }
+      .rdx-sub {
+        margin-top: 10px;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: #71717a;
+        opacity: 0;
+        animation: rdxFadeUp 0.5s ease 0.4s forwards;
+      }
+      .rdx-laser-track {
+        margin-top: 24px;
+        width: 140px;
+        height: 2px;
+        background: rgba(255, 255, 255, 0.07);
+        border-radius: 999px;
+        overflow: hidden;
+        position: relative;
+      }
+      .rdx-laser-fill {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 45%;
+        background: linear-gradient(90deg, transparent, #e11d48, #fb7185, transparent);
+        animation: rdxLaserSweep 1.25s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      }
+      @keyframes rdxPopIn {
+        0% { opacity: 0; transform: scale(0.84) translateY(8px); }
+        100% { opacity: 1; transform: scale(1) translateY(0); }
+      }
+      @keyframes rdxPulseGlow {
+        0%, 100% { opacity: 0.9; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.18); }
+      }
+      @keyframes rdxTyping {
+        from { width: 0; }
+        to { width: 4.1ch; }
+      }
+      @keyframes rdxCaretBlink {
+        0%, 100% { border-color: transparent; }
+        50% { border-color: #e11d48; }
+      }
+      @keyframes rdxFadeUp {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes rdxLaserSweep {
+        0% { left: -45%; }
+        100% { left: 100%; }
+      }
+    </style>
   </head>
   <body class="bg-zinc-950 text-zinc-100 antialiased selection:bg-red-600 selection:text-white overflow-x-hidden">
-    <div id="root"></div>
+    <div id="root">
+      <!-- Zero-latency pre-React Cinema Splash Screen -->
+      <div class="rdx-boot-splash">
+        <div class="rdx-logo-box">
+          <svg width="52" height="52" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M14 10H35C44.3888 10 51 15.8203 51 24.5C51 31.1168 46.8195 36.1912 40.382 37.9818L51.5 54H39.2L29.4 39H24V54H14V10Z" fill="#FFFFFF"/>
+            <path d="M25 19.5L40 28L25 36.5V19.5Z" fill="#09090B"/>
+            <circle class="rdx-dot-pulse" cx="30.5" cy="28" r="4.2" fill="#E11D48"/>
+          </svg>
+        </div>
+        <div class="rdx-wordmark">RDX<span>.</span></div>
+        <div class="rdx-sub">Cinema Streaming</div>
+        <div class="rdx-laser-track">
+          <div class="rdx-laser-fill"></div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
