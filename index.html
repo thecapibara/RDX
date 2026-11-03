@@ -1,12 +1,24 @@
 <!doctype html>
-<html lang="uk" class="dark" style="background-color: #09090b; color: #f4f4f5;">
+<html lang="uk" class="dark" style="background-color: #09090b; color: #f4f4f5; scrollbar-gutter: stable;">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/png" href="/logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RDX — Cinema Streaming</title>
+    <title>RDX</title>
     <style>
-      html, body {
+      html {
+        background-color: #09090b;
+        color: #f4f4f5;
+        overflow-y: scroll;
+      }
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      body {
         margin: 0;
         padding: 0;
         background-color: #09090b;
@@ -14,124 +26,222 @@
         font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
         overflow-x: hidden;
       }
-      .rdx-boot-splash {
+      #rdx-splash {
         position: fixed;
-        inset: 0;
-        z-index: 9999;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 99999;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        background: radial-gradient(circle at 50% 42%, rgba(225, 29, 72, 0.08) 0%, #09090b 62%);
+        background-color: #09090b;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+        overflow: hidden;
         user-select: none;
+        transition:
+          opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+          transform 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+          filter 0.5s cubic-bezier(0.22, 1, 0.36, 1);
       }
-      .rdx-logo-box {
+      #rdx-splash.rdx-splash-hide {
+        opacity: 0;
+        transform: scale(1.05);
+        filter: blur(10px);
+        pointer-events: none;
+      }
+      .rdx-logo-stage {
         position: relative;
-        width: 96px;
-        height: 96px;
-        border-radius: 24px;
-        background: linear-gradient(145deg, #16161a 0%, #09090b 100%);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 40px rgba(225, 29, 72, 0.14);
+        width: 176px;
+        height: 176px;
         display: flex;
         align-items: center;
         justify-content: center;
-        animation: rdxPopIn 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
       }
-      .rdx-dot-pulse {
-        animation: rdxPulseGlow 1.8s ease-in-out infinite;
-        transform-origin: center;
+      .rdx-pulse-ring {
+        position: absolute;
+        inset: 14px;
+        border-radius: 40px;
+        border: 1.5px solid rgba(225, 29, 72, 0.55);
+        box-shadow: 0 0 50px rgba(225, 29, 72, 0.25);
+        opacity: 0;
+        animation: rdxRingWave 2.2s cubic-bezier(0.16, 1, 0.3, 1) 0.25s infinite;
       }
-      .rdx-wordmark {
-        margin-top: 28px;
-        font-size: 28px;
+      .rdx-pulse-ring-2 {
+        position: absolute;
+        inset: 14px;
+        border-radius: 40px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        opacity: 0;
+        animation: rdxRingWave 2.2s cubic-bezier(0.16, 1, 0.3, 1) 0.75s infinite;
+      }
+      .rdx-boot-logo-wrap {
+        position: relative;
+        width: 164px;
+        height: 164px;
+        border-radius: 38px;
+        overflow: hidden;
+        box-shadow:
+          0 28px 70px rgba(0, 0, 0, 0.95),
+          0 0 60px rgba(225, 29, 72, 0.18);
+        animation: rdxHeroLogoIn 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      .rdx-boot-logo {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+      .rdx-logo-sheen {
+        position: absolute;
+        inset: -40%;
+        background: linear-gradient(
+          115deg,
+          transparent 35%,
+          rgba(255, 255, 255, 0.22) 48%,
+          rgba(225, 29, 72, 0.25) 52%,
+          transparent 65%
+        );
+        transform: translateX(-120%) rotate(12deg);
+        animation: rdxSheenSweep 1.6s cubic-bezier(0.22, 1, 0.36, 1) 0.35s infinite;
+        pointer-events: none;
+      }
+      .rdx-title-row {
+        position: relative;
+        margin-top: 32px;
+        display: inline-flex;
+        align-items: baseline;
+        justify-content: center;
+        font-size: 64px;
         font-weight: 900;
         letter-spacing: -0.04em;
+        line-height: 1;
         color: #ffffff;
-        display: flex;
-        align-items: baseline;
-        overflow: hidden;
-        white-space: nowrap;
-        border-right: 2px solid #e11d48;
-        width: 0;
-        animation:
-          rdxTyping 0.55s steps(4, end) 0.15s forwards,
-          rdxCaretBlink 0.75s step-end infinite;
       }
-      .rdx-wordmark span {
-        color: #e11d48;
-      }
-      .rdx-sub {
-        margin-top: 10px;
-        font-size: 11px;
-        font-weight: 500;
-        letter-spacing: 0.16em;
-        text-transform: uppercase;
-        color: #71717a;
+      .rdx-char {
+        display: inline-block;
         opacity: 0;
-        animation: rdxFadeUp 0.5s ease 0.4s forwards;
+        transform: translateY(22px) scale(0.85);
+        filter: blur(8px);
+        animation: rdxCharReveal 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
       }
-      .rdx-laser-track {
-        margin-top: 24px;
-        width: 140px;
-        height: 2px;
-        background: rgba(255, 255, 255, 0.07);
+      .rdx-char-1 { animation-delay: 0.22s; }
+      .rdx-char-2 { animation-delay: 0.36s; }
+      .rdx-char-3 { animation-delay: 0.50s; }
+      .rdx-char-dot {
+        color: #e11d48;
+        text-shadow: 0 0 28px rgba(225, 29, 72, 0.9);
+        animation-delay: 0.66s;
+      }
+      .rdx-TypeCursor {
+        position: absolute;
+        right: -12px;
+        bottom: 6px;
+        width: 4px;
+        height: 46px;
+        background-color: #e11d48;
+        box-shadow: 0 0 16px #e11d48;
+        animation: rdxCursorBlink 0.75s step-end infinite;
+      }
+      .rdx-progress-bar {
+        margin-top: 28px;
+        width: 200px;
+        height: 3px;
         border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
         overflow: hidden;
         position: relative;
       }
-      .rdx-laser-fill {
+      .rdx-progress-fill {
         position: absolute;
         top: 0;
         bottom: 0;
-        width: 45%;
-        background: linear-gradient(90deg, transparent, #e11d48, #fb7185, transparent);
-        animation: rdxLaserSweep 1.25s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        left: 0;
+        width: 100%;
+        background: linear-gradient(90deg, #9f1239, #e11d48, #fb7185);
+        box-shadow: 0 0 16px #e11d48;
+        transform-origin: left;
+        animation: rdxProgressLoad 1.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
       }
-      @keyframes rdxPopIn {
-        0% { opacity: 0; transform: scale(0.84) translateY(8px); }
-        100% { opacity: 1; transform: scale(1) translateY(0); }
+      @keyframes rdxHeroLogoIn {
+        0% {
+          opacity: 0;
+          transform: scale(0.68) translateY(18px);
+          filter: blur(12px);
+        }
+        60% {
+          opacity: 1;
+          transform: scale(1.04) translateY(-2px);
+          filter: blur(0px);
+        }
+        100% {
+          opacity: 1;
+          transform: scale(1) translateY(0);
+          filter: blur(0px);
+        }
       }
-      @keyframes rdxPulseGlow {
-        0%, 100% { opacity: 0.9; transform: scale(1); }
-        50% { opacity: 1; transform: scale(1.18); }
+      @keyframes rdxRingWave {
+        0% {
+          opacity: 0.75;
+          transform: scale(0.95);
+        }
+        100% {
+          opacity: 0;
+          transform: scale(1.42);
+        }
       }
-      @keyframes rdxTyping {
-        from { width: 0; }
-        to { width: 4.1ch; }
+      @keyframes rdxSheenSweep {
+        0% { transform: translateX(-130%) rotate(12deg); }
+        100% { transform: translateX(130%) rotate(12deg); }
       }
-      @keyframes rdxCaretBlink {
-        0%, 100% { border-color: transparent; }
-        50% { border-color: #e11d48; }
+      @keyframes rdxCharReveal {
+        0% {
+          opacity: 0;
+          transform: translateY(22px) scale(0.84);
+          filter: blur(8px);
+        }
+        100% {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+          filter: blur(0px);
+        }
       }
-      @keyframes rdxFadeUp {
-        from { opacity: 0; transform: translateY(4px); }
-        to { opacity: 1; transform: translateY(0); }
+      @keyframes rdxCursorBlink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0; }
       }
-      @keyframes rdxLaserSweep {
-        0% { left: -45%; }
-        100% { left: 100%; }
+      @keyframes rdxProgressLoad {
+        0% { transform: scaleX(0.05); }
+        100% { transform: scaleX(1); }
       }
     </style>
   </head>
-  <body class="bg-zinc-950 text-zinc-100 antialiased selection:bg-red-600 selection:text-white overflow-x-hidden">
-    <div id="root">
-      <!-- Zero-latency pre-React Cinema Splash Screen -->
-      <div class="rdx-boot-splash">
-        <div class="rdx-logo-box">
-          <svg width="52" height="52" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M14 10H35C44.3888 10 51 15.8203 51 24.5C51 31.1168 46.8195 36.1912 40.382 37.9818L51.5 54H39.2L29.4 39H24V54H14V10Z" fill="#FFFFFF"/>
-            <path d="M25 19.5L40 28L25 36.5V19.5Z" fill="#09090B"/>
-            <circle class="rdx-dot-pulse" cx="30.5" cy="28" r="4.2" fill="#E11D48"/>
-          </svg>
-        </div>
-        <div class="rdx-wordmark">RDX<span>.</span></div>
-        <div class="rdx-sub">Cinema Streaming</div>
-        <div class="rdx-laser-track">
-          <div class="rdx-laser-fill"></div>
+  <body class="bg-[#09090b] text-zinc-100 antialiased selection:bg-rose-600 selection:text-white overflow-x-hidden">
+    <!-- Persistent DOM Splash OUTSIDE #root so React mount never restarts the animation -->
+    <div id="rdx-splash">
+      <div class="rdx-logo-stage">
+        <div class="rdx-pulse-ring"></div>
+        <div class="rdx-pulse-ring-2"></div>
+        <div class="rdx-boot-logo-wrap">
+          <img src="/logo.png" alt="RDX" class="rdx-boot-logo" />
+          <div class="rdx-logo-sheen"></div>
         </div>
       </div>
+      <div class="rdx-title-row">
+        <span class="rdx-char rdx-char-1">R</span>
+        <span class="rdx-char rdx-char-2">D</span>
+        <span class="rdx-char rdx-char-3">X</span>
+        <span class="rdx-char rdx-char-dot">.</span>
+        <span class="rdx-TypeCursor"></span>
+      </div>
+      <div class="rdx-progress-bar">
+        <div class="rdx-progress-fill"></div>
+      </div>
     </div>
+
+    <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

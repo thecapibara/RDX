@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { Loader2, RefreshCw, AlertCircle } from "lucide-react";
 import type {
   AppSettings,
@@ -29,6 +28,7 @@ export default function App() {
 
   // Catalog State
   const [isInitialBoot, setIsInitialBoot] = useState(true);
+  const [minSplashDone, setMinSplashDone] = useState(false);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [continueWatching, setContinueWatching] = useState<WatchProgress[]>([]);
@@ -69,7 +69,23 @@ export default function App() {
 
   useEffect(() => {
     initializeApp();
+    const timer = setTimeout(() => setMinSplashDone(true), 1750);
+    return () => clearTimeout(timer);
   }, [initializeApp]);
+
+  // Smoothly dismiss persistent DOM #rdx-splash once both min timer and initial catalog load finish
+  useEffect(() => {
+    if ((!isInitialBoot || !loadingCatalog) && minSplashDone) {
+      const splash = document.getElementById("rdx-splash");
+      if (splash) {
+        splash.classList.add("rdx-splash-hide");
+        const cleanup = setTimeout(() => {
+          splash.style.display = "none";
+        }, 550);
+        return () => clearTimeout(cleanup);
+      }
+    }
+  }, [isInitialBoot, loadingCatalog, minSplashDone]);
 
   // Load "Continue Watching" row
   const refreshContinueWatching = useCallback(async () => {
@@ -299,36 +315,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#09090b] text-white flex flex-col font-sans selection:bg-rose-500/30 selection:text-white">
-      {/* Seamless Cinema Startup Splash Overlay (matches index.html pre-React splash) */}
-      <AnimatePresence>
-        {isInitialBoot && loadingCatalog && (
-          <motion.div
-            key="rdx-startup-splash"
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0, scale: 1.05, filter: "blur(10px)" }}
-            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-            className="rdx-boot-splash"
-          >
-            <div className="rdx-logo-box" style={{ animation: "none" }}>
-              <svg width="52" height="52" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M14 10H35C44.3888 10 51 15.8203 51 24.5C51 31.1168 46.8195 36.1912 40.382 37.9818L51.5 54H39.2L29.4 39H24V54H14V10Z" fill="#FFFFFF"/>
-                <path d="M25 19.5L40 28L25 36.5V19.5Z" fill="#09090B"/>
-                <circle className="rdx-dot-pulse" cx="30.5" cy="28" r="4.2" fill="#E11D48"/>
-              </svg>
-            </div>
-            <div className="rdx-wordmark" style={{ width: "4.1ch", animation: "rdxCaretBlink 0.75s step-end infinite" }}>
-              RDX<span>.</span>
-            </div>
-            <div className="rdx-sub" style={{ opacity: 1, animation: "none" }}>
-              Підключення до каталогу...
-            </div>
-            <div className="rdx-laser-track">
-              <div className="rdx-laser-fill" />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Top Android TV Navigation Bar */}
       <TopBar
         activeTab={activeTab}
@@ -347,12 +333,11 @@ export default function App() {
             onPlayDirect={handleDirectPlay}
           />
         ) : loadingCatalog ? (
-          <div className="flex-1 flex flex-col items-center justify-center py-40 space-y-4">
-            <Loader2 className="w-12 h-12 text-rose-500 animate-spin" />
-            <p className="text-sm font-medium text-zinc-400">
-              Завантаження каталогу HDRezka...
-            </p>
-          </div>
+          !isInitialBoot ? (
+            <div className="flex-1 flex flex-col items-center justify-center py-40 space-y-4">
+              <Loader2 className="w-10 h-10 text-rose-500 animate-spin" />
+            </div>
+          ) : null
         ) : catalogError ? (
           <div className="flex-1 flex flex-col items-center justify-center py-32 px-6 text-center space-y-4">
             <div className="w-16 h-16 rounded-3xl bg-rose-950/40 border border-rose-500/30 flex items-center justify-center text-rose-500">
