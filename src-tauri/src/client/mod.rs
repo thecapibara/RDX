@@ -1,12 +1,14 @@
 pub mod anubis;
 
 use std::collections::HashMap;
+use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, ACCEPT_LANGUAGE, COOKIE, REFERER, USER_AGENT};
 use reqwest::{Client, Method, Response};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use url::Url;
 use anubis::AnubisSolver;
 
@@ -159,23 +161,60 @@ impl PersistentCookieStore {
 }
 
 pub struct HttpClient {
-    client: Client,
-    no_redirect_client: Client,
+    client: RwLock<Client>,
+    no_redirect_client: RwLock<Client>,
+    doh_client: Client,
+    /// host -> Some(ip) if resolved via DoH (ISP DNS blocked/spoofed), None if system DNS is clean
+    doh_cache: Mutex<HashMap<String, Option<IpAddr>>>,
+    proxy_url: Mutex<Option<String>>,
     cookie_store: Arc<PersistentCookieStore>,
     user_agent: String,
 }
 
 impl HttpClient {
     pub fn new(cookie_store: Arc<PersistentCookieStore>, proxy_url: Option<&str>) -> reqwest::Result<Self> {
+        let proxy_clean = proxy_url
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+
+        let (client, no_redirect_client) = Self::build_clients(proxy_clean.as_deref(), &HashMap::new())?;
+        let doh_client = Client::builder()
+            .timeout(Duration::from_secs(5))
+            .connect_timeout(Duration::from_secs(3))
+            .build()?;
+
+        Ok(Self {
+            client: RwLock::new(client),
+            no_redirect_client: RwLock::new(no_redirect_client),
+            doh_client,
+            doh_cache: Mutex::new(HashMap::new()),
+            proxy_url: Mutex::new(proxy_clean),
+            cookie_store,
+            user_agent: DEFAULT_USER_AGENT.to_string(),
+        })
+    }
+
+    fn build_clients(
+        proxy_url: Option<&str>,
+        doh_overrides: &HashMap<String, Option<IpAddr>>,
+    ) -> reqwest::Result<(Client, Client)> {
         let mut builder = Client::builder()
-            .timeout(Duration::from_secs(15))
-            .connect_timeout(Duration::from_secs(8))
+            .timeout(Duration::from_secs(12))
+            .connect_timeout(Duration::from_secs(6))
             .redirect(reqwest::redirect::Policy::limited(10));
 
         let mut no_redirect_builder = Client::builder()
-            .timeout(Duration::from_secs(15))
-            .connect_timeout(Duration::from_secs(8))
+            .timeout(Duration::from_secs(12))
+            .connect_timeout(Duration::from_secs(6))
             .redirect(reqwest::redirect::Policy::none());
+
+        for (host, maybe_ip) in doh_overrides {
+            if let Some(ip) = maybe_ip {
+                let addr = SocketAddr::new(*ip, 443);
+                builder = builder.resolve(host, addr);
+                no_redirect_builder = no_redirect_builder.resolve(host, addr);
+            }
+        }
 
         if let Some(proxy) = proxy_url {
             if !proxy.trim().is_empty() {
@@ -186,18 +225,185 @@ impl HttpClient {
             }
         }
 
-        let client = builder.build()?;
-        let no_redirect_client = no_redirect_builder.build()?;
-        Ok(Self {
-            client,
-            no_redirect_client,
-            cookie_store,
-            user_agent: DEFAULT_USER_AGENT.to_string(),
-        })
+        Ok((builder.build()?, no_redirect_builder.build()?))
+    }
+
+    fn rebuild_clients(&self) {
+        let proxy = self.proxy_url.lock().ok().and_then(|g| g.clone());
+        let cache = self.doh_cache.lock().map(|g| g.clone()).unwrap_or_default();
+        if let Ok((c, nrc)) = Self::build_clients(proxy.as_deref(), &cache) {
+            if let Ok(mut w) = self.client.write() {
+                *w = c;
+            }
+            if let Ok(mut w) = self.no_redirect_client.write() {
+                *w = nrc;
+            }
+        }
+    }
+
+    pub fn set_proxy(&self, proxy_url: Option<&str>) {
+        let clean = proxy_url
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        if let Ok(mut g) = self.proxy_url.lock() {
+            *g = clean;
+        }
+        self.rebuild_clients();
+    }
+
+    pub fn is_doh_routed(&self, host: &str) -> bool {
+        self.doh_cache
+            .lock()
+            .ok()
+            .and_then(|g| g.get(host).copied().flatten())
+            .is_some()
+    }
+
+    fn is_valid_public_ip(ip: &IpAddr) -> bool {
+        match ip {
+            IpAddr::V4(v4) => {
+                !v4.is_loopback()
+                    && !v4.is_unspecified()
+                    && !v4.is_private()
+                    && !v4.is_link_local()
+                    && v4.octets()[0] != 0
+            }
+            IpAddr::V6(v6) => !v6.is_loopback() && !v6.is_unspecified(),
+        }
+    }
+
+    /// Ensures a single host is checked against system DNS and falls back to DoH if ISP-spoofed (e.g. 127.0.0.1)
+    pub async fn ensure_host_resolved(&self, host: &str) {
+        if host.is_empty() || host.parse::<IpAddr>().is_ok() {
+            return;
+        }
+        let already_known = self
+            .doh_cache
+            .lock()
+            .ok()
+            .map(|g| g.contains_key(host))
+            .unwrap_or(false);
+        if already_known {
+            return;
+        }
+
+        self.ensure_hosts_resolved(&[host.to_string()]).await;
+    }
+
+    /// Batch-resolves multiple hosts in parallel and rebuilds the HTTP client once if any DoH overrides were added
+    pub async fn ensure_hosts_resolved(&self, hosts: &[String]) {
+        let mut unknown_hosts = Vec::new();
+        if let Ok(guard) = self.doh_cache.lock() {
+            for h in hosts {
+                let h_trim = h.trim().to_lowercase();
+                if !h_trim.is_empty()
+                    && h_trim.parse::<IpAddr>().is_err()
+                    && !guard.contains_key(&h_trim)
+                    && !unknown_hosts.contains(&h_trim)
+                {
+                    unknown_hosts.push(h_trim);
+                }
+            }
+        }
+
+        if unknown_hosts.is_empty() {
+            return;
+        }
+
+        let mut join_set = tokio::task::JoinSet::new();
+        for host in unknown_hosts {
+            let doh_client = self.doh_client.clone();
+            join_set.spawn(async move {
+                // 1. Check what local ISP DNS returns (may be 127.0.0.1, NXDOMAIN, or an ISP block-page IP!)
+                let sys_ips: Vec<IpAddr> = match tokio::time::timeout(
+                    Duration::from_millis(1000),
+                    tokio::net::lookup_host((host.as_str(), 443)),
+                )
+                .await
+                {
+                    Ok(Ok(addrs)) => addrs
+                        .map(|a| a.ip())
+                        .filter(|ip| Self::is_valid_public_ip(ip))
+                        .collect(),
+                    _ => Vec::new(),
+                };
+
+                // 2. Always query independent DoH (by direct IP literals 1.1.1.1 / 8.8.8.8 + hostnames)
+                // so even ISP redirects to public block-page IPs are bypassed universally
+                let endpoints = [
+                    format!("https://1.1.1.1/dns-query?name={}&type=A", host),
+                    format!("https://8.8.8.8/resolve?name={}&type=A", host),
+                    format!("https://cloudflare-dns.com/dns-query?name={}&type=A", host),
+                ];
+                let mut doh_ip = None;
+                for ep in &endpoints {
+                    if let Ok(resp) = doh_client
+                        .get(ep)
+                        .header(ACCEPT, "application/dns-json")
+                        .send()
+                        .await
+                    {
+                        if let Ok(json) = resp.json::<Value>().await {
+                            if let Some(answers) = json.get("Answer").and_then(|v| v.as_array()) {
+                                for ans in answers {
+                                    if ans.get("type").and_then(|v| v.as_u64()) == Some(1) {
+                                        if let Some(ip_str) = ans.get("data").and_then(|v| v.as_str()) {
+                                            if let Ok(ip) = ip_str.trim().parse::<IpAddr>() {
+                                                if Self::is_valid_public_ip(&ip) {
+                                                    doh_ip = Some(ip);
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if doh_ip.is_some() {
+                        break;
+                    }
+                }
+
+                // If ISP DNS did not return the authentic DoH IP (e.g. returned 127.0.0.1, NXDOMAIN, or ISP block page),
+                // activate DoH override for this domain.
+                match doh_ip {
+                    Some(real_ip) if !sys_ips.contains(&real_ip) => (host, Some(real_ip)),
+                    _ => (host, None),
+                }
+            });
+        }
+
+        let mut added_doh_override = false;
+        let mut results = Vec::new();
+        while let Some(Ok((host, maybe_ip))) = join_set.join_next().await {
+            if maybe_ip.is_some() {
+                added_doh_override = true;
+            }
+            results.push((host, maybe_ip));
+        }
+
+        if let Ok(mut guard) = self.doh_cache.lock() {
+            for (h, maybe_ip) in results {
+                guard.insert(h, maybe_ip);
+            }
+        }
+
+        if added_doh_override {
+            self.rebuild_clients();
+        }
     }
 
     pub fn cookie_store(&self) -> &Arc<PersistentCookieStore> {
         &self.cookie_store
+    }
+
+    fn get_client(&self) -> Client {
+        self.client.read().unwrap().clone()
+    }
+
+    fn get_no_redirect_client(&self) -> Client {
+        self.no_redirect_client.read().unwrap().clone()
     }
 
     fn prepare_headers(&self, url: &Url, referer: Option<&str>, is_ajax: bool) -> HeaderMap {
@@ -235,7 +441,7 @@ impl HttpClient {
         headers
     }
 
-    /// Executes an HTTP request with automatic Anubis PoW solving
+    /// Executes an HTTP request with automatic DoH anti-blocking + Anubis PoW solving
     pub async fn execute_with_anti_bot(
         &self,
         method: Method,
@@ -245,9 +451,14 @@ impl HttpClient {
         is_ajax: bool,
     ) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
         let target_url = Url::parse(url_str)?;
-        let headers = self.prepare_headers(&target_url, referer, is_ajax);
+        if let Some(host) = target_url.host_str() {
+            self.ensure_host_resolved(host).await;
+        }
 
-        let mut req_builder = self.client.request(method.clone(), target_url.clone()).headers(headers);
+        let headers = self.prepare_headers(&target_url, referer, is_ajax);
+        let client = self.get_client();
+
+        let mut req_builder = client.request(method.clone(), target_url.clone()).headers(headers);
         if let Some(params) = form_params {
             req_builder = req_builder.form(params);
         }
@@ -287,12 +498,13 @@ impl HttpClient {
 
                     let pass_url = Url::parse(&pass_url_str)?;
                     let pass_headers = self.prepare_headers(&pass_url, Some(url_str), false);
-                    let pass_resp = self.no_redirect_client.get(pass_url.clone()).headers(pass_headers).send().await?;
+                    let no_redir_client = self.get_no_redirect_client();
+                    let pass_resp = no_redir_client.get(pass_url.clone()).headers(pass_headers).send().await?;
                     self.cookie_store.parse_and_store_response_cookies(&pass_url, &pass_resp);
 
                     // Re-try original request with authenticated cookies
                     let retry_headers = self.prepare_headers(&target_url, referer, is_ajax);
-                    let mut retry_builder = self.client.request(method, target_url.clone()).headers(retry_headers);
+                    let mut retry_builder = client.request(method, target_url.clone()).headers(retry_headers);
                     if let Some(params) = form_params {
                         retry_builder = retry_builder.form(params);
                     }

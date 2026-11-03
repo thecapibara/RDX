@@ -101,13 +101,25 @@ export default function App() {
     refreshContinueWatching();
   }, [refreshContinueWatching]);
 
-  // Load Catalog based on current tab
+  // Load Catalog based on current tab (with automatic Smart Mirror Failover if active mirror is down)
   const loadCatalog = useCallback(async () => {
     setLoadingCatalog(true);
     setCatalogError(null);
     try {
       if (activeTab === "home") {
-        const homeList = await api.getHomeCatalog();
+        let homeList = await api.getHomeCatalog().catch(() => [] as MediaCardType[]);
+        if (homeList.length === 0) {
+          // Active mirror failed or returned empty: auto-failover via Smart Rotator + DoH
+          const rot = await api.smartSelectMirror(false).catch(() => null);
+          if (rot?.selected_mirror) {
+            setSettings((prev) =>
+              prev ? { ...prev, active_mirror: rot.selected_mirror } : null
+            );
+            const bestStatus = rot.statuses.find((s) => s.mirror_url === rot.selected_mirror);
+            if (bestStatus) setMirrorStatus(bestStatus);
+          }
+          homeList = await api.getHomeCatalog();
+        }
         setHomeItems(homeList);
         if (homeList.length > 0) {
           setFeaturedMedia(homeList[0]);

@@ -24,6 +24,20 @@ impl RezkaParser {
         }
     }
 
+    /// Rewrites any full HDRezka page URL (e.g. from bookmarks/history on an older mirror) to the active mirror
+    pub fn rewrite_to_mirror(url: &str, base_url: &str) -> String {
+        let trimmed = url.trim();
+        let base = base_url.trim_end_matches('/');
+        if let Ok(parsed) = url::Url::parse(trimmed) {
+            let path = parsed.path();
+            let query = parsed.query().map(|q| format!("?{}", q)).unwrap_or_default();
+            format!("{}{}{}", base, path, query)
+        } else {
+            let path = trimmed.trim_start_matches('/');
+            format!("{}/{}", base, path)
+        }
+    }
+
     /// Parses catalog items list from HTML (Home, Category, Search pages)
     pub fn parse_catalog_html(html: &str, base_url: &str) -> Vec<MediaCard> {
         let document = Html::parse_document(html);
@@ -403,18 +417,35 @@ impl RezkaParser {
             }
         }
 
-        // Extract media id from URL or scripts
+        // Extract media id and fallback translator_id from URL or initCDN scripts
+        let init_re =
+            Regex::new(r"sof\.tv\.initCDN(?:Movies|Series)Events\(\s*(\d+)\s*,\s*(\d+)").unwrap();
+        let init_caps = init_re.captures(html);
+
         let id_re = Regex::new(r"/(\d+)-[^/]+\.html").unwrap();
         let media_id = if let Some(cap) = id_re.captures(page_url) {
             cap.get(1).map(|m| m.as_str().to_string()).unwrap_or_default()
         } else {
-            // Fallback: look for data-post_id or initCDN parameter in html
-            let init_re = Regex::new(r"sof\.tv\.initCDN(?:Movies|Series)Events\((\d+)").unwrap();
-            init_re
-                .captures(html)
+            init_caps
+                .as_ref()
                 .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
                 .unwrap_or_default()
         };
+
+        // Single-translator movies/series on HDRezka omit #translators-list and pass translator_id in initCDN*Events
+        if translators.is_empty() {
+            if let Some(trans_id) = init_caps
+                .as_ref()
+                .and_then(|c| c.get(2).map(|m| m.as_str().to_string()))
+            {
+                translators.push(Translator {
+                    id: trans_id,
+                    name: "Оригінал / Дубляж".to_string(),
+                    language: None,
+                    is_active: true,
+                });
+            }
+        }
 
         // Extract initial embedded player streams from inline script
         let initial_streams = Self::extract_inline_player_info(html);
@@ -485,7 +516,7 @@ impl RezkaParser {
         base_url: &str,
         item_url: &str,
     ) -> Result<MediaDetails, Box<dyn std::error::Error + Send + Sync>> {
-        let full_url = Self::normalize_link(item_url, base_url);
+        let full_url = Self::rewrite_to_mirror(item_url, base_url);
         let html = client.get_html(&full_url, None).await?;
         let details = Self::parse_media_details(&html, &full_url, base_url)
             .map_err(|e| format!("Error parsing details for {}: {}", full_url, e))?;
@@ -504,6 +535,7 @@ impl RezkaParser {
         referer_url: &str,
     ) -> Result<StreamData, Box<dyn std::error::Error + Send + Sync>> {
         let base = base_url.trim_end_matches('/');
+        let active_referer = Self::rewrite_to_mirror(referer_url, base_url);
         let timestamp = Utc::now().timestamp_millis();
         let ajax_url = format!("{}/ajax/get_cdn_series/?t={}", base, timestamp);
 
@@ -532,7 +564,7 @@ impl RezkaParser {
             ]
         };
 
-        let response_text = client.post_ajax(&ajax_url, &form_params, Some(referer_url)).await?;
+        let response_text = client.post_ajax(&ajax_url, &form_params, Some(&active_referer)).await?;
         let json: Value = serde_json::from_str(&response_text)?;
 
         let success = json.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
@@ -563,6 +595,7 @@ impl RezkaParser {
         referer_url: &str,
     ) -> Result<(Vec<SeasonTab>, Vec<EpisodeTab>, Option<StreamData>), Box<dyn std::error::Error + Send + Sync>> {
         let base = base_url.trim_end_matches('/');
+        let active_referer = Self::rewrite_to_mirror(referer_url, base_url);
         let timestamp = Utc::now().timestamp_millis();
         let ajax_url = format!("{}/ajax/get_cdn_series/?t={}", base, timestamp);
 
@@ -573,7 +606,7 @@ impl RezkaParser {
             ("favs", ""),
         ];
 
-        let response_text = client.post_ajax(&ajax_url, &form_params, Some(referer_url)).await?;
+        let response_text = client.post_ajax(&ajax_url, &form_params, Some(&active_referer)).await?;
         let json: Value = serde_json::from_str(&response_text)?;
 
         let mut seasons: Vec<SeasonTab> = Vec::new();

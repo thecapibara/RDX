@@ -31,6 +31,7 @@ import {
   Maximize,
   ChevronRight,
   ArrowLeft,
+  Crown,
 } from "lucide-react";
 import type {
   MediaDetails,
@@ -59,8 +60,21 @@ interface VideoPlayerProps {
   onTranslatorChange?: (translatorId: string) => void;
 }
 
+function isPremiumQuality(label?: string | null): boolean {
+  if (!label) return false;
+  const lower = label.toLowerCase();
+  return (
+    lower.includes("ultra") ||
+    lower.includes("2k") ||
+    lower.includes("4k") ||
+    lower.includes("prem") ||
+    lower.includes("2160") ||
+    lower.includes("1440")
+  );
+}
+
 function formatTime(seconds: number): string {
-  if (!seconds || isNaN(seconds) || seconds <= 0) return "0:00";
+  if (!seconds || !Number.isFinite(seconds) || seconds <= 0) return "0:00";
   const s = Math.floor(seconds);
   const hrs = Math.floor(s / 3600);
   const mins = Math.floor((s % 3600) / 60);
@@ -87,6 +101,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const hlsDurationRef = useRef<number>(0);
 
   // Track episode change key to distinguish between quality switch and episode switch
   const currentEpisodeKey = `${activeSeason ?? 0}-${activeEpisode ?? 0}`;
@@ -106,11 +121,37 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // Click & Double-click debounce
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Stream & Quality state
-  const [streamData, setStreamData] = useState<StreamData | null>(initialStreams);
+  // Stream & Quality state (start null to avoid mounting a duplicate Hls instance before fetchStream finishes)
+  const [streamData, setStreamData] = useState<StreamData | null>(null);
   const [selectedQuality, setSelectedQuality] = useState<StreamQuality | null>(null);
+  const [preferredQualityLabel, setPreferredQualityLabel] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem("rdx_preferred_quality");
+      if (saved && saved.trim()) return saved;
+    } catch {}
+    return "720p";
+  });
   const [selectedSubtitle, setSelectedSubtitle] = useState<string>("off");
-  const [loadingStream, setLoadingStream] = useState(false);
+  const [loadingStream, setLoadingStream] = useState(true);
+
+  // Sync preferred quality from backend settings if not already in localStorage
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("rdx_preferred_quality")) return;
+    } catch {}
+    api
+      .getSettings()
+      .then((s) => {
+        if (
+          s.preferred_quality &&
+          s.preferred_quality.trim() &&
+          !s.preferred_quality.toLowerCase().includes("ultra")
+        ) {
+          setPreferredQualityLabel(s.preferred_quality);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Menus & Controls UI
   const [showControls, setShowControls] = useState(true);
@@ -322,63 +363,109 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return "object-contain";
   };
 
-  const calcTimeFromEvent = useCallback(
-    (clientX: number): number => {
-      if (!seekBarRef.current || duration <= 0) return 0;
-      const rect = seekBarRef.current.getBoundingClientRect();
-      const fraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      return fraction * duration;
+  // Effective finite duration helper (MSE can initially report Infinity or NaN on video.duration)
+  const getEffectiveDuration = useCallback((): number => {
+    if (Number.isFinite(duration) && duration > 0) return duration;
+    const vidDur = videoRef.current?.duration ?? 0;
+    if (Number.isFinite(vidDur) && vidDur > 0) return vidDur;
+    if (Number.isFinite(hlsDurationRef.current) && hlsDurationRef.current > 0) {
+      return hlsDurationRef.current;
+    }
+    return 0;
+  }, [duration]);
+
+  const syncDurationFromVideo = useCallback(() => {
+    const vidDur = videoRef.current?.duration ?? 0;
+    if (Number.isFinite(vidDur) && vidDur > 0) {
+      setDuration(vidDur);
+    } else if (Number.isFinite(hlsDurationRef.current) && hlsDurationRef.current > 0) {
+      setDuration(hlsDurationRef.current);
+    }
+  }, []);
+
+  const commitSeekToVideo = useCallback(
+    (targetSec: number) => {
+      if (!Number.isFinite(targetSec)) return;
+      const effDur = getEffectiveDuration();
+      const clamped =
+        effDur > 0 ? Math.max(0, Math.min(effDur, targetSec)) : Math.max(0, targetSec);
+      if (videoRef.current) {
+        try {
+          videoRef.current.currentTime = clamped;
+        } catch (err) {
+          console.warn("Seek failed:", err);
+        }
+      }
+      setCurrentTime(clamped);
     },
-    [duration]
+    [getEffectiveDuration]
   );
 
-  const handleSeekMouseDown = (e: React.MouseEvent) => {
+  const calcTimeFromEvent = useCallback(
+    (clientX: number): number => {
+      const effDur = getEffectiveDuration();
+      if (!seekBarRef.current || effDur <= 0) return 0;
+      const rect = seekBarRef.current.getBoundingClientRect();
+      if (rect.width <= 0) return 0;
+      const fraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      return fraction * effDur;
+    },
+    [getEffectiveDuration]
+  );
+
+  const lastDragSeekCommitRef = useRef<number>(0);
+
+  const handleSeekPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
     setIsDraggingSeek(true);
     const target = calcTimeFromEvent(e.clientX);
-    if (videoRef.current) {
-      videoRef.current.currentTime = target;
-    }
-    setCurrentTime(target);
+    lastDragSeekCommitRef.current = performance.now();
+    commitSeekToVideo(target);
   };
 
-  const handleSeekMouseMove = (e: React.MouseEvent) => {
-    if (!seekBarRef.current || duration <= 0) return;
+  const handleSeekPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    const effDur = getEffectiveDuration();
+    if (!seekBarRef.current || effDur <= 0) return;
     const rect = seekBarRef.current.getBoundingClientRect();
+    if (rect.width <= 0) return;
     const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const hoveredTarget = (x / rect.width) * effDur;
     setHoverX(x);
-    setHoverTime((x / rect.width) * duration);
-  };
+    setHoverTime(hoveredTarget);
 
-  const handleSeekMouseLeave = () => {
-    setHoverTime(null);
-  };
-
-  // Window drag listener while seeking
-  useEffect(() => {
-    if (!isDraggingSeek) return;
-
-    const onGlobalMouseMove = (e: MouseEvent) => {
-      const target = calcTimeFromEvent(e.clientX);
-      if (videoRef.current) {
-        videoRef.current.currentTime = target;
+    if (isDraggingSeek) {
+      setCurrentTime(hoveredTarget);
+      // Throttle live video.currentTime updates during drag to avoid flooding MSE/GStreamer
+      const now = performance.now();
+      if (now - lastDragSeekCommitRef.current > 180) {
+        lastDragSeekCommitRef.current = now;
+        commitSeekToVideo(hoveredTarget);
       }
-      setCurrentTime(target);
-    };
+    }
+  };
 
-    const onGlobalMouseUp = () => {
-      setIsDraggingSeek(false);
-    };
+  const handleSeekPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingSeek) return;
+    e.stopPropagation();
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {}
+    setIsDraggingSeek(false);
+    const target = calcTimeFromEvent(e.clientX);
+    commitSeekToVideo(target);
+  };
 
-    window.addEventListener("mousemove", onGlobalMouseMove);
-    window.addEventListener("mouseup", onGlobalMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", onGlobalMouseMove);
-      window.removeEventListener("mouseup", onGlobalMouseUp);
-    };
-  }, [isDraggingSeek, calcTimeFromEvent]);
+  const handleSeekPointerLeave = () => {
+    if (!isDraggingSeek) {
+      setHoverTime(null);
+    }
+  };
 
   const getBufferedEnd = useCallback((): number => {
     if (!videoRef.current) return 0;
@@ -391,8 +478,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return b.length > 0 ? b.end(b.length - 1) : 0;
   }, [currentTime]);
 
-  const bufferedPct = duration > 0 ? Math.min(100, (getBufferedEnd() / duration) * 100) : 0;
-  const playedPct = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
+  const effectiveDur = getEffectiveDuration();
+  const bufferedPct =
+    effectiveDur > 0 ? Math.min(100, (getBufferedEnd() / effectiveDur) * 100) : 0;
+  const playedPct =
+    effectiveDur > 0 ? Math.min(100, (currentTime / effectiveDur) * 100) : 0;
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -422,7 +512,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return () => window.removeEventListener("click", onWindowClick);
   }, [contextMenu?.open]);
 
-  // Fetch streams if not passed or when translator/season/episode changes
+  // Fetch authoritative stream for active translator/season/episode (with fallback to initialStreams)
+  const effectiveTranslatorId = currentTranslator?.id || activeTranslatorId;
   useEffect(() => {
     let isCancelled = false;
     const fetchStream = async () => {
@@ -432,15 +523,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           details.id,
           details.url,
           isSeries,
-          activeTranslatorId,
-          activeSeason,
-          activeEpisode
+          effectiveTranslatorId,
+          isSeries ? activeSeason || 1 : undefined,
+          isSeries ? activeEpisode || 1 : undefined
         );
         if (!isCancelled) {
-          setStreamData(data);
+          if (data && data.qualities && data.qualities.length > 0) {
+            setStreamData(data);
+          } else if (initialStreams && initialStreams.qualities.length > 0) {
+            setStreamData(initialStreams);
+          }
         }
       } catch (err) {
-        console.error("Failed to fetch stream data:", err);
+        console.warn("Failed to fetch stream data, falling back to initialStreams:", err);
+        if (!isCancelled && initialStreams && initialStreams.qualities.length > 0) {
+          setStreamData(initialStreams);
+        }
       } finally {
         if (!isCancelled) setLoadingStream(false);
       }
@@ -450,22 +548,31 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [details.id, details.url, isSeries, activeTranslatorId, activeSeason, activeEpisode]);
+  }, [details.id, details.url, isSeries, effectiveTranslatorId, activeSeason, activeEpisode]);
 
-  // When streamData arrives, pick quality
+  // When streamData arrives, pick user's saved quality (or default 720p, avoiding Premium-only 1080p Ultra unless explicitly chosen)
   useEffect(() => {
     if (!streamData || streamData.qualities.length === 0) return;
 
+    const targetLabel = selectedQuality?.label || preferredQualityLabel || "720p";
+
     const preferred =
-      streamData.qualities.find((q) => q.label === streamData.default_quality) ||
-      streamData.qualities.find((q) => q.label.includes("1080")) ||
-      streamData.qualities.find((q) => q.label.includes("720")) ||
+      streamData.qualities.find((q) => q.label === targetLabel) ||
+      streamData.qualities.find((q) => q.label === "720p") ||
+      streamData.qualities.find((q) => q.label === "1080p") ||
+      streamData.qualities.find((q) => q.label === "480p") ||
+      streamData.qualities.find(
+        (q) =>
+          q.label === streamData.default_quality &&
+          !q.label.toLowerCase().includes("ultra")
+      ) ||
+      streamData.qualities.find((q) => !q.label.toLowerCase().includes("ultra")) ||
       streamData.qualities[0];
 
     setSelectedQuality(preferred);
-  }, [streamData]);
+  }, [streamData, preferredQualityLabel]);
 
-  // Attach stream to video (Prefer direct MP4 to prevent WebKitGTK MSE PTS/DTS jitter, fallback to HLS)
+  // Attach stream to video
   useEffect(() => {
     if (!selectedQuality || !videoRef.current) return;
 
@@ -475,13 +582,43 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const isEpisodeChange = currentEpisodeKey !== lastEpisodeKeyRef.current;
     if (isEpisodeChange) {
       lastEpisodeKeyRef.current = currentEpisodeKey;
+      hlsDurationRef.current = 0;
+      setDuration(0);
+      setCurrentTime(0);
     }
 
     const prevTime = isEpisodeChange
       ? initialPositionSec
-      : (video.currentTime > 0 ? video.currentTime : initialPositionSec);
+      : video.currentTime > 0
+      ? video.currentTime
+      : initialPositionSec;
 
-    // Helper to start HLS playback with lowLatencyMode: false and backBufferLength: 90
+    const startMp4 = (mp4Url: string) => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+      video.src = mp4Url;
+      video.onloadedmetadata = () => {
+        const vidDur = video.duration;
+        if (Number.isFinite(vidDur) && vidDur > 0) {
+          hlsDurationRef.current = vidDur;
+          setDuration(vidDur);
+        }
+        if (prevTime > 0 && (!Number.isFinite(vidDur) || vidDur <= 0 || prevTime < vidDur - 5)) {
+          video.currentTime = prevTime;
+          setCurrentTime(prevTime);
+          if (initialPositionSec > 0 && prevTime === initialPositionSec) {
+            setResumeNotice(`Відновлено з ${formatTime(initialPositionSec)}`);
+            setTimeout(() => setResumeNotice(null), 3500);
+          }
+        }
+        video.playbackRate = playbackSpeed;
+        video.play().catch(() => {});
+      };
+    };
+
+    // Helper to start HLS playback with native startPosition and LEVEL_LOADED duration capture
     const startHls = (hlsUrl: string) => {
       if (hlsRef.current) {
         hlsRef.current.destroy();
@@ -489,9 +626,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
 
       if (Hls.isSupported()) {
+        let mediaErrorRecovered = false;
         const hls = new Hls({
           enableWorker: true,
           lowLatencyMode: false,
+          startPosition: prevTime > 0 ? prevTime : -1,
           maxBufferLength: 60,
           maxMaxBufferLength: 120,
           backBufferLength: 90,
@@ -500,15 +639,30 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         hls.loadSource(hlsUrl);
         hls.attachMedia(video);
 
+        hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+          const totalDur = data.details?.totalduration;
+          if (totalDur && Number.isFinite(totalDur) && totalDur > 0) {
+            hlsDurationRef.current = totalDur;
+            setDuration(totalDur);
+            // If startPosition exceeded actual duration (e.g. demo stream), reset to 0
+            if (video.currentTime > totalDur - 3) {
+              video.currentTime = 0;
+              setCurrentTime(0);
+            }
+          }
+        });
+
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           if (prevTime > 0) {
-            video.currentTime = prevTime;
-            if (initialPositionSec > 0 && prevTime === initialPositionSec) {
-              setResumeNotice(`Відновлено з ${formatTime(initialPositionSec)}`);
-              setTimeout(() => setResumeNotice(null), 3500);
+            const knownDur = hlsDurationRef.current || video.duration;
+            if (!Number.isFinite(knownDur) || knownDur <= 0 || prevTime < knownDur - 5) {
+              video.currentTime = prevTime;
+              setCurrentTime(prevTime);
+              if (initialPositionSec > 0 && prevTime === initialPositionSec) {
+                setResumeNotice(`Відновлено з ${formatTime(initialPositionSec)}`);
+                setTimeout(() => setResumeNotice(null), 3500);
+              }
             }
-          } else {
-            video.currentTime = 0;
           }
           video.playbackRate = playbackSpeed;
           video.play().catch(() => {});
@@ -516,33 +670,36 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
         hls.on(Hls.Events.ERROR, (_, data) => {
           if (data.fatal) {
-            console.warn("HLS fatal error:", data.type);
+            console.warn("HLS fatal error:", data.type, data.details);
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
                 hls.startLoad();
                 break;
               case Hls.ErrorTypes.MEDIA_ERROR:
-                hls.recoverMediaError();
+                if (!mediaErrorRecovered) {
+                  mediaErrorRecovered = true;
+                  hls.recoverMediaError();
+                } else {
+                  hls.destroy();
+                  hlsRef.current = null;
+                  if (selectedQuality.mp4_url) {
+                    startMp4(selectedQuality.mp4_url);
+                  }
+                }
                 break;
               default:
                 hls.destroy();
+                hlsRef.current = null;
                 if (selectedQuality.mp4_url) {
-                  video.src = selectedQuality.mp4_url;
-                  video.currentTime = prevTime > 0 ? prevTime : 0;
-                  video.playbackRate = playbackSpeed;
-                  video.play().catch(() => {});
+                  startMp4(selectedQuality.mp4_url);
                 }
                 break;
             }
           }
         });
       } else {
-        video.src = hlsUrl;
-        video.onloadedmetadata = () => {
-          if (prevTime > 0) video.currentTime = prevTime;
-          video.playbackRate = playbackSpeed;
-          video.play().catch(() => {});
-        };
+        // Native HLS support (Safari / macOS WKWebView / iOS)
+        startMp4(hlsUrl);
       }
     };
 
@@ -552,25 +709,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       hlsRef.current = null;
     }
 
-    // 1. Prefer HLS with RAM buffer (now that avdec_h264 is active, HLS has 0 frame stutter AND 0.00s black flash on ±5s seeks!)
     if (selectedQuality.hls_url) {
       startHls(selectedQuality.hls_url);
     } else if (selectedQuality.mp4_url) {
-      // 2. Fallback to direct MP4
-      video.src = selectedQuality.mp4_url;
-      video.onloadedmetadata = () => {
-        if (prevTime > 0) {
-          video.currentTime = prevTime;
-          if (initialPositionSec > 0 && prevTime === initialPositionSec) {
-            setResumeNotice(`Відновлено з ${formatTime(initialPositionSec)}`);
-            setTimeout(() => setResumeNotice(null), 3500);
-          }
-        } else {
-          video.currentTime = 0;
-        }
-        video.playbackRate = playbackSpeed;
-        video.play().catch(() => {});
-      };
+      startMp4(selectedQuality.mp4_url);
     }
 
     return () => {
@@ -587,8 +729,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const saveCurrentProgress = useCallback(() => {
     if (!videoRef.current) return;
     const time = videoRef.current.currentTime;
-    const dur = videoRef.current.duration;
-    if (isNaN(time) || time < 2 || isNaN(dur) || dur <= 0) return;
+    const dur = getEffectiveDuration();
+    if (!Number.isFinite(time) || time < 2 || !Number.isFinite(dur) || dur <= 0) return;
 
     const progress: WatchProgress = {
       media_id: details.id,
@@ -796,18 +938,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const seekDelta = (seconds: number) => {
     if (!videoRef.current) return;
-    videoRef.current.currentTime = Math.max(
-      0,
-      Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + seconds)
-    );
+    const cur = Number.isFinite(videoRef.current.currentTime)
+      ? videoRef.current.currentTime
+      : currentTime;
+    commitSeekToVideo(cur + seconds);
     showHud(seconds > 0 ? `⏩ +${seconds} сек` : `⏪ ${seconds} сек`);
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!videoRef.current) return;
     const newTime = parseFloat(e.target.value);
-    videoRef.current.currentTime = newTime;
-    setCurrentTime(newTime);
+    commitSeekToVideo(newTime);
   };
 
   const adjustVolume = (delta: number) => {
@@ -827,9 +967,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     showHud(newMuted ? "🔇 Без звуку" : `🔊 ${Math.round(volume * 100)}%`);
   };
 
-  // Switch Quality preserving position
+  // Switch Quality preserving position & persist user's quality preference
   const handleSelectQuality = (quality: StreamQuality) => {
     setSelectedQuality(quality);
+    setPreferredQualityLabel(quality.label);
+    try {
+      localStorage.setItem("rdx_preferred_quality", quality.label);
+    } catch {}
+    api
+      .getSettings()
+      .then((s) => api.updateSettings({ ...s, preferred_quality: quality.label }))
+      .catch(() => {});
     setShowQualityMenu(false);
     showHud(`Якість: ${quality.label}`);
   };
@@ -1061,16 +1209,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onTimeUpdate={() => {
             if (!videoRef.current) return;
             const time = videoRef.current.currentTime;
-            setCurrentTime(time);
+            if (!isDraggingSeek && Number.isFinite(time)) {
+              setCurrentTime(time);
+            }
+            if (effectiveDur <= 0) {
+              syncDurationFromVideo();
+            }
             if (loopA !== null && loopB !== null && loopB > loopA) {
               if (time >= loopB) {
                 videoRef.current.currentTime = loopA;
               }
             }
           }}
-          onLoadedMetadata={() => {
-            if (videoRef.current) setDuration(videoRef.current.duration);
-          }}
+          onLoadedMetadata={syncDurationFromVideo}
+          onDurationChange={syncDurationFromVideo}
+          onCanPlay={syncDurationFromVideo}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
           onClick={handleVideoClick}
@@ -1099,7 +1252,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <RotateCw className="w-3.5 h-3.5" />
                 </button>
                 <span className="font-mono text-[11px] text-zinc-300">
-                  {formatTime(currentTime)} / {formatTime(duration)}
+                  {formatTime(currentTime)} / {formatTime(effectiveDur)}
                 </span>
               </div>
 
@@ -1130,7 +1283,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               <input
                 type="range"
                 min={0}
-                max={duration || 100}
+                max={effectiveDur || 100}
                 value={currentTime}
                 onChange={handleSeek}
                 className="w-full h-1 accent-rose-500 cursor-pointer"
@@ -1211,7 +1364,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <input
                   type="range"
                   min={0}
-                  max={duration || 100}
+                  max={effectiveDur || 100}
                   value={currentTime}
                   onChange={handleSeek}
                   className="w-full h-1 accent-rose-500 cursor-pointer"
@@ -1355,8 +1508,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       {selectedQuality && (
                         <>
                           <span>•</span>
-                          <span className="px-1.5 py-0.5 rounded bg-white/10 font-mono text-[11px]">
-                            {selectedQuality.label}
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/10 font-mono text-[11px]">
+                            {isPremiumQuality(selectedQuality.label) && (
+                              <Crown className="w-3 h-3 text-amber-400 fill-amber-400/25 flex-shrink-0" />
+                            )}
+                            <span>{selectedQuality.label}</span>
                           </span>
                         </>
                       )}
@@ -1412,16 +1568,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               {/* Bottom OSD Controls */}
               <div className="pointer-events-auto bg-gradient-to-t from-black/90 via-black/60 to-transparent -mx-6 -mb-6 p-6 sm:-mx-10 sm:-mb-10 sm:p-10 space-y-4">
                 {/* Custom Smooth SeekBar with Buffered bar, Played bar, A-B Loop Markers, and Hover Time Tooltip */}
-                <div className="space-y-1.5">
+                <div
+                  className="space-y-1.5"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <div
                     ref={seekBarRef}
-                    onMouseDown={handleSeekMouseDown}
-                    onMouseMove={handleSeekMouseMove}
-                    onMouseLeave={handleSeekMouseLeave}
-                    className="relative w-full h-5 flex items-center cursor-pointer group select-none"
+                    onPointerDown={handleSeekPointerDown}
+                    onPointerMove={handleSeekPointerMove}
+                    onPointerUp={handleSeekPointerUp}
+                    onPointerCancel={handleSeekPointerUp}
+                    onPointerLeave={handleSeekPointerLeave}
+                    className="relative w-full h-5 flex items-center cursor-pointer group select-none touch-none"
                   >
                     {/* Hover Time Tooltip */}
-                    {hoverTime !== null && duration > 0 && (
+                    {hoverTime !== null && effectiveDur > 0 && (
                       <div
                         className="absolute -top-7 -translate-x-1/2 px-2 py-0.5 rounded-md bg-zinc-900/95 border border-white/20 text-white text-[11px] font-mono shadow-xl pointer-events-none whitespace-nowrap z-30"
                         style={{ left: `${hoverX}px` }}
@@ -1439,12 +1601,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       />
 
                       {/* A-B Loop Shaded Region */}
-                      {duration > 0 && loopA !== null && (
+                      {effectiveDur > 0 && loopA !== null && (
                         <div
                           className="absolute top-0 bottom-0 bg-rose-500/30 border-x border-rose-400 pointer-events-none"
                           style={{
-                            left: `${(loopA / duration) * 100}%`,
-                            width: `${((loopB !== null ? loopB - loopA : duration - loopA) / duration) * 100}%`,
+                            left: `${(loopA / effectiveDur) * 100}%`,
+                            width: `${((loopB !== null ? loopB - loopA : effectiveDur - loopA) / effectiveDur) * 100}%`,
                           }}
                         />
                       )}
@@ -1457,10 +1619,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     </div>
 
                     {/* A Marker Tick */}
-                    {duration > 0 && loopA !== null && (
+                    {effectiveDur > 0 && loopA !== null && (
                       <div
                         className="absolute -top-1 w-2.5 h-3.5 -translate-x-1/2 flex flex-col items-center pointer-events-none z-10"
-                        style={{ left: `${(loopA / duration) * 100}%` }}
+                        style={{ left: `${(loopA / effectiveDur) * 100}%` }}
                       >
                         <div className="w-1.5 h-3 bg-amber-400 rounded-sm shadow-md" />
                         <span className="text-[9px] font-bold text-amber-300 font-mono -mt-0.5">A</span>
@@ -1468,10 +1630,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     )}
 
                     {/* B Marker Tick */}
-                    {duration > 0 && loopB !== null && (
+                    {effectiveDur > 0 && loopB !== null && (
                       <div
                         className="absolute -top-1 w-2.5 h-3.5 -translate-x-1/2 flex flex-col items-center pointer-events-none z-10"
-                        style={{ left: `${(loopB / duration) * 100}%` }}
+                        style={{ left: `${(loopB / effectiveDur) * 100}%` }}
                       >
                         <div className="w-1.5 h-3 bg-amber-400 rounded-sm shadow-md" />
                         <span className="text-[9px] font-bold text-amber-300 font-mono -mt-0.5">B</span>
@@ -1492,14 +1654,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       className="hover:text-white transition-colors cursor-pointer text-left"
                       title="Натисніть щоб змінити формат (минулий / залишок)"
                     >
-                      {showRemainingTime ? `-${formatTime(Math.max(0, duration - currentTime))}` : formatTime(currentTime)}
+                      {showRemainingTime ? `-${formatTime(Math.max(0, effectiveDur - currentTime))}` : formatTime(currentTime)}
                     </button>
                     <button
                       onClick={() => setShowRemainingTime(!showRemainingTime)}
                       className="hover:text-white transition-colors cursor-pointer text-right"
                       title="Натисніть щоб змінити формат (минулий / залишок)"
                     >
-                      {formatTime(duration)}
+                      {formatTime(effectiveDur)}
                     </button>
                   </div>
                 </div>
@@ -1787,32 +1949,46 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         }}
                         className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white text-xs font-semibold border border-white/15 cursor-pointer"
                       >
-                        <Settings className="w-4 h-4" />
+                        {isPremiumQuality(selectedQuality?.label) ? (
+                          <Crown className="w-4 h-4 text-amber-400 fill-amber-400/25" />
+                        ) : (
+                          <Settings className="w-4 h-4" />
+                        )}
                         <span>{selectedQuality?.label || "Якість"}</span>
                       </button>
 
                       {showQualityMenu && streamData && (
-                        <div className="absolute bottom-12 right-0 w-44 bg-zinc-900 border border-white/15 rounded-2xl shadow-2xl p-2 space-y-1 z-50">
+                        <div className="absolute bottom-12 right-0 w-48 bg-zinc-900 border border-white/15 rounded-2xl shadow-2xl p-2 space-y-1 z-50">
                           <div className="text-[11px] font-bold text-zinc-400 px-2 py-1 uppercase">
                             Якість відео
                           </div>
-                          {streamData.qualities.map((q) => (
-                            <button
-                              key={q.label}
-                              onClick={() => handleSelectQuality(q)}
-                              className={cn(
-                                "w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer",
-                                selectedQuality?.label === q.label
-                                  ? "bg-rose-600 text-white"
-                                  : "text-zinc-300 hover:bg-white/10"
-                              )}
-                            >
-                              <span>{q.label}</span>
-                              {selectedQuality?.label === q.label && (
-                                <Check className="w-3.5 h-3.5" />
-                              )}
-                            </button>
-                          ))}
+                          {streamData.qualities.map((q) => {
+                            const isPrem = isPremiumQuality(q.label);
+                            return (
+                              <button
+                                key={q.label}
+                                onClick={() => handleSelectQuality(q)}
+                                className={cn(
+                                  "w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer",
+                                  selectedQuality?.label === q.label
+                                    ? "bg-rose-600 text-white"
+                                    : "text-zinc-300 hover:bg-white/10"
+                                )}
+                              >
+                                <span className="flex items-center gap-1.5">
+                                  <span>{q.label}</span>
+                                  {isPrem && (
+                                    <span title="HDRezka Premium якість" className="inline-flex">
+                                      <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400/25 flex-shrink-0" />
+                                    </span>
+                                  )}
+                                </span>
+                                {selectedQuality?.label === q.label && (
+                                  <Check className="w-3.5 h-3.5 flex-shrink-0" />
+                                )}
+                              </button>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -2003,6 +2179,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <span className="truncate">Якість відео</span>
                   </div>
                   <div className="flex items-center gap-1 text-[11px] text-zinc-400 font-medium font-mono">
+                    {isPremiumQuality(selectedQuality?.label) && (
+                      <Crown className="w-3 h-3 text-amber-400 fill-amber-400/25 flex-shrink-0" />
+                    )}
                     <span>{selectedQuality?.label || "Auto"}</span>
                     <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
                   </div>
@@ -2273,6 +2452,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               <div className="h-px bg-white/10 my-1 mx-2" />
               {streamData.qualities.map((q) => {
                 const isSelected = selectedQuality?.label === q.label;
+                const isPrem = isPremiumQuality(q.label);
                 return (
                   <button
                     key={q.label}
@@ -2285,8 +2465,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       isSelected ? "bg-rose-600 text-white" : "text-zinc-300 hover:bg-white/10"
                     )}
                   >
-                    <span>{q.label}</span>
-                    {isSelected && <Check className="w-3.5 h-3.5" />}
+                    <span className="flex items-center gap-1.5">
+                      <span>{q.label}</span>
+                      {isPrem && (
+                        <span title="HDRezka Premium якість" className="inline-flex">
+                          <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400/25 flex-shrink-0" />
+                        </span>
+                      )}
+                    </span>
+                    {isSelected && <Check className="w-3.5 h-3.5 flex-shrink-0" />}
                   </button>
                 );
               })}

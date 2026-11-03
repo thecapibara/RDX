@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   X,
   Server,
@@ -8,6 +8,10 @@ import {
   ExternalLink,
   Check,
   Loader2,
+  Zap,
+  Shield,
+  Shuffle,
+  Trash2,
 } from "lucide-react";
 import type { AppSettings, MirrorStatus } from "../types";
 import { api } from "../services/api";
@@ -21,10 +25,11 @@ interface MirrorModalProps {
 
 const PRESET_MIRRORS = [
   "https://rezka-tv.org",
-  "https://hdrezka.me",
   "https://rezka.ag",
-  "https://hdrezka.ag",
-  "https://hdrezka.ac",
+  "https://hdrezka.me",
+  "https://hdrezka.sh",
+  "https://hdrezka.kim",
+  "https://rezka.pub",
 ];
 
 export const MirrorModal: React.FC<MirrorModalProps> = ({
@@ -37,24 +42,41 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
   const [proxyInput, setProxyInput] = useState("");
   const [testingStatus, setTestingStatus] = useState<Record<string, MirrorStatus>>({});
   const [testing, setTesting] = useState(false);
+  const [smartRotating, setSmartRotating] = useState(false);
   const [savingProxy, setSavingProxy] = useState(false);
   const [captchaOpening, setCaptchaOpening] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      loadSettings();
+      loadAndProbeAll();
     }
   }, [isOpen]);
 
-  const loadSettings = async () => {
+  const loadAndProbeAll = async () => {
     try {
       const s = await api.getSettings();
       setSettings(s);
       setProxyInput(s.proxy_url || "");
-      // Probe active mirror
-      testMirror(s.active_mirror);
+
+      const urls = Array.from(
+        new Set([
+          s.active_mirror,
+          ...PRESET_MIRRORS,
+          ...(s.custom_mirrors || []).filter((m) => m !== "https://hdrezka.ac" && m !== "https://hdrezka.ag"),
+        ])
+      );
+
+      setTesting(true);
+      const statuses = await api.checkAllMirrors(urls);
+      const map: Record<string, MirrorStatus> = {};
+      for (const st of statuses) {
+        map[st.mirror_url] = st;
+      }
+      setTestingStatus((prev) => ({ ...prev, ...map }));
     } catch (err) {
-      console.error("Failed to load settings:", err);
+      console.error("Failed to load settings or probe mirrors:", err);
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -72,18 +94,48 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
   const handleTestAll = async () => {
     if (!settings) return;
     setTesting(true);
-    const allUrls = Array.from(
-      new Set([
-        settings.active_mirror,
-        ...PRESET_MIRRORS,
-        ...settings.custom_mirrors,
-      ])
-    );
-
-    for (const url of allUrls) {
-      await testMirror(url);
+    try {
+      const allUrls = Array.from(
+        new Set([
+          settings.active_mirror,
+          ...PRESET_MIRRORS,
+          ...settings.custom_mirrors.filter((m) => m !== "https://hdrezka.ac" && m !== "https://hdrezka.ag"),
+        ])
+      );
+      const statuses = await api.checkAllMirrors(allUrls);
+      const map: Record<string, MirrorStatus> = {};
+      for (const st of statuses) {
+        map[st.mirror_url] = st;
+      }
+      setTestingStatus((prev) => ({ ...prev, ...map }));
+    } catch (err) {
+      console.error("Parallel mirror check failed:", err);
+    } finally {
+      setTesting(false);
     }
-    setTesting(false);
+  };
+
+  const handleSmartSelect = async (forceRotate = false) => {
+    setSmartRotating(true);
+    try {
+      const res = await api.smartSelectMirror(forceRotate);
+      const map: Record<string, MirrorStatus> = {};
+      for (const st of res.statuses) {
+        map[st.mirror_url] = st;
+      }
+      setTestingStatus((prev) => ({ ...prev, ...map }));
+
+      const updated = await api.getSettings();
+      setSettings(updated);
+
+      if (res.selected_mirror) {
+        onMirrorChanged(res.selected_mirror);
+      }
+    } catch (err) {
+      console.error("Smart mirror rotation failed:", err);
+    } finally {
+      setSmartRotating(false);
+    }
   };
 
   const handleSelectMirror = async (mirrorUrl: string) => {
@@ -120,6 +172,21 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
     }
   };
 
+  const handleRemoveCustomMirror = async (urlToRemove: string) => {
+    if (!settings) return;
+    const updatedCustom = settings.custom_mirrors.filter((u) => u !== urlToRemove);
+    const updatedSettings: AppSettings = {
+      ...settings,
+      custom_mirrors: updatedCustom,
+    };
+    try {
+      await api.updateSettings(updatedSettings);
+      setSettings(updatedSettings);
+    } catch (err) {
+      console.error("Failed to remove custom mirror:", err);
+    }
+  };
+
   const handleSaveProxy = async () => {
     if (!settings) return;
     setSavingProxy(true);
@@ -148,15 +215,43 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
+  const allMirrors = useMemo(() => {
+    const raw = Array.from(
+      new Set([
+        ...(settings?.active_mirror ? [settings.active_mirror] : []),
+        ...PRESET_MIRRORS,
+        ...(settings?.custom_mirrors || []).filter(
+          (m) => m !== "https://hdrezka.ac" && m !== "https://hdrezka.ag"
+        ),
+      ])
+    );
 
-  const allMirrors = Array.from(
-    new Set([
-      ...(settings?.active_mirror ? [settings.active_mirror] : []),
-      ...PRESET_MIRRORS,
-      ...(settings?.custom_mirrors || []),
-    ])
-  );
+    // Sort: active mirror first, then online by latency, then untested/offline
+    return raw.sort((a, b) => {
+      if (a === settings?.active_mirror) return -1;
+      if (b === settings?.active_mirror) return 1;
+      const sa = testingStatus[a];
+      const sb = testingStatus[b];
+      if (sa?.online && sb?.online) return sa.latency_ms - sb.latency_ms;
+      if (sa?.online && !sb?.online) return -1;
+      if (!sa?.online && sb?.online) return 1;
+      return 0;
+    });
+  }, [settings, testingStatus]);
+
+  const fastestUrl = useMemo(() => {
+    let bestUrl: string | null = null;
+    let bestMs = Infinity;
+    for (const [url, st] of Object.entries(testingStatus)) {
+      if (st.online && st.latency_ms > 0 && st.latency_ms < bestMs) {
+        bestMs = st.latency_ms;
+        bestUrl = url;
+      }
+    }
+    return bestUrl;
+  }, [testingStatus]);
+
+  if (!isOpen) return null;
 
   return (
     <div
@@ -175,10 +270,10 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-bold text-white tracking-tight">
-                Керування дзеркалами та мережею
+                Розумний ротатор дзеркал та DoH-мережа
               </h2>
               <p className="text-xs text-zinc-400">
-                Виберіть робоче дзеркало HDRezka або налаштуйте проксі для обходу блокувань
+                Автоматичний обхід DNS-блокувань провайдера (Cloudflare / Google DoH) та вибір найшвидшого вузла
               </p>
             </div>
           </div>
@@ -192,44 +287,80 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
 
         {/* Content */}
         <div className="p-6 overflow-y-auto space-y-6">
-          {/* Captcha Bridge Banner */}
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-rose-950/40 via-zinc-900 to-zinc-900 border border-rose-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <ShieldCheck className="w-6 h-6 text-rose-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <h4 className="text-sm font-bold text-white">
-                  Перевірка Cloudflare / "Я не робот"
-                </h4>
-                <p className="text-xs text-zinc-400 mt-0.5">
-                  Якщо сайт вимагає проходження капчі або не завантажує каталог — відкрийте вбудоване вікно підтвердження.
-                </p>
+          {/* Smart Mirror Rotator Hero Card */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-950/50 via-rose-950/30 to-zinc-900 border border-indigo-500/25 flex flex-col gap-3.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 flex-shrink-0 mt-0.5">
+                  <Zap className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="text-sm font-bold text-white">
+                      Smart Rotator + DNS-over-HTTPS (DoH)
+                    </h4>
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase tracking-wider">
+                      Активно без VPN
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                    Провайдери часто підміняють DNS для <span className="text-zinc-200 font-mono">rezka.ag</span> та <span className="text-zinc-200 font-mono">hdrezka.me</span> на <span className="text-rose-400 font-mono">127.0.0.1</span>. Вбудований DoH-резолвер RDX автоматично отримує реальні IP кластера та відкриває заблоковані дзеркала напряму.
+                  </p>
+                </div>
               </div>
             </div>
-            <button
-              onClick={handleOpenCaptcha}
-              disabled={captchaOpening}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-semibold text-xs transition-all shadow-md shadow-rose-950/40 flex-shrink-0 cursor-pointer"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              <span>Вікно Captcha Bridge</span>
-            </button>
+
+            <div className="flex flex-wrap items-center gap-2.5 pt-1">
+              <button
+                onClick={() => handleSmartSelect(false)}
+                disabled={smartRotating || testing}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 active:scale-95 text-white font-bold text-xs transition-all shadow-lg shadow-rose-950/40 cursor-pointer disabled:opacity-50"
+              >
+                {smartRotating ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Zap className="w-3.5 h-3.5" />
+                )}
+                <span>Знайти та увімкнути найшвидше</span>
+              </button>
+
+              <button
+                onClick={() => handleSmartSelect(true)}
+                disabled={smartRotating || testing}
+                className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/8 hover:bg-white/14 active:scale-95 text-zinc-200 font-semibold text-xs border border-white/10 transition-all cursor-pointer disabled:opacity-50"
+              >
+                <Shuffle className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Перемкнути на інше робоче</span>
+              </button>
+
+              <button
+                onClick={handleOpenCaptcha}
+                disabled={captchaOpening}
+                className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-medium text-xs border border-white/10 transition-all cursor-pointer"
+                title="Відкрити вікно перевірки Cloudflare / Captcha"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-rose-400" />
+                <span>Captcha Bridge</span>
+                <ExternalLink className="w-3 h-3 opacity-60" />
+              </button>
+            </div>
           </div>
 
           {/* Mirrors List */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-zinc-200 uppercase tracking-wider">
-                Доступні дзеркала
+                Пул дзеркал ({allMirrors.length})
               </h3>
               <button
                 onClick={handleTestAll}
-                disabled={testing}
-                className="flex items-center gap-1.5 text-xs text-rose-400 hover:text-rose-300 transition-colors font-medium cursor-pointer"
+                disabled={testing || smartRotating}
+                className="flex items-center gap-1.5 text-xs text-rose-400 hover:text-rose-300 transition-colors font-medium cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw
-                  className={cn("w-3.5 h-3.5", testing && "animate-spin")}
+                  className={cn("w-3.5 h-3.5", (testing || smartRotating) && "animate-spin")}
                 />
-                <span>Перевірити всі</span>
+                <span>{testing ? "Перевірка паралельно..." : "Перевірити всі"}</span>
               </button>
             </div>
 
@@ -237,6 +368,8 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
               {allMirrors.map((url) => {
                 const isActive = settings?.active_mirror === url;
                 const status = testingStatus[url];
+                const isFastest = fastestUrl === url && status?.online;
+                const isCustomOnly = !PRESET_MIRRORS.includes(url) && !isActive;
 
                 return (
                   <div
@@ -249,7 +382,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                         : "bg-zinc-900/60 hover:bg-zinc-900 border-white/5 hover:border-white/10"
                     )}
                   >
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
                       <div
                         className={cn(
                           "w-3 h-3 rounded-full flex-shrink-0",
@@ -257,7 +390,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                             ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"
                             : status
                             ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]"
-                            : "bg-zinc-600"
+                            : "bg-zinc-600 animate-pulse"
                         )}
                       />
                       <span className="font-mono text-xs sm:text-sm text-zinc-200 truncate">
@@ -268,19 +401,41 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                           Активне
                         </span>
                       )}
-                    </div>
-
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      {status && (
+                      {status?.doh_bypass && status.online && (
                         <span
-                          className={cn(
-                            "text-xs font-mono font-medium",
-                            status.online ? "text-emerald-400" : "text-rose-400"
-                          )}
+                          title="Розблоковано через DNS-over-HTTPS (обхід блокування провайдера)"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
                         >
-                          {status.online ? `${status.latency_ms} ms` : "Помилка"}
+                          <Shield className="w-2.5 h-2.5" />
+                          DoH
                         </span>
                       )}
+                      {isFastest && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                          <Zap className="w-2.5 h-2.5" />
+                          Найшвидше
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2.5 flex-shrink-0">
+                      {status ? (
+                        <div className="flex items-center gap-2 text-right">
+                          <span
+                            className={cn(
+                              "text-xs font-mono font-medium",
+                              status.online ? "text-emerald-400" : "text-rose-400"
+                            )}
+                          >
+                            {status.online
+                              ? `${status.latency_ms} ms`
+                              : status.status_message || "Помилка"}
+                          </span>
+                        </div>
+                      ) : testing ? (
+                        <span className="text-[11px] text-zinc-500 font-mono">Пінг...</span>
+                      ) : null}
+
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -291,6 +446,19 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                       >
                         <RefreshCw className="w-3.5 h-3.5" />
                       </button>
+
+                      {isCustomOnly && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveCustomMirror(url);
+                          }}
+                          title="Видалити дзеркало"
+                          className="p-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 text-zinc-500 hover:text-rose-400 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -303,6 +471,9 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                 type="text"
                 value={customInput}
                 onChange={(e) => setCustomInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleAddCustomMirror();
+                }}
                 placeholder="https://нове-дзеркало.com"
                 className="flex-1 px-4 py-2.5 rounded-xl bg-zinc-900 border border-white/10 text-white placeholder-zinc-500 text-xs focus:outline-none focus:border-rose-500"
               />

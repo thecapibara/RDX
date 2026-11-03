@@ -40,13 +40,10 @@ pub fn run() {
                 use tauri::Manager;
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.with_webview(|webview| {
-                        use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt, WebViewExt};
+                        use webkit2gtk::{SettingsExt, WebViewExt};
                         let wk = webview.inner();
                         if let Some(settings) = wk.settings() {
                             settings.set_enable_smooth_scrolling(true);
-                            settings.set_hardware_acceleration_policy(
-                                HardwareAccelerationPolicy::Always,
-                            );
                             settings.set_enable_page_cache(true);
                         }
                     });
@@ -65,6 +62,8 @@ pub fn run() {
             commands::get_bookmarks,
             commands::is_bookmarked,
             commands::check_mirror_status,
+            commands::check_all_mirrors,
+            commands::smart_select_mirror,
             commands::get_active_mirror,
             commands::set_active_mirror,
             commands::open_captcha_window,

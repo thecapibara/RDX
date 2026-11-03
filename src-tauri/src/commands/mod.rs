@@ -3,7 +3,7 @@ use tauri::{AppHandle, LogicalSize, Manager, State, WebviewUrl, WebviewWindowBui
 use serde::{Deserialize, Serialize};
 
 use crate::client::HttpClient;
-use crate::mirror::{MirrorManager, MirrorStatus};
+use crate::mirror::{MirrorManager, MirrorStatus, SmartRotationResult, PRESET_MIRRORS};
 use crate::parser::{
     EpisodeTab, MediaCard, MediaDetails, RezkaParser, SearchItem, SeasonTab, StreamData,
 };
@@ -30,6 +30,7 @@ pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, Str
 
 #[tauri::command]
 pub async fn update_settings(state: State<'_, AppState>, settings: AppSettings) -> Result<(), String> {
+    state.client.set_proxy(Some(&settings.proxy_url));
     state.storage.update_settings(&settings).map_err(|e| e.to_string())
 }
 
@@ -74,6 +75,80 @@ pub async fn is_bookmarked(state: State<'_, AppState>, media_id: String) -> Resu
 pub async fn check_mirror_status(state: State<'_, AppState>, mirror_url: String) -> Result<MirrorStatus, String> {
     let status = MirrorManager::check_mirror_status(&state.client, &mirror_url).await;
     Ok(status)
+}
+
+#[tauri::command]
+pub async fn check_all_mirrors(
+    state: State<'_, AppState>,
+    mirror_urls: Vec<String>,
+) -> Result<Vec<MirrorStatus>, String> {
+    let statuses = MirrorManager::check_all_mirrors(state.client.clone(), mirror_urls).await;
+    Ok(statuses)
+}
+
+#[tauri::command]
+pub async fn smart_select_mirror(
+    state: State<'_, AppState>,
+    force_rotate: Option<bool>,
+) -> Result<SmartRotationResult, String> {
+    let mut settings = state.storage.get_settings().map_err(|e| e.to_string())?;
+    let current_active = MirrorManager::normalize_url(&settings.active_mirror);
+
+    let mut extra = vec![current_active.clone()];
+    for m in &settings.custom_mirrors {
+        extra.push(m.clone());
+    }
+
+    let statuses = MirrorManager::discover_mirrors(state.client.clone(), &extra).await;
+
+    // Persist any newly discovered working public mirrors into custom_mirrors
+    let preset_set: Vec<String> = PRESET_MIRRORS.iter().map(|s| s.to_string()).collect();
+    let mut custom_changed = false;
+    for st in &statuses {
+        if st.online
+            && st.catalog_available
+            && !preset_set.contains(&st.mirror_url)
+            && !settings.custom_mirrors.contains(&st.mirror_url)
+        {
+            settings.custom_mirrors.push(st.mirror_url.clone());
+            custom_changed = true;
+        }
+    }
+
+    let working: Vec<&MirrorStatus> = statuses
+        .iter()
+        .filter(|s| s.online && s.catalog_available)
+        .collect();
+
+    let chosen = if force_rotate.unwrap_or(false) && working.len() > 1 {
+        working
+            .iter()
+            .find(|s| s.mirror_url != current_active)
+            .copied()
+            .or_else(|| working.first().copied())
+    } else {
+        working.first().copied()
+    };
+
+    let (selected_mirror, switched) = if let Some(best) = chosen {
+        let changed = best.mirror_url != current_active;
+        if changed || custom_changed {
+            settings.active_mirror = best.mirror_url.clone();
+            let _ = state.storage.update_settings(&settings);
+        }
+        (best.mirror_url.clone(), changed)
+    } else {
+        if custom_changed {
+            let _ = state.storage.update_settings(&settings);
+        }
+        (current_active, false)
+    };
+
+    Ok(SmartRotationResult {
+        selected_mirror,
+        switched,
+        statuses,
+    })
 }
 
 #[tauri::command]

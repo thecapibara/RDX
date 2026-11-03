@@ -7,6 +7,7 @@ import type {
   MediaDetails,
   MirrorStatus,
   SearchItem,
+  SmartRotationResult,
   StreamData,
   WatchProgress,
 } from "../types";
@@ -150,8 +151,8 @@ function getStoredProgress(): WatchProgress[] {
       translator_name: "Цікава Ідея (Укр)",
       season: null,
       episode: null,
-      position_sec: 3420,
-      duration_sec: 9960,
+      position_sec: 120,
+      duration_sec: 634,
       updated_at: Math.floor(Date.now() / 1000) - 3600,
     },
     {
@@ -165,8 +166,8 @@ function getStoredProgress(): WatchProgress[] {
       translator_name: "Цікава Ідея (Укр)",
       season: 1,
       episode: 3,
-      position_sec: 1450,
-      duration_sec: 3200,
+      position_sec: 95,
+      duration_sec: 634,
       updated_at: Math.floor(Date.now() / 1000) - 7200,
     },
   ];
@@ -206,7 +207,7 @@ export const api = {
       active_mirror: "https://rezka-tv.org",
       custom_mirrors: ["https://hdrezka.me", "https://rezka.ag"],
       proxy_url: "",
-      preferred_quality: "1080p",
+      preferred_quality: "720p",
       preferred_translator: "Українська",
     };
   },
@@ -277,7 +278,39 @@ export const api = {
       mirror_url: mirrorUrl,
       online: true,
       latency_ms: 38,
-      status_message: "OK (Web Demo)",
+      status_message: "OK • Пряме",
+      doh_bypass: false,
+      catalog_available: true,
+    };
+  },
+
+  checkAllMirrors: async (mirrorUrls: string[]): Promise<MirrorStatus[]> => {
+    if (isTauri) return invoke<MirrorStatus[]>("check_all_mirrors", { mirrorUrls });
+    return mirrorUrls.map((url, idx) => ({
+      mirror_url: url,
+      online: true,
+      latency_ms: 38 + idx * 14,
+      status_message: idx === 0 ? "OK • Пряме" : "OK • DoH обхід",
+      doh_bypass: idx > 0,
+      catalog_available: true,
+    }));
+  },
+
+  smartSelectMirror: async (forceRotate = false): Promise<SmartRotationResult> => {
+    if (isTauri) return invoke<SmartRotationResult>("smart_select_mirror", { forceRotate });
+    return {
+      selected_mirror: "https://rezka-tv.org",
+      switched: false,
+      statuses: [
+        {
+          mirror_url: "https://rezka-tv.org",
+          online: true,
+          latency_ms: 38,
+          status_message: "OK • Пряме",
+          doh_bypass: false,
+          catalog_available: true,
+        },
+      ],
     };
   },
 

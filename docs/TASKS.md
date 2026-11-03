@@ -52,3 +52,11 @@
 - [x] **5.2. Dual Mini-Player (In-App & Always-on-Top OS Overlay)**
   - In-app docked mini-player when navigating back to the catalog during playback.
   - OS-level **Always-on-Top frameless Mini-Player** (`set_always_on_top(true)`, compact 16:9 floating window with drag-region and hover controls) + Web Picture-in-Picture toggle + MPV/VLC external player launcher.
+
+## Phase 6: Smart Mirror Rotator, DoH Anti-Blocking & Player Polish
+- [x] **6.1. Built-in DNS-over-HTTPS (DoH) Anti-Blocking & Smart Mirror Rotator (`src-tauri/src/client/`, `src-tauri/src/mirror/`)**
+  - Universal DoH resolver (`https://1.1.1.1/dns-query`, `https://8.8.8.8/resolve`) bypassing ISP DNS spoofing (`127.0.0.1` / ISP block pages) via `reqwest::ClientBuilder::resolve`.
+  - Parallel mirror health & catalog verification (`check_all_mirrors`, `smart_select_mirror`) with automatic startup failover and transparent URL mirror rewriting (`RezkaParser::rewrite_to_mirror`).
+- [x] **6.2. MSE HLS Seeking, Quality Persistence & Premium Badges (`src/components/VideoPlayer.tsx`)**
+  - Reliable `getEffectiveDuration()` + `Hls.Events.LEVEL_LOADED` total duration tracking + Pointer-captured SeekBar scrubbing.
+  - Default `720p` quality, persistent user quality preference (`localStorage` + SQLite), and golden `<Crown />` badge for `1080p Ultra` / `2K` / `4K`.

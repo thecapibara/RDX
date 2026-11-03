@@ -22,7 +22,7 @@ impl Default for AppSettings {
                 "https://rezka.ag".to_string(),
             ],
             proxy_url: "".to_string(),
-            preferred_quality: "1080p Ultra".to_string(),
+            preferred_quality: "720p".to_string(),
             preferred_translator: "".to_string(),
         }
     }

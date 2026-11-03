@@ -39,6 +39,14 @@ export interface MirrorStatus {
   online: boolean;
   latency_ms: number;
   status_message: string;
+  doh_bypass?: boolean;
+  catalog_available?: boolean;
+}
+
+export interface SmartRotationResult {
+  selected_mirror: string;
+  switched: boolean;
+  statuses: MirrorStatus[];
 }
 
 export interface MediaCard {
