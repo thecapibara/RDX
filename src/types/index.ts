@@ -1,0 +1,121 @@
+export interface AppSettings {
+  active_mirror: string;
+  custom_mirrors: string[];
+  proxy_url: string;
+  preferred_quality: string;
+  preferred_translator: string;
+}
+
+export interface WatchProgress {
+  media_id: string;
+  media_url: string;
+  title: string;
+  orig_title: string | null;
+  poster_url: string;
+  media_type: string;
+  translator_id: string | null;
+  translator_name: string | null;
+  season: number | null;
+  episode: number | null;
+  position_sec: number;
+  duration_sec: number;
+  updated_at: number;
+}
+
+export interface Bookmark {
+  media_id: string;
+  media_url: string;
+  title: string;
+  poster_url: string;
+  media_type: string;
+  year_info: string | null;
+  rating: string | null;
+  category: string;
+  added_at: number;
+}
+
+export interface MirrorStatus {
+  mirror_url: string;
+  online: boolean;
+  latency_ms: number;
+  status_message: string;
+}
+
+export interface MediaCard {
+  id: string;
+  url: string;
+  title: string;
+  poster: string;
+  entity_type: string;
+  series_info: string | null;
+  misc_info: string;
+  rating: string | null;
+}
+
+export interface SearchItem {
+  title: string;
+  orig_title: string | null;
+  year: string | null;
+  entity_type: string | null;
+  rating: string | null;
+  url: string;
+}
+
+export interface Translator {
+  id: string;
+  name: string;
+  language: string | null;
+  is_active: boolean;
+}
+
+export interface SeasonTab {
+  id: string;
+  title: string;
+}
+
+export interface EpisodeTab {
+  season_id: string;
+  episode_id: string;
+  title: string;
+}
+
+export interface StreamQuality {
+  label: string;
+  hls_url: string | null;
+  mp4_url: string | null;
+}
+
+export interface SubtitleTrack {
+  label: string;
+  url: string;
+}
+
+export interface StreamData {
+  qualities: StreamQuality[];
+  default_quality: string;
+  subtitles: SubtitleTrack[];
+  thumbnails: string | null;
+}
+
+export interface MediaDetails {
+  id: string;
+  url: string;
+  title: string;
+  orig_title: string | null;
+  poster: string;
+  high_res_poster: string | null;
+  imdb_rating: string | null;
+  kp_rating: string | null;
+  description: string;
+  info_table: [string, string][];
+  translators: Translator[];
+  seasons: SeasonTab[];
+  episodes: EpisodeTab[];
+  initial_streams: StreamData | null;
+}
+
+export interface EpisodesData {
+  seasons: SeasonTab[];
+  episodes: EpisodeTab[];
+  stream_data: StreamData | null;
+}
