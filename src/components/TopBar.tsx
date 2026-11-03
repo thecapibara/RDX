@@ -98,7 +98,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   ];
 
   return (
-    <header className="sticky top-0 z-40 w-full px-6 sm:px-8 lg:px-12 py-5 bg-gradient-to-b from-black/95 via-black/70 to-transparent flex items-center justify-between gap-6 select-none transition-all">
+    <header className="sticky top-0 z-40 w-full px-6 sm:px-8 lg:px-12 py-5 bg-gradient-to-b from-black/95 via-black/75 to-transparent flex items-center justify-between gap-6 select-none will-change-transform">
       {/* Left: Typographic Wordmark & Text-Only Android TV Navigation */}
       <div className="flex items-center gap-6 sm:gap-10 min-w-0">
         {/* Brand Wordmark */}

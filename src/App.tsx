@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Loader2, RefreshCw, AlertCircle } from "lucide-react";
 import type {
   AppSettings,
@@ -73,14 +73,14 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [initializeApp]);
 
-  // Smoothly dismiss persistent DOM #rdx-splash once both min timer and initial catalog load finish
+  // Smoothly dismiss and remove persistent DOM #rdx-splash once both min timer and initial catalog load finish
   useEffect(() => {
     if ((!isInitialBoot || !loadingCatalog) && minSplashDone) {
       const splash = document.getElementById("rdx-splash");
       if (splash) {
         splash.classList.add("rdx-splash-hide");
         const cleanup = setTimeout(() => {
-          splash.style.display = "none";
+          splash.remove();
         }, 550);
         return () => clearTimeout(cleanup);
       }
@@ -135,36 +135,35 @@ export default function App() {
   }, [loadCatalog]);
 
   // Handle Tab Switch
-  const handleTabChange = (tab: NavTab) => {
+  const handleTabChange = useCallback((tab: NavTab) => {
     setActiveTab(tab);
     setCategoryPage(1);
-  };
+  }, []);
 
   // Open Details Modal
-  const handleOpenDetails = async (card: MediaCardType) => {
+  const handleOpenDetails = useCallback(async (card: MediaCardType) => {
     setSelectedMediaForDetails(card);
     setIsDetailsOpen(true);
-    // check if bookmarked
     try {
       const category = await api.isBookmarked(card.id);
       setIsCurrentBookmarked(Boolean(category));
     } catch {
       setIsCurrentBookmarked(false);
     }
-  };
+  }, []);
 
   // Toggle Bookmark
-  const handleToggleBookmark = async (bookmark: Bookmark) => {
+  const handleToggleBookmark = useCallback(async (bookmark: Bookmark) => {
     try {
       const added = await api.toggleBookmark(bookmark);
       setIsCurrentBookmarked(added);
     } catch (err) {
       console.error("Failed to toggle bookmark:", err);
     }
-  };
+  }, []);
 
   // Start Playback
-  const handleStartPlayback = (
+  const handleStartPlayback = useCallback((
     details: MediaDetails,
     translatorId?: string,
     season?: number,
@@ -177,7 +176,7 @@ export default function App() {
     setActiveEpisode(episode);
     setInitialPositionSec(positionSec || 0);
     setPlayerMode("full");
-  };
+  }, []);
 
   // Handle in-player translator change for series
   const handlePlayerTranslatorChange = async (tId: string) => {
@@ -216,7 +215,7 @@ export default function App() {
   };
 
   // 1-Click direct play from MediaCard
-  const handleDirectPlay = async (card: MediaCardType) => {
+  const handleDirectPlay = useCallback(async (card: MediaCardType) => {
     try {
       let details = await api.getMediaDetails(card.url);
       const saved = await api.getWatchProgress(card.id).catch(() => null);
@@ -254,10 +253,10 @@ export default function App() {
       console.error("Direct play error:", e);
       handleOpenDetails(card);
     }
-  };
+  }, [handleStartPlayback, handleOpenDetails]);
 
   // Resume from Continue Watching Card
-  const handleResumeContinueWatching = async (item: WatchProgress) => {
+  const handleResumeContinueWatching = useCallback(async (item: WatchProgress) => {
     try {
       let details = await api.getMediaDetails(item.media_url);
 
@@ -295,17 +294,62 @@ export default function App() {
     } catch (e) {
       console.error("Resume error:", e);
     }
-  };
+  }, [handleStartPlayback]);
 
   // Remove from Continue Watching
-  const handleRemoveContinueWatching = async (mediaId: string) => {
+  const handleRemoveContinueWatching = useCallback(async (mediaId: string) => {
     try {
       await api.deleteWatchProgress(mediaId);
       setContinueWatching((prev) => prev.filter((p) => p.media_id !== mediaId));
     } catch (e) {
       console.error("Failed to delete watch progress:", e);
     }
-  };
+  }, []);
+
+  // Memoized swimlane slices so Swimlane React.memo is never invalidated by .filter()
+  const trendingHomeItems = useMemo(() => homeItems.slice(0, 18), [homeItems]);
+  const filmsHomeItems = useMemo(
+    () =>
+      homeItems
+        .filter(
+          (i) =>
+            !i.series_info &&
+            !i.entity_type?.toLowerCase().includes("series") &&
+            !i.entity_type?.toLowerCase().includes("аніме")
+        )
+        .slice(0, 18),
+    [homeItems]
+  );
+  const seriesHomeItems = useMemo(
+    () =>
+      homeItems
+        .filter(
+          (i) =>
+            i.series_info ||
+            i.entity_type?.toLowerCase().includes("series") ||
+            i.entity_type?.toLowerCase().includes("серіал")
+        )
+        .slice(0, 18),
+    [homeItems]
+  );
+  const cartoonsHomeItems = useMemo(
+    () =>
+      homeItems
+        .filter(
+          (i) =>
+            i.entity_type?.toLowerCase().includes("cartoon") ||
+            i.entity_type?.toLowerCase().includes("anime") ||
+            i.entity_type?.toLowerCase().includes("мульт") ||
+            i.entity_type?.toLowerCase().includes("аніме")
+        )
+        .slice(0, 18),
+    [homeItems]
+  );
+  const handleMoreFilms = useCallback(() => handleTabChange("films"), [handleTabChange]);
+  const handleMoreSeries = useCallback(() => handleTabChange("series"), [handleTabChange]);
+  const handleMoreCartoons = useCallback(() => handleTabChange("cartoons"), [handleTabChange]);
+
+  const isBackgroundHidden = isDetailsOpen || Boolean(activePlayerDetails && playerMode === "full");
 
   // Close Video Player
   const handleClosePlayer = () => {
@@ -316,17 +360,19 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#09090b] text-white flex flex-col font-sans selection:bg-rose-500/30 selection:text-white">
       {/* Top Android TV Navigation Bar */}
-      <TopBar
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        onOpenSearch={() => setIsSearchOpen(true)}
-        onOpenMirrorModal={() => setIsMirrorModalOpen(true)}
-        mirrorStatus={mirrorStatus}
-        activeMirrorUrl={settings?.active_mirror || "https://rezka-tv.org"}
-      />
+      {!isBackgroundHidden && (
+        <TopBar
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          onOpenSearch={() => setIsSearchOpen(true)}
+          onOpenMirrorModal={() => setIsMirrorModalOpen(true)}
+          mirrorStatus={mirrorStatus}
+          activeMirrorUrl={settings?.active_mirror || "https://rezka-tv.org"}
+        />
+      )}
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col pb-24">
+      {/* Main Content Area (hidden when full-screen Details or full-screen VideoPlayer is open so WebKit skips compositing 90 background cards) */}
+      <main className={isBackgroundHidden ? "hidden" : "flex-1 flex flex-col pb-24"}>
         {activeTab === "bookmarks" ? (
           <BookmarksView
             onSelectMedia={handleOpenDetails}
@@ -384,7 +430,7 @@ export default function App() {
               <Swimlane
                 title="Популярне та оновлення"
                 badge="Сьогодні"
-                items={homeItems}
+                items={trendingHomeItems}
                 onSelectCard={handleOpenDetails}
                 onPlayDirect={handleDirectPlay}
               />
@@ -393,43 +439,27 @@ export default function App() {
               <Swimlane
                 title="Фільми"
                 subtitle="Кращі кінопрем'єри"
-                items={homeItems.filter(
-                  (i) =>
-                    !i.series_info &&
-                    !i.entity_type?.toLowerCase().includes("series") &&
-                    !i.entity_type?.toLowerCase().includes("аніме")
-                )}
+                items={filmsHomeItems}
                 onSelectCard={handleOpenDetails}
                 onPlayDirect={handleDirectPlay}
-                onMoreClick={() => handleTabChange("films")}
+                onMoreClick={handleMoreFilms}
               />
 
               <Swimlane
                 title="Серіали"
                 subtitle="Популярні багатосерійні шоу"
-                items={homeItems.filter(
-                  (i) =>
-                    i.series_info ||
-                    i.entity_type?.toLowerCase().includes("series") ||
-                    i.entity_type?.toLowerCase().includes("серіал")
-                )}
+                items={seriesHomeItems}
                 onSelectCard={handleOpenDetails}
                 onPlayDirect={handleDirectPlay}
-                onMoreClick={() => handleTabChange("series")}
+                onMoreClick={handleMoreSeries}
               />
 
               <Swimlane
                 title="Мультфільми та Аніме"
-                items={homeItems.filter(
-                  (i) =>
-                    i.entity_type?.toLowerCase().includes("cartoon") ||
-                    i.entity_type?.toLowerCase().includes("anime") ||
-                    i.entity_type?.toLowerCase().includes("мульт") ||
-                    i.entity_type?.toLowerCase().includes("аніме")
-                )}
+                items={cartoonsHomeItems}
                 onSelectCard={handleOpenDetails}
                 onPlayDirect={handleDirectPlay}
-                onMoreClick={() => handleTabChange("cartoons")}
+                onMoreClick={handleMoreCartoons}
               />
             </div>
           </>

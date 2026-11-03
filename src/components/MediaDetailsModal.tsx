@@ -266,7 +266,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
       {/* Top Floating Back Button */}
       <button
         onClick={onClose}
-        className="fixed top-6 left-6 sm:left-10 lg:left-14 z-40 flex items-center gap-2 px-4 py-2 rounded-xl bg-black/60 hover:bg-black/90 text-zinc-300 hover:text-white backdrop-blur-xl border border-white/10 transition-all shadow-2xl cursor-pointer"
+        className="fixed top-6 left-6 sm:left-10 lg:left-14 z-40 flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-950/90 hover:bg-zinc-900 text-zinc-300 hover:text-white border border-white/10 transition-colors shadow-xl cursor-pointer"
       >
         <ArrowLeft className="w-4 h-4" />
         <span className="text-xs font-semibold">Назад</span>
@@ -282,11 +282,12 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
       ) : details ? (
         <div className="relative w-full">
           {/* Full-Bleed Atmospheric Backdrop */}
-          <div className="relative w-full h-[54vh] min-h-[400px] overflow-hidden">
+          <div className="relative w-full h-[54vh] min-h-[400px] overflow-hidden pointer-events-none transform-gpu">
             <img
               src={details.high_res_poster || details.poster || media.poster}
               alt={details.title}
-              className="w-full h-full object-cover object-center filter blur-[6px] brightness-[0.32] scale-105"
+              decoding="async"
+              className="w-full h-full object-cover object-center opacity-30 scale-105 transform-gpu"
             />
             {/* Smooth seamless multi-stop gradients */}
             <div className="absolute inset-0 bg-gradient-to-t from-[#08090d] via-[#08090d]/60 to-transparent" />
@@ -617,7 +618,14 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                           <span className="font-bold text-base">
                             {ep.episode_id}
                           </span>
-                          <span className="text-[11px] text-zinc-400 group-hover:text-zinc-300 truncate max-w-full">
+                          <span
+                            className={cn(
+                              "text-[11px] truncate max-w-full transition-colors",
+                              isSelected
+                                ? "text-white/95 font-medium"
+                                : "text-zinc-400 group-hover:text-zinc-200"
+                            )}
+                          >
                             серія
                           </span>
                           {isSaved && (

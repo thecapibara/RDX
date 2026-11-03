@@ -43,7 +43,8 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
           <img
             src={media.poster}
             alt={media.title}
-            className="w-full h-full object-cover object-center filter blur-[2px] brightness-[0.45] scale-105"
+            decoding="async"
+            className="w-full h-full object-cover object-center opacity-45 scale-105 transform-gpu"
           />
           {/* Radial & Linear gradient overlays for true Android TV cinema depth */}
           <div className="absolute inset-0 bg-gradient-to-t from-[#090a0f] via-[#090a0f]/60 to-transparent" />

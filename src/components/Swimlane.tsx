@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useCallback } from "react";
 import { ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
 import type { MediaCard as MediaCardType } from "../types";
 import { MediaCard } from "./MediaCard";
@@ -15,7 +15,7 @@ interface SwimlaneProps {
   className?: string;
 }
 
-export const Swimlane: React.FC<SwimlaneProps> = ({
+export const Swimlane: React.FC<SwimlaneProps> = React.memo(({
   title,
   subtitle,
   badge,
@@ -26,22 +26,32 @@ export const Swimlane: React.FC<SwimlaneProps> = ({
   className,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<number | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
 
-  const checkScroll = () => {
-    if (scrollRef.current) {
-      const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
-      setCanScrollLeft(scrollLeft > 10);
-      setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 10);
-    }
-  };
+  const checkScroll = useCallback(() => {
+    if (rafRef.current !== null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      if (scrollRef.current) {
+        const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
+        const nextLeft = scrollLeft > 10;
+        const nextRight = scrollLeft + clientWidth < scrollWidth - 10;
+        setCanScrollLeft((prev) => (prev !== nextLeft ? nextLeft : prev));
+        setCanScrollRight((prev) => (prev !== nextRight ? nextRight : prev));
+      }
+    });
+  }, []);
 
   useEffect(() => {
     checkScroll();
-    window.addEventListener("resize", checkScroll);
-    return () => window.removeEventListener("resize", checkScroll);
-  }, [items]);
+    window.addEventListener("resize", checkScroll, { passive: true });
+    return () => {
+      window.removeEventListener("resize", checkScroll);
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, [items, checkScroll]);
 
   const scroll = (direction: "left" | "right") => {
     if (scrollRef.current) {
@@ -50,7 +60,6 @@ export const Swimlane: React.FC<SwimlaneProps> = ({
         left: direction === "left" ? -scrollAmount : scrollAmount,
         behavior: "smooth",
       });
-      setTimeout(checkScroll, 350);
     }
   };
 
@@ -59,7 +68,7 @@ export const Swimlane: React.FC<SwimlaneProps> = ({
   }
 
   return (
-    <div className={cn("relative py-4 space-y-3", className)}>
+    <div className={cn("relative py-4 space-y-3 [contain:layout_style]", className)}>
       {/* Swimlane Header */}
       <div className="flex items-center justify-between px-[clamp(1.25rem,4vw,4rem)]">
         <div className="flex items-center gap-3">
@@ -82,7 +91,7 @@ export const Swimlane: React.FC<SwimlaneProps> = ({
           {onMoreClick && (
             <button
               onClick={onMoreClick}
-              className="text-xs font-semibold text-zinc-400 hover:text-white flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all mr-2"
+              className="text-xs font-semibold text-zinc-400 hover:text-white flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors mr-2 cursor-pointer"
             >
               <span>Більше</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -95,7 +104,7 @@ export const Swimlane: React.FC<SwimlaneProps> = ({
             disabled={!canScrollLeft}
             aria-label="Прокрутити вліво"
             className={cn(
-              "w-8 h-8 rounded-full flex items-center justify-center bg-zinc-900/80 border border-white/10 text-white transition-all shadow-md backdrop-blur-md",
+              "w-8 h-8 rounded-full flex items-center justify-center bg-zinc-900 border border-white/10 text-white transition-colors shadow-sm cursor-pointer",
               canScrollLeft
                 ? "hover:bg-rose-600 hover:border-rose-500 active:scale-95"
                 : "opacity-30 cursor-not-allowed"
@@ -108,7 +117,7 @@ export const Swimlane: React.FC<SwimlaneProps> = ({
             disabled={!canScrollRight}
             aria-label="Прокрутити вправо"
             className={cn(
-              "w-8 h-8 rounded-full flex items-center justify-center bg-zinc-900/80 border border-white/10 text-white transition-all shadow-md backdrop-blur-md",
+              "w-8 h-8 rounded-full flex items-center justify-center bg-zinc-900 border border-white/10 text-white transition-colors shadow-sm cursor-pointer",
               canScrollRight
                 ? "hover:bg-rose-600 hover:border-rose-500 active:scale-95"
                 : "opacity-30 cursor-not-allowed"
@@ -119,11 +128,11 @@ export const Swimlane: React.FC<SwimlaneProps> = ({
         </div>
       </div>
 
-      {/* Horizontal Carousel Track */}
+      {/* Horizontal Carousel Track (NO scroll-smooth class so touchpad/wheel scroll is 1:1 responsive) */}
       <div
         ref={scrollRef}
         onScroll={checkScroll}
-        className="flex gap-4 overflow-x-auto px-[clamp(1.25rem,4vw,4rem)] pb-4 pt-1 no-scrollbar scroll-smooth"
+        className="flex gap-4 overflow-x-auto px-[clamp(1.25rem,4vw,4rem)] pb-4 pt-1 no-scrollbar"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
         {items.map((card) => (
@@ -138,4 +147,4 @@ export const Swimlane: React.FC<SwimlaneProps> = ({
       </div>
     </div>
   );
-};
+});

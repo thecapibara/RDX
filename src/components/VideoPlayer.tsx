@@ -1306,7 +1306,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         )}
                       >
                         <span className="font-bold text-sm">{ep.episode_id}</span>
-                        <span className="text-[10px] text-zinc-400 group-hover:text-zinc-200">
+                        <span
+                          className={cn(
+                            "text-[10px] transition-colors",
+                            isPlayingEp
+                              ? "text-white/95 font-medium"
+                              : "text-zinc-400 group-hover:text-zinc-200"
+                          )}
+                        >
                           серія
                         </span>
                       </button>
