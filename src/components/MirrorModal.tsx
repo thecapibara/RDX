@@ -161,7 +161,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 overflow-y-auto"
     >
       <div
         onClick={(e) => e.stopPropagation()}

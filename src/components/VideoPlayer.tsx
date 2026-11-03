@@ -1143,7 +1143,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {mode === "docked" && (
           <>
             {/* Top Drag Indicator */}
-            <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity text-[11px] pointer-events-none z-20">
+            <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/60 border border-white/10 text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity text-[11px] pointer-events-none z-20">
               <Move className="w-3 h-3 text-zinc-400" />
               <span>RDX</span>
             </div>
@@ -1156,21 +1156,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               <button
                 onClick={() => handleSetOsPip(true)}
                 title="Поверх усіх вікон (Always-on-Top)"
-                className="p-1.5 rounded-lg bg-black/70 hover:bg-white/20 text-white backdrop-blur-md border border-white/10 cursor-pointer"
+                className="p-1.5 rounded-lg bg-black/70 hover:bg-white/20 text-white border border-white/10 cursor-pointer"
               >
                 <PictureInPicture2 className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => onModeChange("full")}
                 title="Розгорнути на весь екран"
-                className="p-1.5 rounded-lg bg-black/70 hover:bg-white/20 text-white backdrop-blur-md border border-white/10 cursor-pointer"
+                className="p-1.5 rounded-lg bg-black/70 hover:bg-white/20 text-white border border-white/10 cursor-pointer"
               >
                 <Maximize2 className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={onClose}
                 title="Закрити плеєр"
-                className="p-1.5 rounded-lg bg-black/70 hover:bg-rose-600 text-white backdrop-blur-md border border-white/10 cursor-pointer"
+                className="p-1.5 rounded-lg bg-black/70 hover:bg-rose-600 text-white border border-white/10 cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -1226,7 +1226,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           <>
             {/* Auto-Resume Toast */}
             {resumeNotice && (
-              <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-40 bg-zinc-900/90 border border-white/20 text-white px-5 py-2.5 rounded-2xl shadow-2xl backdrop-blur-xl text-xs font-semibold flex items-center gap-2 animate-bounce">
+              <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-40 bg-zinc-900/90 border border-white/20 text-white px-5 py-2.5 rounded-2xl shadow-2xl text-xs font-semibold flex items-center gap-2 animate-bounce">
                 <div className="w-2 h-2 rounded-full bg-emerald-400" />
                 <span>{resumeNotice}</span>
               </div>
@@ -1234,7 +1234,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
             {/* HUD Toast (Seek / Volume / Speed) */}
             {hudToast && (
-              <div className="absolute top-28 left-1/2 transform -translate-x-1/2 z-40 bg-black/80 border border-white/20 text-white px-5 py-2 rounded-2xl shadow-2xl backdrop-blur-xl text-sm font-bold flex items-center gap-2">
+              <div className="absolute top-28 left-1/2 transform -translate-x-1/2 z-40 bg-black/80 border border-white/20 text-white px-5 py-2 rounded-2xl shadow-2xl text-sm font-bold flex items-center gap-2">
                 <span>{hudToast}</span>
               </div>
             )}
@@ -1243,7 +1243,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             {showEpisodesDrawer && isSeries && (
               <div
                 onClick={(e) => e.stopPropagation()}
-                className="absolute bottom-24 left-1/2 transform -translate-x-1/2 w-[92%] max-w-2xl bg-zinc-900/95 border border-white/20 rounded-3xl p-5 shadow-2xl backdrop-blur-2xl z-50 space-y-4 max-h-[70vh] flex flex-col"
+                className="absolute bottom-24 left-1/2 transform -translate-x-1/2 w-[92%] max-w-2xl bg-zinc-900/95 border border-white/20 rounded-3xl p-5 shadow-2xl z-50 space-y-4 max-h-[70vh] flex flex-col"
               >
                 <div className="flex items-center justify-between border-b border-white/10 pb-3">
                   <div className="flex items-center gap-2 text-white font-bold text-sm">
@@ -1336,7 +1336,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <button
                     onClick={() => onModeChange("docked")}
                     title="Згорнути в міні-плеєр"
-                    className="p-2.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white backdrop-blur-xl border border-white/15 transition-all cursor-pointer"
+                    className="p-2.5 rounded-2xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 transition-all cursor-pointer"
                   >
                     <Minimize2 className="w-5 h-5" />
                   </button>
@@ -1369,7 +1369,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <button
                     onClick={handleOpenExternal}
                     title="Відкрити у зовнішньому плеєрі (MPV / VLC)"
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-xl border border-white/15 transition-all cursor-pointer"
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white text-xs font-semibold border border-white/15 transition-all cursor-pointer"
                   >
                     <ExternalLink className="w-4 h-4" />
                     <span className="hidden sm:inline">MPV / VLC</span>
@@ -1379,7 +1379,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <button
                     onClick={() => handleSetOsPip(true)}
                     title="Перейти в режим поверх усіх вікон (Always-on-Top)"
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-xl border border-white/15 transition-all cursor-pointer"
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white text-xs font-semibold border border-white/15 transition-all cursor-pointer"
                   >
                     <PictureInPicture2 className="w-4 h-4" />
                     <span className="hidden sm:inline">Поверх вікон</span>
@@ -1389,7 +1389,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <button
                     onClick={onClose}
                     title="Закрити плеєр"
-                    className="p-2.5 rounded-2xl bg-white/10 hover:bg-rose-600 text-white backdrop-blur-xl border border-white/15 transition-all cursor-pointer"
+                    className="p-2.5 rounded-2xl bg-white/10 hover:bg-rose-600 text-white border border-white/15 transition-all cursor-pointer"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -1399,11 +1399,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               {/* Center Quick Pause/Play Indicator or Loading Spinner */}
               <div className="self-center pointer-events-none">
                 {loadingStream ? (
-                  <div className="w-16 h-16 rounded-full bg-black/60 backdrop-blur-md border border-white/20 flex items-center justify-center text-rose-500 shadow-2xl">
+                  <div className="w-16 h-16 rounded-full bg-black/60 border border-white/20 flex items-center justify-center text-rose-500 shadow-2xl">
                     <Loader2 className="w-8 h-8 animate-spin" />
                   </div>
                 ) : !isPlaying ? (
-                  <div className="w-20 h-20 rounded-full bg-black/60 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shadow-2xl">
+                  <div className="w-20 h-20 rounded-full bg-black/60 border border-white/20 flex items-center justify-center text-white shadow-2xl">
                     <Play className="w-10 h-10 fill-current ml-1" />
                   </div>
                 ) : null}
@@ -1602,7 +1602,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         onClick={handleCycleAbLoop}
                         title={`Повтор відрізка A–B (L) ${loopA !== null ? (loopB !== null ? `[${formatTime(loopA)} ➔ ${formatTime(loopB)}]` : `[A: ${formatTime(loopA)}]`) : ""}`}
                         className={cn(
-                          "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold backdrop-blur-xl border transition-all cursor-pointer",
+                          "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer",
                           loopA !== null
                             ? "bg-amber-500/25 border-amber-500/50 text-amber-300 shadow-lg shadow-amber-950/40"
                             : "bg-white/10 hover:bg-white/20 text-white border-white/15"
@@ -1636,7 +1636,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <button
                       onClick={handleScreenshot}
                       title="Зробити знімок кадру (S)"
-                      className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white backdrop-blur-xl border border-white/15 cursor-pointer"
+                      className="p-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 cursor-pointer"
                     >
                       <Camera className="w-4 h-4" />
                     </button>
@@ -1646,7 +1646,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       onClick={() => setShowMediaInfo(!showMediaInfo)}
                       title="Статистика потоку (I)"
                       className={cn(
-                        "p-2 rounded-xl backdrop-blur-xl border transition-colors cursor-pointer",
+                        "p-2 rounded-xl border transition-colors cursor-pointer",
                         showMediaInfo
                           ? "bg-rose-600 border-rose-500 text-white"
                           : "bg-white/10 hover:bg-white/20 text-white border-white/15"
@@ -1665,7 +1665,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           setShowSubtitleMenu(false);
                           setShowSpeedMenu(false);
                         }}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600/30 hover:bg-rose-600/50 text-white text-xs font-semibold backdrop-blur-xl border border-rose-500/40 cursor-pointer shadow-md transition-all"
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600/30 hover:bg-rose-600/50 text-white text-xs font-semibold border border-rose-500/40 cursor-pointer shadow-md transition-all"
                         title="Вибір сезону та серії"
                       >
                         <ListVideo className="w-4 h-4 text-rose-400" />
@@ -1687,7 +1687,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             setShowSpeedMenu(false);
                             setShowEpisodesDrawer(false);
                           }}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-xl border border-white/15 cursor-pointer shadow-md transition-all"
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white text-xs font-semibold border border-white/15 cursor-pointer shadow-md transition-all"
                         >
                           <Tv className="w-4 h-4 text-rose-400" />
                           <span>
@@ -1744,7 +1744,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           setShowSubtitleMenu(false);
                           setShowEpisodesDrawer(false);
                         }}
-                        className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-xl border border-white/15 cursor-pointer"
+                        className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white text-xs font-semibold border border-white/15 cursor-pointer"
                         title="Швидкість відтворення"
                       >
                         <Gauge className="w-4 h-4" />
@@ -1785,7 +1785,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           setShowSpeedMenu(false);
                           setShowEpisodesDrawer(false);
                         }}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-xl border border-white/15 cursor-pointer"
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white text-xs font-semibold border border-white/15 cursor-pointer"
                       >
                         <Settings className="w-4 h-4" />
                         <span>{selectedQuality?.label || "Якість"}</span>
@@ -1828,7 +1828,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             setShowSpeedMenu(false);
                             setShowEpisodesDrawer(false);
                           }}
-                          className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white backdrop-blur-xl border border-white/15 cursor-pointer"
+                          className="p-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 cursor-pointer"
                           title="Субтитри"
                         >
                           <Subtitles className="w-5 h-5" />
@@ -1882,7 +1882,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {showMediaInfo && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className="absolute top-16 left-6 z-50 w-72 bg-zinc-950/95 backdrop-blur-xl border border-white/15 rounded-2xl p-4 text-xs font-mono text-zinc-300 shadow-2xl space-y-2 select-none animate-in fade-in duration-150"
+            className="absolute top-16 left-6 z-50 w-72 bg-zinc-950/95 border border-white/15 rounded-2xl p-4 text-xs font-mono text-zinc-300 shadow-2xl space-y-2 select-none animate-in fade-in duration-150"
           >
             <div className="flex items-center justify-between border-b border-white/10 pb-2">
               <div className="flex items-center gap-2 text-white font-bold text-xs">
@@ -1953,7 +1953,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {contextMenu?.open && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="fixed z-[100] min-w-[240px] max-w-[340px] py-1.5 bg-zinc-950/95 border border-white/15 rounded-2xl shadow-2xl backdrop-blur-2xl text-xs text-white/90 select-none overflow-hidden"
+          className="fixed z-[100] min-w-[240px] max-w-[340px] py-1.5 bg-zinc-950/95 border border-white/15 rounded-2xl shadow-2xl text-xs text-white/90 select-none overflow-hidden"
           style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
         >
           {contextMenu.page === "main" && (

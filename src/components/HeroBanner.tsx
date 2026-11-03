@@ -62,7 +62,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
           </span>
 
           {media.series_info && (
-            <span className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-white/10 backdrop-blur-md text-zinc-200 border border-white/15">
+            <span className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-white/10 text-zinc-200 border border-white/15">
               {media.series_info}
             </span>
           )}
@@ -100,7 +100,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
           {/* Details */}
           <button
             onClick={() => onOpenDetails(media)}
-            className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-white font-semibold text-sm backdrop-blur-xl border border-white/15 transition-all cursor-pointer"
+            className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-zinc-900/90 hover:bg-zinc-800 active:scale-95 text-white font-semibold text-sm border border-white/15 transition-all cursor-pointer"
           >
             <Info className="w-4 h-4 text-zinc-300" />
             <span>Детальніше</span>
@@ -112,7 +112,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
               onClick={() => onToggleBookmark(media)}
               title={isBookmarked ? "Видалити із закладок" : "Додати в закладки"}
               className={cn(
-                "p-3 rounded-2xl backdrop-blur-xl border transition-all cursor-pointer active:scale-95",
+                "p-3 rounded-2xl border transition-all cursor-pointer active:scale-95",
                 isBookmarked
                   ? "bg-amber-500/20 text-amber-400 border-amber-500/40 hover:bg-amber-500/30"
                   : "bg-white/10 text-zinc-300 border-white/15 hover:bg-white/20 hover:text-white"

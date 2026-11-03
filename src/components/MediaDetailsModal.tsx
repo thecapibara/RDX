@@ -377,7 +377,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                       onToggleBookmark(bookmarkItem);
                     }}
                     className={cn(
-                      "flex items-center gap-2 px-5 py-3.5 rounded-2xl font-semibold text-sm backdrop-blur-xl border transition-all cursor-pointer active:scale-95",
+                      "flex items-center gap-2 px-5 py-3.5 rounded-2xl font-semibold text-sm border transition-all cursor-pointer active:scale-95",
                       isBookmarked
                         ? "bg-amber-500/20 text-amber-400 border-amber-500/40 hover:bg-amber-500/30"
                         : "bg-white/10 hover:bg-white/20 text-white border-white/15"
@@ -431,7 +431,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
 
                         {/* Searchable Dropdown Popover */}
                         {isTranslatorDropdownOpen && (
-                          <div className="absolute top-12 left-0 w-80 sm:w-96 max-h-96 overflow-hidden bg-zinc-900 border border-white/15 rounded-2xl shadow-2xl p-3 z-50 flex flex-col space-y-2 backdrop-blur-xl">
+                          <div className="absolute top-12 left-0 w-80 sm:w-96 max-h-96 overflow-hidden bg-zinc-900 border border-white/15 rounded-2xl shadow-2xl p-3 z-50 flex flex-col space-y-2">
                             {/* Search input inside dropdown */}
                             <div className="relative">
                               <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-2.5" />

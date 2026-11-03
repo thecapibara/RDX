@@ -2881,6 +2881,7 @@ dependencies = [
  "tokio",
  "url",
  "urlencoding",
+ "webkit2gtk",
 ]
 
 [[package]]

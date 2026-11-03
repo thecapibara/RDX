@@ -34,6 +34,26 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(state)
+        .setup(|app| {
+            #[cfg(target_os = "linux")]
+            {
+                use tauri::Manager;
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.with_webview(|webview| {
+                        use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt, WebViewExt};
+                        let wk = webview.inner();
+                        if let Some(settings) = wk.settings() {
+                            settings.set_enable_smooth_scrolling(true);
+                            settings.set_hardware_acceleration_policy(
+                                HardwareAccelerationPolicy::Always,
+                            );
+                            settings.set_enable_page_cache(true);
+                        }
+                    });
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::update_settings,
