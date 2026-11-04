@@ -535,4 +535,33 @@ export const api = {
     }
     window.open(streamUrl, "_blank");
   },
+
+  // MPRIS Remote Controls (Native OS Media Integration)
+  updateMprisState: async (payload: {
+    title: string;
+    artist?: string;
+    album?: string;
+    poster?: string;
+    durationSec?: number;
+    positionSec?: number;
+    isPlaying: boolean;
+  }): Promise<void> => {
+    if (isTauri) {
+      return invoke<void>("update_mpris_state", {
+        title: payload.title,
+        artist: payload.artist || null,
+        album: payload.album || null,
+        poster: payload.poster || null,
+        durationSec: payload.durationSec || null,
+        positionSec: payload.positionSec || null,
+        isPlaying: payload.isPlaying,
+      });
+    }
+  },
+
+  clearMprisState: async (): Promise<void> => {
+    if (isTauri) {
+      return invoke<void>("clear_mpris_state");
+    }
+  },
 };

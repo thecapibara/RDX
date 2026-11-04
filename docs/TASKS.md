@@ -67,3 +67,13 @@
   - Multi-item dynamic rotating hero carousel with 8s timer, pause on hover, random start, and `< >` / indicator pill navigation.
   - Soft-focus ambient blur (`blur-[8px]` + `scale-108` + `saturate-115`) on full-bleed cover eliminating low-res thumbnail pixelation without performance overhead.
   - Fixed WebKitGTK Cairo subpixel dirty-rect pixel trails by migrating progress animation to GPU `transform: scaleX` with paint isolation.
+
+## Phase 7: Linux Desktop Integration & Native MPRIS
+- [x] **7.1. Native MPRIS Integration & WebKit Ghost Player Suppression (`src-tauri/src/mpris.rs`, `src-tauri/src/lib.rs`)**
+  - Integrated `souvlaki` MPRIS service (`org.mpris.MediaPlayer2.rdx`) displaying media title, season/episode, translator, and poster art.
+  - Suppressed phantom `localhost` player from WebKitGTK by isolating D-Bus for child web processes while keeping native Rust MPRIS intact.
+  - Clean `MediaPlayback::Stopped` and metadata clearing when video is closed, removing player widget from Wayland/Niri panels.
+- [ ] **7.2. MPRIS Interactive Controls & Position Scrubbing (TODO)**
+  - Two-way binding for D-Bus `Play`, `Pause`, `PlayPause` toggle, `Seek`, and `SetPosition` commands from desktop widgets and media keys to HTML `<video>`.
+- [ ] **7.3. Desktop Packaging & Icon Registration**
+  - Wayland `app_id` desktop file and icon deployment for production builds (`.deb`, `.rpm`, `.AppImage`).

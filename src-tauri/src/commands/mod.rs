@@ -12,6 +12,7 @@ use crate::storage::{AppSettings, Bookmark, Storage, WatchProgress};
 pub struct AppState {
     pub storage: Arc<Storage>,
     pub client: Arc<HttpClient>,
+    pub mpris: Arc<crate::mpris::MprisState>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -379,4 +380,28 @@ pub async fn open_in_external_player(
     }
 
     Err("Neither mpv nor vlc could be launched. Please ensure MPV or VLC is installed on your system.".into())
+}
+
+// ==================== MPRIS Remote Commands ====================
+
+#[tauri::command]
+pub async fn update_mpris_state(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    title: String,
+    artist: Option<String>,
+    album: Option<String>,
+    poster: Option<String>,
+    duration_sec: Option<f64>,
+    position_sec: Option<f64>,
+    is_playing: bool,
+) -> Result<(), String> {
+    state.mpris.update(&app, title, artist, album, poster, duration_sec, position_sec, is_playing);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn clear_mpris_state(state: State<'_, AppState>) -> Result<(), String> {
+    state.mpris.clear();
+    Ok(())
 }

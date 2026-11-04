@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import Hls from "hls.js";
 import { motion } from "framer-motion";
 import {
@@ -42,6 +42,7 @@ import type {
 } from "../types";
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
+import { listen } from "@tauri-apps/api/event";
 
 export type PlayerMode = "full" | "docked" | "os_pip";
 
@@ -802,42 +803,31 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, [saveCurrentProgress]);
 
-  const mediaTitle = useMemo(() => {
-    return isSeries
-      ? `${details.title} (С${activeSeason || 1} Е${activeEpisode || 1})`
-      : details.title;
-  }, [details.title, isSeries, activeSeason, activeEpisode]);
-
-  // Sync window/media title for OS status bar while playing, and reset on close
+  // Synchronize native OS MPRIS metadata via Rust backend
   useEffect(() => {
-    document.title = mediaTitle;
-    return () => {
-      document.title = "";
-    };
-  }, [mediaTitle]);
-
-  // MediaSession API Integration (Linux MPRIS & macOS/Windows system media controls)
-  useEffect(() => {
-    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
-
-    try {
-      if (details.title) {
-        navigator.mediaSession.metadata = new MediaMetadata({
-          title: details.title,
-          artist: isSeries
-            ? `Сезон ${activeSeason || 1}, Серія ${activeEpisode || 1}`
-            : (details.orig_title || "RDX"),
-          album: isSeries ? details.title : (currentTranslator?.name || "RDX"),
-          artwork: details.poster
-            ? [{ src: details.poster, sizes: "512x512", type: "image/jpeg" }]
-            : [],
-        });
-      }
-
-      navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
-    } catch (e) {
-      console.warn("MediaSession update error:", e);
+    if (typeof navigator !== "undefined" && navigator.mediaSession) {
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({ title: "", artist: "", album: "" });
+        navigator.mediaSession.playbackState = "none";
+      } catch {}
     }
+
+    if (!details.title) return;
+
+    const effDur = getEffectiveDuration();
+    api.updateMprisState({
+      title: details.title,
+      artist: isSeries
+        ? `Сезон ${activeSeason || 1}, Серія ${activeEpisode || 1}`
+        : (details.orig_title || "RDX"),
+      album: currentTranslator?.name
+        ? `Озвучка: ${currentTranslator.name}`
+        : (details.orig_title || "RDX"),
+      poster: details.poster,
+      durationSec: effDur > 0 ? effDur : undefined,
+      positionSec: currentTime >= 0 ? currentTime : undefined,
+      isPlaying,
+    }).catch(() => {});
   }, [
     details.title,
     details.orig_title,
@@ -847,43 +837,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     activeEpisode,
     currentTranslator?.name,
     isPlaying,
+    currentTime,
+    getEffectiveDuration,
   ]);
-
-  // Sync MediaSession position state for system progress bar
-  useEffect(() => {
-    if (
-      typeof navigator === "undefined" ||
-      !("mediaSession" in navigator) ||
-      !("setPositionState" in navigator.mediaSession)
-    )
-      return;
-
-    const effDur = getEffectiveDuration();
-    if (effDur > 0 && Number.isFinite(currentTime) && currentTime >= 0) {
-      try {
-        navigator.mediaSession.setPositionState({
-          duration: effDur,
-          playbackRate: playbackSpeed,
-          position: Math.min(currentTime, effDur),
-        });
-      } catch {}
-    }
-  }, [currentTime, getEffectiveDuration, playbackSpeed]);
 
   // Comprehensive player teardown and close (pauses video, unloads sources, clears MPRIS)
   const handleTeardownAndClose = useCallback(() => {
     document.title = "";
 
-    // Terminate system MediaSession / MPRIS cleanly so system bar & shade remove player
-    if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
-      try {
-        navigator.mediaSession.playbackState = "none";
-        navigator.mediaSession.metadata = null;
-        if ("setPositionState" in navigator.mediaSession) {
-          navigator.mediaSession.setPositionState();
-        }
-      } catch {}
-    }
+    // Instantly remove player card from Linux / OS system shade
+    api.clearMprisState().catch(() => {});
 
     // 1. Auto-save current watch progress
     saveCurrentProgress();
@@ -916,16 +879,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   useEffect(() => {
     return () => {
       document.title = "";
-
-      if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
-        try {
-          navigator.mediaSession.playbackState = "none";
-          navigator.mediaSession.metadata = null;
-          if ("setPositionState" in navigator.mediaSession) {
-            navigator.mediaSession.setPositionState();
-          }
-        } catch {}
-      }
+      api.clearMprisState().catch(() => {});
 
       const video = videoRef.current;
       if (video) {
@@ -1271,53 +1225,61 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   };
 
-  // MediaSession Action Handlers (Play, Pause, Seek, Next/Prev episode from system shade)
+  // MPRIS Remote Actions from OS (keyboard media keys, system shade, lockscreen)
   useEffect(() => {
-    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    let unlistenAction: (() => void) | undefined;
+    let unlistenSeek: (() => void) | undefined;
+    let unlistenPosition: (() => void) | undefined;
 
-    const ms = navigator.mediaSession;
-
-    const playHandler = () => {
-      if (videoRef.current && videoRef.current.paused) {
-        videoRef.current.play().catch(() => {});
-        setIsPlaying(true);
+    listen<string>("mpris-action", (event) => {
+      switch (event.payload) {
+        case "play":
+          if (videoRef.current && videoRef.current.paused) {
+            videoRef.current.play().catch(() => {});
+            setIsPlaying(true);
+          }
+          break;
+        case "pause":
+          if (videoRef.current && !videoRef.current.paused) {
+            videoRef.current.pause();
+            setIsPlaying(false);
+          }
+          break;
+        case "toggle":
+          togglePlay();
+          break;
+        case "next":
+          if (isSeries) handleNextEpisode();
+          break;
+        case "prev":
+          if (isSeries) handlePrevEpisode();
+          break;
       }
-    };
+    }).then((un) => {
+      unlistenAction = un;
+    });
 
-    const pauseHandler = () => {
-      if (videoRef.current && !videoRef.current.paused) {
-        videoRef.current.pause();
-        setIsPlaying(false);
+    listen<number>("mpris-seek", (event) => {
+      seekDelta(event.payload);
+    }).then((un) => {
+      unlistenSeek = un;
+    });
+
+    listen<number>("mpris-set-position", (event) => {
+      if (videoRef.current && Number.isFinite(event.payload)) {
+        videoRef.current.currentTime = event.payload;
+        setCurrentTime(event.payload);
       }
-    };
-
-    const seekBackwardHandler = () => seekDelta(-10);
-    const seekForwardHandler = () => seekDelta(10);
-    const prevTrackHandler = isSeries ? handlePrevEpisode : undefined;
-    const nextTrackHandler = isSeries ? handleNextEpisode : undefined;
-
-    try {
-      ms.setActionHandler("play", playHandler);
-      ms.setActionHandler("pause", pauseHandler);
-      ms.setActionHandler("seekbackward", seekBackwardHandler);
-      ms.setActionHandler("seekforward", seekForwardHandler);
-      if (prevTrackHandler) ms.setActionHandler("previoustrack", prevTrackHandler);
-      else ms.setActionHandler("previoustrack", null);
-      if (nextTrackHandler) ms.setActionHandler("nexttrack", nextTrackHandler);
-      else ms.setActionHandler("nexttrack", null);
-    } catch {}
+    }).then((un) => {
+      unlistenPosition = un;
+    });
 
     return () => {
-      try {
-        ms.setActionHandler("play", null);
-        ms.setActionHandler("pause", null);
-        ms.setActionHandler("seekbackward", null);
-        ms.setActionHandler("seekforward", null);
-        ms.setActionHandler("previoustrack", null);
-        ms.setActionHandler("nexttrack", null);
-      } catch {}
+      unlistenAction?.();
+      unlistenSeek?.();
+      unlistenPosition?.();
     };
-  }, [isSeries, handlePrevEpisode, handleNextEpisode]);
+  }, [isSeries, handleNextEpisode, handlePrevEpisode]);
 
   // Episodes for drawer's selected season
   const drawerSeasonEpisodes =
@@ -1408,7 +1370,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         <video
           key="persistent-video"
           ref={videoRef}
-          title={mediaTitle}
+          title=""
           controls={false}
           disablePictureInPicture={false}
           controlsList="nodownload nofullscreen noremoteplayback"

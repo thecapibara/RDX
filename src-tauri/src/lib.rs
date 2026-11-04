@@ -1,12 +1,14 @@
 pub mod client;
 pub mod commands;
 pub mod mirror;
+pub mod mpris;
 pub mod parser;
 pub mod storage;
 
 use std::sync::Arc;
 use client::{default_cookie_path, HttpClient, PersistentCookieStore};
 use commands::AppState;
+use mpris::MprisState;
 use storage::{default_db_path, Storage};
 
 pub fn run() {
@@ -30,28 +32,32 @@ pub fn run() {
             .expect("failed to initialize HTTP client"),
     );
 
-    let state = AppState { storage, client };
+    let mpris = Arc::new(MprisState::new());
+    let state = AppState { storage, client, mpris };
 
     tauri::Builder::default()
         .manage(state)
         .setup(|app| {
+            use tauri::Manager;
+
+            // 1. Initialize native Rust MPRIS while DBUS_SESSION_BUS_ADDRESS is valid
+            let state: tauri::State<AppState> = app.state();
+            state.mpris.init(&app.handle());
+
             #[cfg(target_os = "linux")]
             {
-                use tauri::Manager;
+                // 2. Disable D-Bus address for WebKit child processes so WebKit cannot spawn ghost localhost MPRIS
+                unsafe {
+                    std::env::set_var("DBUS_SESSION_BUS_ADDRESS", "disabled:");
+                }
+
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.with_webview(|webview| {
-                        use webkit2gtk::glib::translate::ToGlibPtr;
                         use webkit2gtk::{SettingsExt, WebViewExt};
                         let wk = webview.inner();
                         if let Some(settings) = wk.settings() {
                             settings.set_enable_smooth_scrolling(true);
                             settings.set_enable_page_cache(true);
-
-                            // Disable WebKit's internal MPRIS/MediaSession to prevent ghost player cards on Linux D-Bus
-                            unsafe {
-                                let raw: *mut webkit2gtk::ffi::WebKitSettings = settings.to_glib_none().0;
-                                disable_webkit_media_session(raw as *mut std::ffi::c_void);
-                            }
                         }
                     });
                 }
@@ -84,35 +90,11 @@ pub fn run() {
             commands::set_mini_player_mode,
             commands::start_drag_window,
             commands::open_in_external_player,
+            commands::update_mpris_state,
+            commands::clear_mpris_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
-#[cfg(target_os = "linux")]
-unsafe fn disable_webkit_media_session(raw_settings: *mut std::ffi::c_void) {
-    extern "C" {
-        fn webkit_settings_get_all_features() -> *mut std::ffi::c_void;
-        fn webkit_feature_list_find(
-            feature_list: *mut std::ffi::c_void,
-            identifier: *const std::ffi::c_char,
-        ) -> *mut std::ffi::c_void;
-        fn webkit_settings_set_feature_enabled(
-            settings: *mut std::ffi::c_void,
-            feature: *mut std::ffi::c_void,
-            enabled: i32,
-        );
-        fn webkit_feature_list_unref(feature_list: *mut std::ffi::c_void);
-    }
 
-    let features = webkit_settings_get_all_features();
-    if !features.is_null() {
-        if let Ok(c_name) = std::ffi::CString::new("MediaSession") {
-            let feature = webkit_feature_list_find(features, c_name.as_ptr());
-            if !feature.is_null() {
-                webkit_settings_set_feature_enabled(raw_settings, feature, 0);
-            }
-        }
-        webkit_feature_list_unref(features);
-    }
-}
