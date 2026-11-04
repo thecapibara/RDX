@@ -338,8 +338,19 @@ export const api = {
     return MOCK_CATALOG;
   },
 
-  getCategoryCatalog: async (category: string, page?: number): Promise<MediaCard[]> => {
-    if (isTauri) return invoke<MediaCard[]>("get_category_catalog", { category, page });
+  getCategoryCatalog: async (
+    category: string,
+    genre?: string,
+    filter?: string,
+    page?: number
+  ): Promise<MediaCard[]> => {
+    if (isTauri)
+      return invoke<MediaCard[]>("get_category_catalog", {
+        category,
+        genre: genre || undefined,
+        filter: filter || undefined,
+        page,
+      });
     if (category === "films") {
       return MOCK_CATALOG.filter((i) => i.entity_type === "movie");
     }

@@ -155,21 +155,54 @@ impl RezkaParser {
         Ok(Self::parse_catalog_html(&html, base_url))
     }
 
+    /// Builds full HDRezka category URL supporting optional genre, sort filter, and pagination
+    pub fn build_category_url(
+        base_url: &str,
+        category_path: &str,
+        genre: Option<&str>,
+        filter: Option<&str>,
+        page: Option<u32>,
+    ) -> String {
+        let base = base_url.trim_end_matches('/');
+        let cat = category_path.trim_matches('/');
+
+        let mut path_parts = vec![cat.to_string()];
+        if let Some(g) = genre {
+            let clean_g = g.trim().trim_matches('/');
+            if !clean_g.is_empty() {
+                path_parts.push(clean_g.to_string());
+            }
+        }
+
+        let base_path = path_parts.join("/");
+        let full_path = match page {
+            Some(p) if p > 1 => format!("{}/page/{}/", base_path, p),
+            _ => format!("{}/", base_path),
+        };
+
+        if let Some(f) = filter {
+            let clean_f = f.trim();
+            if !clean_f.is_empty() && clean_f != "last" {
+                format!("{}/{}?filter={}", base, full_path, clean_f)
+            } else {
+                format!("{}/{}", base, full_path)
+            }
+        } else {
+            format!("{}/{}", base, full_path)
+        }
+    }
+
     /// Fetches and parses category catalog pages (/films/, /series/, /cartoons/, /animation/)
+    /// with optional genre (/films/comedy/), sort filter (?filter=popular), and page (/page/2/)
     pub async fn get_category_catalog(
         client: &HttpClient,
         base_url: &str,
         category_path: &str,
+        genre: Option<&str>,
+        filter: Option<&str>,
         page: Option<u32>,
     ) -> Result<Vec<MediaCard>, Box<dyn std::error::Error + Send + Sync>> {
-        let base = base_url.trim_end_matches('/');
-        let cat = category_path.trim_matches('/');
-
-        let url = match page {
-            Some(p) if p > 1 => format!("{}/{}/page/{}/", base, cat, p),
-            _ => format!("{}/{}/", base, cat),
-        };
-
+        let url = Self::build_category_url(base_url, category_path, genre, filter, page);
         let html = client.get_html(&url, None).await?;
         Ok(Self::parse_catalog_html(&html, base_url))
     }
@@ -749,5 +782,29 @@ mod tests {
         let initial_streams = details.initial_streams.expect("initial streams");
         assert_eq!(initial_streams.qualities.len(), 2);
         assert_eq!(initial_streams.default_quality, "720p");
+    }
+
+    #[test]
+    fn test_build_category_url() {
+        let base = "https://rezka-tv.org";
+        // Category only
+        let url1 = RezkaParser::build_category_url(base, "films", None, None, None);
+        assert_eq!(url1, "https://rezka-tv.org/films/");
+
+        // Category + Genre
+        let url2 = RezkaParser::build_category_url(base, "films", Some("comedy"), None, None);
+        assert_eq!(url2, "https://rezka-tv.org/films/comedy/");
+
+        // Category + Genre + Filter
+        let url3 = RezkaParser::build_category_url(base, "films", Some("comedy"), Some("popular"), None);
+        assert_eq!(url3, "https://rezka-tv.org/films/comedy/?filter=popular");
+
+        // Category + Genre + Filter + Page
+        let url4 = RezkaParser::build_category_url(base, "films", Some("comedy"), Some("popular"), Some(3));
+        assert_eq!(url4, "https://rezka-tv.org/films/comedy/page/3/?filter=popular");
+
+        // Default 'last' filter does not append redundant query param
+        let url5 = RezkaParser::build_category_url(base, "series", Some("action"), Some("last"), Some(1));
+        assert_eq!(url5, "https://rezka-tv.org/series/action/");
     }
 }

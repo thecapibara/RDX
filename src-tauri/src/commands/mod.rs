@@ -204,12 +204,21 @@ pub async fn get_home_catalog(
 pub async fn get_category_catalog(
     state: State<'_, AppState>,
     category: String,
+    genre: Option<String>,
+    filter: Option<String>,
     page: Option<u32>,
 ) -> Result<Vec<MediaCard>, String> {
     let mirror = state.storage.get_settings().map_err(|e| e.to_string())?.active_mirror;
-    RezkaParser::get_category_catalog(&state.client, &mirror, &category, page)
-        .await
-        .map_err(|e| e.to_string())
+    RezkaParser::get_category_catalog(
+        &state.client,
+        &mirror,
+        &category,
+        genre.as_deref(),
+        filter.as_deref(),
+        page,
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

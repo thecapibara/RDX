@@ -23,6 +23,7 @@
 - [x] **3.1. Catalog & Search Scraper**
   - Parse Home page sections (Featured/Trending, Movies, Series, Cartoons, Anime).
   - Search endpoint (`/search/?do=search&subaction=search&q=...`) and live autocomplete.
+  - HDRezka Category Sort Filters (`?filter=last`, `popular`, `watching`, `soon`) and full Genre directory mapping (`/{category}/{genre}/`) translated into Ukrainian.
 - [x] **3.2. Media Details & Translators Parser**
   - Extract full backdrop/poster, description, IMDb/KP ratings, year, genres, cast, translator list (`data-translator_id`), and seasons/episodes matrix.
 - [x] **3.3. Stream Extractor & `#h` Decryptor**

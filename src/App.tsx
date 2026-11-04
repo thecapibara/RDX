@@ -19,6 +19,7 @@ import { VideoPlayer, type PlayerMode } from "./components/VideoPlayer";
 import { MirrorModal } from "./components/MirrorModal";
 import { SearchModal } from "./components/SearchModal";
 import { BookmarksView } from "./components/BookmarksView";
+import { CategoryFilterBar } from "./components/CategoryFilterBar";
 
 export default function App() {
   // Navigation & Settings State
@@ -35,6 +36,8 @@ export default function App() {
   const [homeItems, setHomeItems] = useState<MediaCardType[]>([]);
   const [categoryItems, setCategoryItems] = useState<MediaCardType[]>([]);
   const [categoryPage, setCategoryPage] = useState<number>(1);
+  const [activeSort, setActiveSort] = useState<string>("last");
+  const [activeGenre, setActiveGenre] = useState<string | null>(null);
 
   // Modals State
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -121,7 +124,12 @@ export default function App() {
         }
         setHomeItems(homeList);
       } else if (activeTab !== "bookmarks") {
-        const catList = await api.getCategoryCatalog(activeTab, categoryPage);
+        const catList = await api.getCategoryCatalog(
+          activeTab,
+          activeGenre || undefined,
+          activeSort !== "last" ? activeSort : undefined,
+          categoryPage
+        );
         setCategoryItems(catList);
       }
     } catch (err) {
@@ -133,15 +141,28 @@ export default function App() {
       setLoadingCatalog(false);
       setIsInitialBoot(false);
     }
-  }, [activeTab, categoryPage]);
+  }, [activeTab, activeGenre, activeSort, categoryPage]);
 
   useEffect(() => {
     loadCatalog();
   }, [loadCatalog]);
 
-  // Handle Tab Switch
+  // Handle Tab Switch (resets page and category filters)
   const handleTabChange = useCallback((tab: NavTab) => {
     setActiveTab(tab);
+    setCategoryPage(1);
+    setActiveGenre(null);
+    setActiveSort("last");
+  }, []);
+
+  // Filter & Sort Change Handlers
+  const handleSortChange = useCallback((sort: string) => {
+    setActiveSort(sort);
+    setCategoryPage(1);
+  }, []);
+
+  const handleGenreChange = useCallback((genre: string | null) => {
+    setActiveGenre(genre);
     setCategoryPage(1);
   }, []);
 
@@ -500,7 +521,7 @@ export default function App() {
         ) : (
           /* Category Grid View (Films / Series / Cartoons / Anime / New) */
           <div className="w-full px-[clamp(1.25rem,4vw,4rem)] py-6 space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight capitalize">
                 {activeTab === "films"
                   ? "Фільми"
@@ -512,11 +533,11 @@ export default function App() {
                   ? "Аніме"
                   : "Новинки кіно"}
               </h1>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 self-start sm:self-auto">
                 <button
                   disabled={categoryPage <= 1}
                   onClick={() => setCategoryPage((p) => Math.max(1, p - 1))}
-                  className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-white/10 text-xs font-semibold text-zinc-300 disabled:opacity-40"
+                  className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-white/10 text-xs font-semibold text-zinc-300 disabled:opacity-40 hover:text-white transition-colors cursor-pointer"
                 >
                   Попередня
                 </button>
@@ -525,23 +546,46 @@ export default function App() {
                 </span>
                 <button
                   onClick={() => setCategoryPage((p) => p + 1)}
-                  className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-white/10 text-xs font-semibold text-zinc-300 hover:text-white"
+                  className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-white/10 text-xs font-semibold text-zinc-300 hover:text-white transition-colors cursor-pointer"
                 >
                   Наступна
                 </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(185px,1fr))] lg:grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-5">
-              {categoryItems.map((card) => (
-                <MediaCard
-                  key={card.id || card.url}
-                  card={card}
-                  onSelect={handleOpenDetails}
-                  onPlayDirect={handleDirectPlay}
-                />
-              ))}
-            </div>
+            {/* HDRezka Category Filters & Genres Bar */}
+            <CategoryFilterBar
+              category={activeTab}
+              activeSort={activeSort}
+              onSortChange={handleSortChange}
+              activeGenre={activeGenre}
+              onGenreChange={handleGenreChange}
+            />
+
+            {loadingCatalog ? (
+              <div className="py-24 flex flex-col items-center justify-center space-y-3">
+                <Loader2 className="w-8 h-8 text-rose-500 animate-spin" />
+                <p className="text-xs text-zinc-400 font-medium">Завантаження каталогу...</p>
+              </div>
+            ) : categoryItems.length === 0 ? (
+              <div className="py-24 text-center space-y-2">
+                <p className="text-zinc-300 font-semibold text-base">Нічого не знайдено</p>
+                <p className="text-zinc-500 text-xs max-w-sm mx-auto">
+                  За обраним фільтром або жанром немає елементів. Спробуйте змінити сортування або скинути жанр.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(185px,1fr))] lg:grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-5">
+                {categoryItems.map((card) => (
+                  <MediaCard
+                    key={card.id || card.url}
+                    card={card}
+                    onSelect={handleOpenDetails}
+                    onPlayDirect={handleDirectPlay}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )}
       </main>
