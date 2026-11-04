@@ -40,11 +40,18 @@ pub fn run() {
                 use tauri::Manager;
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.with_webview(|webview| {
+                        use webkit2gtk::glib::translate::ToGlibPtr;
                         use webkit2gtk::{SettingsExt, WebViewExt};
                         let wk = webview.inner();
                         if let Some(settings) = wk.settings() {
                             settings.set_enable_smooth_scrolling(true);
                             settings.set_enable_page_cache(true);
+
+                            // Disable WebKit's internal MPRIS/MediaSession to prevent ghost player cards on Linux D-Bus
+                            unsafe {
+                                let raw: *mut webkit2gtk::ffi::WebKitSettings = settings.to_glib_none().0;
+                                disable_webkit_media_session(raw as *mut std::ffi::c_void);
+                            }
                         }
                     });
                 }
@@ -80,4 +87,32 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(target_os = "linux")]
+unsafe fn disable_webkit_media_session(raw_settings: *mut std::ffi::c_void) {
+    extern "C" {
+        fn webkit_settings_get_all_features() -> *mut std::ffi::c_void;
+        fn webkit_feature_list_find(
+            feature_list: *mut std::ffi::c_void,
+            identifier: *const std::ffi::c_char,
+        ) -> *mut std::ffi::c_void;
+        fn webkit_settings_set_feature_enabled(
+            settings: *mut std::ffi::c_void,
+            feature: *mut std::ffi::c_void,
+            enabled: i32,
+        );
+        fn webkit_feature_list_unref(feature_list: *mut std::ffi::c_void);
+    }
+
+    let features = webkit_settings_get_all_features();
+    if !features.is_null() {
+        if let Ok(c_name) = std::ffi::CString::new("MediaSession") {
+            let feature = webkit_feature_list_find(features, c_name.as_ptr());
+            if !feature.is_null() {
+                webkit_settings_set_feature_enabled(raw_settings, feature, 0);
+            }
+        }
+        webkit_feature_list_unref(features);
+    }
 }

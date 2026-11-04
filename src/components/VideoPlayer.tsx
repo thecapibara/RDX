@@ -816,9 +816,74 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, [mediaTitle]);
 
-  // Comprehensive player teardown and close (pauses video, unloads sources)
+  // MediaSession API Integration (Linux MPRIS & macOS/Windows system media controls)
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+
+    try {
+      if (details.title) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: details.title,
+          artist: isSeries
+            ? `Сезон ${activeSeason || 1}, Серія ${activeEpisode || 1}`
+            : (details.orig_title || "RDX"),
+          album: isSeries ? details.title : (currentTranslator?.name || "RDX"),
+          artwork: details.poster
+            ? [{ src: details.poster, sizes: "512x512", type: "image/jpeg" }]
+            : [],
+        });
+      }
+
+      navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+    } catch (e) {
+      console.warn("MediaSession update error:", e);
+    }
+  }, [
+    details.title,
+    details.orig_title,
+    details.poster,
+    isSeries,
+    activeSeason,
+    activeEpisode,
+    currentTranslator?.name,
+    isPlaying,
+  ]);
+
+  // Sync MediaSession position state for system progress bar
+  useEffect(() => {
+    if (
+      typeof navigator === "undefined" ||
+      !("mediaSession" in navigator) ||
+      !("setPositionState" in navigator.mediaSession)
+    )
+      return;
+
+    const effDur = getEffectiveDuration();
+    if (effDur > 0 && Number.isFinite(currentTime) && currentTime >= 0) {
+      try {
+        navigator.mediaSession.setPositionState({
+          duration: effDur,
+          playbackRate: playbackSpeed,
+          position: Math.min(currentTime, effDur),
+        });
+      } catch {}
+    }
+  }, [currentTime, getEffectiveDuration, playbackSpeed]);
+
+  // Comprehensive player teardown and close (pauses video, unloads sources, clears MPRIS)
   const handleTeardownAndClose = useCallback(() => {
     document.title = "";
+
+    // Terminate system MediaSession / MPRIS cleanly so system bar & shade remove player
+    if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
+      try {
+        navigator.mediaSession.playbackState = "none";
+        navigator.mediaSession.metadata = null;
+        if ("setPositionState" in navigator.mediaSession) {
+          navigator.mediaSession.setPositionState();
+        }
+      } catch {}
+    }
 
     // 1. Auto-save current watch progress
     saveCurrentProgress();
@@ -850,6 +915,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // Teardown Lifecycle on unmount
   useEffect(() => {
     return () => {
+      document.title = "";
+
+      if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
+        try {
+          navigator.mediaSession.playbackState = "none";
+          navigator.mediaSession.metadata = null;
+          if ("setPositionState" in navigator.mediaSession) {
+            navigator.mediaSession.setPositionState();
+          }
+        } catch {}
+      }
+
       const video = videoRef.current;
       if (video) {
         try {
@@ -1193,6 +1270,54 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
     }
   };
+
+  // MediaSession Action Handlers (Play, Pause, Seek, Next/Prev episode from system shade)
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+
+    const ms = navigator.mediaSession;
+
+    const playHandler = () => {
+      if (videoRef.current && videoRef.current.paused) {
+        videoRef.current.play().catch(() => {});
+        setIsPlaying(true);
+      }
+    };
+
+    const pauseHandler = () => {
+      if (videoRef.current && !videoRef.current.paused) {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      }
+    };
+
+    const seekBackwardHandler = () => seekDelta(-10);
+    const seekForwardHandler = () => seekDelta(10);
+    const prevTrackHandler = isSeries ? handlePrevEpisode : undefined;
+    const nextTrackHandler = isSeries ? handleNextEpisode : undefined;
+
+    try {
+      ms.setActionHandler("play", playHandler);
+      ms.setActionHandler("pause", pauseHandler);
+      ms.setActionHandler("seekbackward", seekBackwardHandler);
+      ms.setActionHandler("seekforward", seekForwardHandler);
+      if (prevTrackHandler) ms.setActionHandler("previoustrack", prevTrackHandler);
+      else ms.setActionHandler("previoustrack", null);
+      if (nextTrackHandler) ms.setActionHandler("nexttrack", nextTrackHandler);
+      else ms.setActionHandler("nexttrack", null);
+    } catch {}
+
+    return () => {
+      try {
+        ms.setActionHandler("play", null);
+        ms.setActionHandler("pause", null);
+        ms.setActionHandler("seekbackward", null);
+        ms.setActionHandler("seekforward", null);
+        ms.setActionHandler("previoustrack", null);
+        ms.setActionHandler("nexttrack", null);
+      } catch {}
+    };
+  }, [isSeries, handlePrevEpisode, handleNextEpisode]);
 
   // Episodes for drawer's selected season
   const drawerSeasonEpisodes =
