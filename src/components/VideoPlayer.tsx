@@ -761,6 +761,162 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, [saveCurrentProgress]);
 
+  // Comprehensive player teardown and close (pauses video, unloads sources, clears Linux MPRIS shade)
+  const handleTeardownAndClose = useCallback(() => {
+    // 1. Auto-save current watch progress
+    saveCurrentProgress();
+
+    // 2. Pause video and unload source to kill WebKit GStreamer pipeline
+    const video = videoRef.current;
+    if (video) {
+      try {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+      } catch {}
+    }
+
+    // 3. Destroy HLS instance
+    if (hlsRef.current) {
+      try {
+        hlsRef.current.stopLoad();
+        hlsRef.current.detachMedia();
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      } catch {}
+    }
+
+    // 4. Kill OS MediaSession / MPRIS notification shade widget
+    if ("mediaSession" in navigator) {
+      try {
+        navigator.mediaSession.playbackState = "none";
+        navigator.mediaSession.metadata = null;
+        navigator.mediaSession.setActionHandler("play", null);
+        navigator.mediaSession.setActionHandler("pause", null);
+        navigator.mediaSession.setActionHandler("seekbackward", null);
+        navigator.mediaSession.setActionHandler("seekforward", null);
+        navigator.mediaSession.setActionHandler("seekto", null);
+        navigator.mediaSession.setActionHandler("stop", null);
+      } catch {}
+    }
+
+    // 5. Fire parent onClose
+    onClose();
+  }, [saveCurrentProgress, onClose]);
+
+  // Media Session (MPRIS in Linux / OS Notification Controls) & Teardown Lifecycle
+  useEffect(() => {
+    if ("mediaSession" in navigator) {
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: details.title,
+          artist: isSeries
+            ? `Сезон ${activeSeason || 1}, Серія ${activeEpisode || 1}`
+            : details.orig_title || "Фільм",
+          album: "RDX",
+          artwork: details.poster
+            ? [
+                {
+                  src: details.poster,
+                  sizes: "512x512",
+                  type: "image/jpeg",
+                },
+              ]
+            : [],
+        });
+
+        navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+
+        navigator.mediaSession.setActionHandler("play", () => {
+          videoRef.current?.play().catch(() => {});
+        });
+        navigator.mediaSession.setActionHandler("pause", () => {
+          videoRef.current?.pause();
+        });
+        navigator.mediaSession.setActionHandler("seekbackward", (ev) => {
+          if (videoRef.current) {
+            videoRef.current.currentTime = Math.max(
+              0,
+              videoRef.current.currentTime - (ev.seekOffset || 10)
+            );
+          }
+        });
+        navigator.mediaSession.setActionHandler("seekforward", (ev) => {
+          if (videoRef.current) {
+            const maxD = videoRef.current.duration || 999999;
+            videoRef.current.currentTime = Math.min(
+              maxD,
+              videoRef.current.currentTime + (ev.seekOffset || 10)
+            );
+          }
+        });
+        navigator.mediaSession.setActionHandler("seekto", (ev) => {
+          if (videoRef.current && ev.seekTime !== undefined) {
+            videoRef.current.currentTime = ev.seekTime;
+          }
+        });
+        navigator.mediaSession.setActionHandler("stop", () => {
+          handleTeardownAndClose();
+        });
+      } catch (err) {
+        console.warn("MediaSession initialization failed:", err);
+      }
+    }
+
+    return () => {
+      // Pause video element and detach sources to kill the OS media session
+      const video = videoRef.current;
+      if (video) {
+        try {
+          video.pause();
+          video.removeAttribute("src");
+          video.load();
+        } catch {}
+      }
+
+      // Destroy Hls pipeline
+      if (hlsRef.current) {
+        try {
+          hlsRef.current.stopLoad();
+          hlsRef.current.detachMedia();
+          hlsRef.current.destroy();
+          hlsRef.current = null;
+        } catch {}
+      }
+
+      // Clear Media Session in Linux MPRIS / desktop shade
+      if ("mediaSession" in navigator) {
+        try {
+          navigator.mediaSession.playbackState = "none";
+          navigator.mediaSession.metadata = null;
+          navigator.mediaSession.setActionHandler("play", null);
+          navigator.mediaSession.setActionHandler("pause", null);
+          navigator.mediaSession.setActionHandler("seekbackward", null);
+          navigator.mediaSession.setActionHandler("seekforward", null);
+          navigator.mediaSession.setActionHandler("seekto", null);
+          navigator.mediaSession.setActionHandler("stop", null);
+        } catch {}
+      }
+    };
+  }, [
+    details.title,
+    details.orig_title,
+    details.poster,
+    isSeries,
+    activeSeason,
+    activeEpisode,
+    handleTeardownAndClose,
+  ]);
+
+  // Sync mediaSession playbackState whenever isPlaying changes
+  useEffect(() => {
+    if ("mediaSession" in navigator) {
+      try {
+        navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+      } catch {}
+    }
+  }, [isPlaying]);
+
   // Controls activity timer
   const triggerActivity = () => {
     setShowControls(true);
@@ -867,10 +1023,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             setShowSpeedMenu(false);
           } else if (mode === "os_pip") {
             handleSetOsPip(false);
-          } else if (mode === "full") {
-            onClose();
           } else {
-            onClose();
+            handleTeardownAndClose();
           }
           break;
       }
@@ -1175,7 +1329,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <button
               onClick={() => {
                 handleSetOsPip(false);
-                onClose();
+                handleTeardownAndClose();
               }}
               title="Закрити"
               className="p-1 rounded-md hover:bg-rose-600 text-zinc-400 hover:text-white transition-colors cursor-pointer"
@@ -1321,7 +1475,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <Maximize2 className="w-3.5 h-3.5" />
               </button>
               <button
-                onClick={onClose}
+                onClick={handleTeardownAndClose}
                 title="Закрити плеєр"
                 className="p-1.5 rounded-lg bg-black/70 hover:bg-rose-600 text-white border border-white/10 cursor-pointer"
               >
@@ -1543,7 +1697,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
                   {/* Close */}
                   <button
-                    onClick={onClose}
+                    onClick={handleTeardownAndClose}
                     title="Закрити плеєр"
                     className="p-2.5 rounded-2xl bg-white/10 hover:bg-rose-600 text-white border border-white/15 transition-all cursor-pointer"
                   >
