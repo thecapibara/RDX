@@ -1553,13 +1553,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               {/* Top OSD Header */}
               <div className="flex items-center justify-between pointer-events-auto bg-gradient-to-b from-black/80 via-black/40 to-transparent -mx-6 -mt-6 p-6 sm:-mx-10 sm:-mt-10 sm:p-10">
                 <div className="flex items-center gap-4 min-w-0">
-                  <button
-                    onClick={() => onModeChange("docked")}
-                    title="Згорнути в міні-плеєр"
-                    className="p-2.5 rounded-2xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 transition-all cursor-pointer"
-                  >
-                    <Minimize2 className="w-5 h-5" />
-                  </button>
                   <div className="min-w-0">
                     <h2 className="text-lg sm:text-xl font-bold text-white truncate">
                       {details.title}
