@@ -266,7 +266,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
       {/* Top Floating Back Button */}
       <button
         onClick={onClose}
-        className="fixed top-6 left-6 sm:left-10 lg:left-14 z-40 flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-950/90 hover:bg-zinc-900 text-zinc-300 hover:text-white border border-white/10 transition-colors shadow-xl cursor-pointer"
+        className="fixed top-6 left-6 sm:left-10 lg:left-14 z-40 flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-950/80 hover:bg-zinc-900 text-zinc-300 hover:text-white border border-white/15 backdrop-blur-md transition-all shadow-2xl active:scale-95 cursor-pointer"
       >
         <ArrowLeft className="w-4 h-4" />
         <span className="text-xs font-semibold">Назад</span>
@@ -281,17 +281,17 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
         </div>
       ) : details ? (
         <div className="relative w-full">
-          {/* Full-Bleed Atmospheric Backdrop */}
-          <div className="relative w-full h-[54vh] min-h-[400px] overflow-hidden pointer-events-none transform-gpu">
+          {/* Full-Bleed Atmospheric Backdrop with Ambient Soft-Focus Blur */}
+          <div className="relative w-full h-[55vh] min-h-[420px] max-h-[620px] overflow-hidden pointer-events-none transform-gpu [isolation:isolate]">
             <img
               src={details.high_res_poster || details.poster || media.poster}
               alt={details.title}
               decoding="async"
-              className="w-full h-full object-cover object-center opacity-30 scale-105 transform-gpu"
+              className="w-full h-full object-cover object-[center_20%] sm:object-[75%_20%] opacity-35 sm:opacity-40 scale-110 blur-[12px] sm:blur-[18px] saturate-125 transform-gpu"
             />
-            {/* Smooth seamless multi-stop gradients */}
-            <div className="absolute inset-0 bg-gradient-to-t from-[#08090d] via-[#08090d]/60 to-transparent" />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#08090d]/90 via-[#08090d]/40 to-transparent" />
+            {/* Smooth seamless multi-stop gradients for cinematic vignette */}
+            <div className="absolute inset-0 bg-gradient-to-t from-[#08090d] via-[#08090d]/80 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#08090d] via-[#08090d]/70 to-transparent" />
             <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-[#08090d]" />
           </div>
 

@@ -40,6 +40,8 @@
   - Category horizontal carousels with smooth scroll controls and hover/focus card expansion.
 - [x] **4.3. Media Detail Modal / View**
   - Cinematic detail view with translator (voiceover) selector highlighting Ukrainian dubbing (`🇺🇦`), season/episode grid with watched indicators, and instant playback button.
+  - Ambient soft-focus blur (`blur-[12px] sm:blur-[18px]`, `scale-110`, `saturate-125`, `object-[center_20%] sm:object-[75%_20%]`) for backdrops eliminating stretched low-res poster pixelation and clashing text.
+  - Responsive TopBar navigation with compact screen adaptive dropdown («Ще ▾»), preventing horizontal scrolling and tab clipping across all window sizes.
 
 ## Phase 5: Video Player & Always-on-Top Mini-Player
 - [x] **5.1. Custom HLS/MP4 Cinema Player**
