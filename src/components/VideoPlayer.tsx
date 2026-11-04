@@ -109,6 +109,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Playback state
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isSeeking, setIsSeeking] = useState(false);
+  const isSeekingRef = useRef(false);
+  const seekClearTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
@@ -391,6 +394,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         effDur > 0 ? Math.max(0, Math.min(effDur, targetSec)) : Math.max(0, targetSec);
       if (videoRef.current) {
         try {
+          isSeekingRef.current = true;
+          setIsSeeking(true);
+          if (seekClearTimeoutRef.current) clearTimeout(seekClearTimeoutRef.current);
+          seekClearTimeoutRef.current = setTimeout(() => {
+            isSeekingRef.current = false;
+            setIsSeeking(false);
+          }, 400);
           videoRef.current.currentTime = clamped;
         } catch (err) {
           console.warn("Seek failed:", err);
@@ -633,7 +643,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           startPosition: prevTime > 0 ? prevTime : -1,
           maxBufferLength: 60,
           maxMaxBufferLength: 120,
-          backBufferLength: 90,
+          backBufferLength: 120,
+          maxBufferHole: 0.5,
+          highBufferWatchdogPeriod: 2,
+          nudgeOffset: 0.1,
+          nudgeMaxRetry: 5,
         });
         hlsRef.current = hls;
         hls.loadSource(hlsUrl);
@@ -958,7 +972,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     showMediaInfo,
     loopA,
     loopB,
-    currentTime,
     details.title,
   ]);
 
@@ -1006,7 +1019,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (!videoRef.current) return;
     const cur = Number.isFinite(videoRef.current.currentTime)
       ? videoRef.current.currentTime
-      : currentTime;
+      : 0;
     commitSeekToVideo(cur + seconds);
     showHud(seconds > 0 ? `⏩ +${seconds} сек` : `⏪ ${seconds} сек`);
   };
@@ -1269,7 +1282,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           controlsList="nodownload nofullscreen noremoteplayback"
           onContextMenu={handleContextMenu}
           className={cn(
-            "w-full h-full cursor-pointer transition-all",
+            "w-full h-full cursor-pointer",
             getVideoObjectFitClass()
           )}
           style={getVideoStyle()}
@@ -1291,8 +1304,29 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onLoadedMetadata={syncDurationFromVideo}
           onDurationChange={syncDurationFromVideo}
           onCanPlay={syncDurationFromVideo}
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
+          onSeeking={() => {
+            isSeekingRef.current = true;
+            setIsSeeking(true);
+          }}
+          onSeeked={() => {
+            if (seekClearTimeoutRef.current) clearTimeout(seekClearTimeoutRef.current);
+            isSeekingRef.current = false;
+            setIsSeeking(false);
+            if (videoRef.current && !videoRef.current.paused) {
+              setIsPlaying(true);
+            }
+          }}
+          onPlay={() => {
+            if (!isSeekingRef.current) {
+              setIsPlaying(true);
+            }
+          }}
+          onPause={() => {
+            if (isSeekingRef.current || videoRef.current?.seeking) {
+              return;
+            }
+            setIsPlaying(false);
+          }}
           onClick={handleVideoClick}
           onDoubleClick={handleVideoDoubleClick}
         />
@@ -1618,7 +1652,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <div className="w-16 h-16 rounded-full bg-black/60 border border-white/20 flex items-center justify-center text-rose-500 shadow-2xl">
                     <Loader2 className="w-8 h-8 animate-spin" />
                   </div>
-                ) : !isPlaying ? (
+                ) : !isPlaying && !isSeeking ? (
                   <div className="w-20 h-20 rounded-full bg-black/60 border border-white/20 flex items-center justify-center text-white shadow-2xl">
                     <Play className="w-10 h-10 fill-current ml-1" />
                   </div>
