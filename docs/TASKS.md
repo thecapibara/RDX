@@ -87,3 +87,6 @@
 - [x] **8.2. Instant Boot Startup Chime (`public/startup.mp3`, `index.html`)**
   - Integrated `startup.mp3` playing immediately in `index.html` on first paint of `#rdx-splash`.
   - Tuned comfortable volume to ~55% (-5 dB) with settings toggle and sound preview button.
+- [x] **8.3. Horizontal Drag-to-Scroll & Touchscreen Swipe (`src/hooks/useHorizontalScroll.ts`, `src/components/Swimlane.tsx`)**
+  - Pointer click-and-drag and touch swipe for horizontal movie swimlanes without hijacking standard mouse wheel vertical page scrolling.
+  - Image drag prevention (`draggable={false}`) and drag-vs-click event cancellation.

@@ -1,8 +1,9 @@
-import React, { useRef, useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { ChevronLeft, ChevronRight, History } from "lucide-react";
 import type { WatchProgress } from "../types";
 import { ContinueWatchingCard } from "./ContinueWatchingCard";
 import { cn } from "../lib/utils";
+import { useHorizontalScroll } from "../hooks/useHorizontalScroll";
 
 interface ContinueWatchingSwimlaneProps {
   items: WatchProgress[];
@@ -17,7 +18,7 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
   onRemove,
   className,
 }) => {
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const { scrollRef, isDragging, dragProps } = useHorizontalScroll<HTMLDivElement>();
   const rafRef = useRef<number | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -111,12 +112,16 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
         )}
       </div>
 
-      {/* Track */}
+      {/* Track with Mouse Wheel & Drag-to-Scroll support */}
       <div
         ref={scrollRef}
         onScroll={checkScroll}
-        className="flex gap-4 overflow-x-auto px-[clamp(1.25rem,4vw,4rem)] pb-4 pt-1 no-scrollbar"
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+        {...dragProps}
+        className={cn(
+          "flex gap-4 overflow-x-auto px-[clamp(1.25rem,4vw,4rem)] pb-4 pt-1 no-scrollbar select-none",
+          isDragging ? "cursor-grabbing" : "cursor-grab"
+        )}
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none", touchAction: "pan-y" }}
       >
         {items.map((item) => (
           <ContinueWatchingCard

@@ -1,8 +1,9 @@
-import React, { useRef, useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
 import type { MediaCard as MediaCardType } from "../types";
 import { MediaCard } from "./MediaCard";
 import { cn } from "../lib/utils";
+import { useHorizontalScroll } from "../hooks/useHorizontalScroll";
 
 interface SwimlaneProps {
   title: string;
@@ -25,7 +26,7 @@ export const Swimlane: React.FC<SwimlaneProps> = React.memo(({
   onMoreClick,
   className,
 }) => {
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const { scrollRef, isDragging, dragProps } = useHorizontalScroll<HTMLDivElement>();
   const rafRef = useRef<number | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -136,12 +137,16 @@ export const Swimlane: React.FC<SwimlaneProps> = React.memo(({
         </div>
       </div>
 
-      {/* Horizontal Carousel Track (NO scroll-smooth class so touchpad/wheel scroll is 1:1 responsive) */}
+      {/* Horizontal Carousel Track with Mouse Wheel & Drag-to-Scroll support */}
       <div
         ref={scrollRef}
         onScroll={checkScroll}
-        className="flex gap-4 overflow-x-auto px-[clamp(1.25rem,4vw,4rem)] pb-4 pt-1 no-scrollbar"
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+        {...dragProps}
+        className={cn(
+          "flex gap-4 overflow-x-auto px-[clamp(1.25rem,4vw,4rem)] pb-4 pt-1 no-scrollbar select-none",
+          isDragging ? "cursor-grabbing" : "cursor-grab"
+        )}
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none", touchAction: "pan-y" }}
       >
         {items.map((card) => (
           <div key={card.id || card.url} className="w-40 sm:w-44 md:w-48 flex-shrink-0">
