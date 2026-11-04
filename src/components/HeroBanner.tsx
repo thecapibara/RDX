@@ -203,13 +203,13 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
 
       {/* Subtle Slide Navigation Controls at Bottom Right */}
       {slides.length > 1 && (
-        <div className="absolute z-20 right-6 sm:right-10 bottom-10 flex items-center gap-3">
-          <div className="flex items-center gap-1.5 opacity-70 group-hover:opacity-100 transition-opacity">
+        <div className="absolute z-20 right-6 sm:right-10 bottom-10 flex items-center gap-3 transform-gpu">
+          <div className="flex items-center gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
             <button
               onClick={handlePrev}
               title="Попередній хіт"
               aria-label="Попередній хіт"
-              className="w-8 h-8 rounded-full bg-zinc-900/80 hover:bg-zinc-800 border border-white/15 flex items-center justify-center text-white active:scale-90 transition-all cursor-pointer shadow-md"
+              className="w-8 h-8 rounded-full bg-zinc-900/90 hover:bg-zinc-800 border border-white/15 flex items-center justify-center text-white active:scale-90 transition-all cursor-pointer shadow-md"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -217,14 +217,14 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
               onClick={handleNext}
               title="Наступний хіт"
               aria-label="Наступний хіт"
-              className="w-8 h-8 rounded-full bg-zinc-900/80 hover:bg-zinc-800 border border-white/15 flex items-center justify-center text-white active:scale-90 transition-all cursor-pointer shadow-md"
+              className="w-8 h-8 rounded-full bg-zinc-900/90 hover:bg-zinc-800 border border-white/15 flex items-center justify-center text-white active:scale-90 transition-all cursor-pointer shadow-md"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Progress Indicators (Isolated GPU transform to prevent WebKit Cairo subpixel dirty-rect artifacts) */}
-          <div className="flex items-center gap-1.5 p-1 rounded-full bg-zinc-950/90 border border-white/10 shadow-lg [isolation:isolate]">
+          {/* Clean Apple TV / Cinema Indicators (Zero-artifact GPU layout) */}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-full bg-zinc-950/90 border border-white/10 shadow-xl transform-gpu">
             {slides.map((s, idx) => {
               const isActive = idx === currentIndex;
               return (
@@ -233,24 +233,12 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
                   onClick={() => handleSelect(idx)}
                   title={s.title}
                   className={cn(
-                    "relative h-1.5 rounded-full transition-all cursor-pointer [contain:paint] overflow-hidden",
-                    isActive ? "w-8 bg-white/20" : "w-2.5 bg-white/20 hover:bg-white/40"
+                    "h-2 rounded-full transition-all duration-300 cursor-pointer block p-0 border-0 outline-none",
+                    isActive
+                      ? "w-8 bg-gradient-to-r from-red-600 to-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.7)]"
+                      : "w-2 bg-white/25 hover:bg-white/50"
                   )}
-                >
-                  {isActive && (
-                    <motion.div
-                      key={`prog-${slideKey}-${idx}`}
-                      initial={{ scaleX: 0 }}
-                      animate={{ scaleX: isHovered ? undefined : 1 }}
-                      transition={{
-                        duration: ROTATION_INTERVAL_MS / 1000,
-                        ease: "linear",
-                      }}
-                      style={{ originX: 0 }}
-                      className="absolute inset-0 bg-rose-500 rounded-full [will-change:transform]"
-                    />
-                  )}
-                </button>
+                />
               );
             })}
           </div>
