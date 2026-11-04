@@ -35,7 +35,6 @@ export default function App() {
   const [homeItems, setHomeItems] = useState<MediaCardType[]>([]);
   const [categoryItems, setCategoryItems] = useState<MediaCardType[]>([]);
   const [categoryPage, setCategoryPage] = useState<number>(1);
-  const [featuredMedia, setFeaturedMedia] = useState<MediaCardType | null>(null);
 
   // Modals State
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -121,15 +120,9 @@ export default function App() {
           homeList = await api.getHomeCatalog();
         }
         setHomeItems(homeList);
-        if (homeList.length > 0) {
-          setFeaturedMedia(homeList[0]);
-        }
       } else if (activeTab !== "bookmarks") {
         const catList = await api.getCategoryCatalog(activeTab, categoryPage);
         setCategoryItems(catList);
-        if (catList.length > 0) {
-          setFeaturedMedia(catList[0]);
-        }
       }
     } catch (err) {
       console.error("Failed to load catalog:", err);
@@ -319,6 +312,35 @@ export default function App() {
   }, []);
 
   // Memoized swimlane slices so Swimlane React.memo is never invalidated by .filter()
+  const featuredHeroItems = useMemo(() => {
+    if (homeItems.length === 0) return [];
+
+    const valid = homeItems.filter(
+      (item) => item.title && item.poster && !item.poster.includes("placeholder")
+    );
+
+    // Pick top items with rating >= 6.5 if available, else take top items
+    const topRated = valid.filter((i) => {
+      const r = parseFloat(i.rating || "0");
+      return !isNaN(r) && r >= 6.5;
+    });
+
+    const pool = topRated.length >= 5 ? topRated : valid;
+    const selected: MediaCardType[] = [];
+    const seen = new Set<string>();
+
+    for (const item of pool) {
+      const key = item.id || item.url;
+      if (!seen.has(key)) {
+        seen.add(key);
+        selected.push(item);
+      }
+      if (selected.length >= 7) break;
+    }
+
+    return selected.length > 0 ? selected : valid.slice(0, 6);
+  }, [homeItems]);
+
   const trendingHomeItems = useMemo(() => homeItems.slice(0, 18), [homeItems]);
   const filmsHomeItems = useMemo(
     () =>
@@ -421,9 +443,9 @@ export default function App() {
           </div>
         ) : activeTab === "home" ? (
           <>
-            {/* Ambient Hero Banner */}
+            {/* Ambient Hero Banner Carousel */}
             <HeroBanner
-              media={featuredMedia}
+              items={featuredHeroItems}
               onPlay={handleDirectPlay}
               onOpenDetails={handleOpenDetails}
             />

@@ -60,3 +60,7 @@
 - [x] **6.2. MSE HLS Seeking, Quality Persistence & Premium Badges (`src/components/VideoPlayer.tsx`)**
   - Reliable `getEffectiveDuration()` + `Hls.Events.LEVEL_LOADED` total duration tracking + Pointer-captured SeekBar scrubbing.
   - Default `720p` quality, persistent user quality preference (`localStorage` + SQLite), and golden `<Crown />` badge for `1080p Ultra` / `2K` / `4K`.
+- [x] **6.3. Smart TV Hero Carousel, Ambient Cinema Blur & Subpixel Artifact Fixes (`src/components/HeroBanner.tsx`, `src/App.tsx`)**
+  - Multi-item dynamic rotating hero carousel with 8s timer, pause on hover, random start, and `< >` / indicator pill navigation.
+  - Soft-focus ambient blur (`blur-[8px]` + `scale-108` + `saturate-115`) on full-bleed cover eliminating low-res thumbnail pixelation without performance overhead.
+  - Fixed WebKitGTK Cairo subpixel dirty-rect pixel trails by migrating progress animation to GPU `transform: scaleX` with paint isolation.

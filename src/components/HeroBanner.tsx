@@ -1,115 +1,190 @@
-import React from "react";
-import { Play, Info, Bookmark as BookmarkIcon, Star } from "lucide-react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { Play, Info, Bookmark as BookmarkIcon, Star, ChevronLeft, ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { MediaCard } from "../types";
 import { cn } from "../lib/utils";
 
 interface HeroBannerProps {
-  media: MediaCard | null;
+  items?: MediaCard[];
+  media?: MediaCard | null;
   onPlay: (media: MediaCard) => void;
   onOpenDetails: (media: MediaCard) => void;
   onToggleBookmark?: (media: MediaCard) => void;
   isBookmarked?: boolean;
 }
 
+const ROTATION_INTERVAL_MS = 8000;
+
 export const HeroBanner: React.FC<HeroBannerProps> = ({
+  items,
   media,
   onPlay,
   onOpenDetails,
   onToggleBookmark,
-  isBookmarked,
+  isBookmarked = false,
 }) => {
-  if (!media) {
+  const slides = useMemo(() => {
+    if (items && items.length > 0) return items.slice(0, 8);
+    if (media) return [media];
+    return [];
+  }, [items, media]);
+
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    if (slides.length > 1) {
+      return Math.floor(Math.random() * Math.min(slides.length, 5));
+    }
+    return 0;
+  });
+
+  const [isHovered, setIsHovered] = useState(false);
+  const [slideKey, setSlideKey] = useState(0);
+
+  useEffect(() => {
+    if (currentIndex >= slides.length && slides.length > 0) {
+      setCurrentIndex(0);
+    }
+  }, [slides.length, currentIndex]);
+
+  const handleNext = useCallback(() => {
+    if (slides.length <= 1) return;
+    setCurrentIndex((prev) => (prev + 1) % slides.length);
+    setSlideKey((k) => k + 1);
+  }, [slides.length]);
+
+  const handlePrev = useCallback(() => {
+    if (slides.length <= 1) return;
+    setCurrentIndex((prev) => (prev - 1 + slides.length) % slides.length);
+    setSlideKey((k) => k + 1);
+  }, [slides.length]);
+
+  const handleSelect = useCallback((index: number) => {
+    setCurrentIndex(index);
+    setSlideKey((k) => k + 1);
+  }, []);
+
+  useEffect(() => {
+    if (slides.length <= 1 || isHovered) return;
+
+    const timer = setInterval(() => {
+      handleNext();
+    }, ROTATION_INTERVAL_MS);
+
+    return () => clearInterval(timer);
+  }, [slides.length, isHovered, handleNext, slideKey]);
+
+  if (slides.length === 0) {
     return null;
   }
 
+  const currentMedia = slides[currentIndex] || slides[0];
+
   const isSeries =
-    media.entity_type?.toLowerCase().includes("series") ||
-    media.entity_type?.toLowerCase().includes("серіал") ||
-    Boolean(media.series_info);
+    currentMedia.entity_type?.toLowerCase().includes("series") ||
+    currentMedia.entity_type?.toLowerCase().includes("серіал") ||
+    Boolean(currentMedia.series_info);
 
   return (
-    <div className="relative w-full h-[52vh] min-h-[380px] max-h-[580px] overflow-hidden select-none">
-      {/* Background Poster & Ambient Glow */}
+    <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className="relative w-full h-[58vh] min-h-[440px] max-h-[640px] overflow-hidden select-none group"
+    >
+      {/* Full-bleed Background Poster with Optimized Top/Center Positioning */}
       <AnimatePresence mode="wait">
         <motion.div
-          key={media.id || media.url}
-          initial={{ opacity: 0, scale: 1.05 }}
+          key={currentMedia.id || currentMedia.url}
+          initial={{ opacity: 0, scale: 1.04 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.6, ease: "easeOut" }}
           className="absolute inset-0"
         >
           <img
-            src={media.poster}
-            alt={media.title}
+            src={currentMedia.poster}
+            alt={currentMedia.title}
             decoding="async"
-            className="w-full h-full object-cover object-center opacity-45 scale-105 transform-gpu"
+            className="w-full h-full object-cover object-[center_20%] sm:object-[75%_20%] opacity-45 blur-[8px] scale-108 saturate-115 transform-gpu"
           />
-          {/* Radial & Linear gradient overlays for true Android TV cinema depth */}
-          <div className="absolute inset-0 bg-gradient-to-t from-[#090a0f] via-[#090a0f]/60 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#090a0f] via-[#090a0f]/80 to-transparent w-full md:w-3/4" />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-[#090a0f]" />
+
+          {/* Cinematic Overlays: Soft dark gradient on the left for readable text, bottom fade into black */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#09090b] via-[#09090b]/50 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#09090b] via-[#09090b]/85 to-transparent w-full md:w-3/4" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-[#09090b]" />
         </motion.div>
       </AnimatePresence>
 
-      {/* Content Container */}
-      <div className="relative z-10 h-full flex flex-col justify-end px-[clamp(1.5rem,5vw,5rem)] pb-10 max-w-5xl space-y-4">
+      {/* Content Container (Left-aligned text & actions) */}
+      <div className="relative z-10 h-full flex flex-col justify-end px-[clamp(1.5rem,5vw,5rem)] pb-12 max-w-5xl space-y-4">
         {/* Badges Row */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <span className="px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-rose-600/90 text-white shadow-md shadow-rose-950/50 border border-rose-400/30">
-            {isSeries ? "Серіал" : "Фільм"}
-          </span>
-
-          {media.series_info && (
-            <span className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-white/10 text-zinc-200 border border-white/15">
-              {media.series_info}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={`meta-${currentMedia.id || currentMedia.url}`}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.3 }}
+            className="flex flex-wrap items-center gap-2.5"
+          >
+            <span className="px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-rose-600/90 text-white shadow-md shadow-rose-950/50 border border-rose-400/30">
+              {isSeries ? "Серіал" : "Фільм"}
             </span>
-          )}
 
-          {media.rating && (
-            <div className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-              <span>{media.rating}</span>
-            </div>
-          )}
+            {currentMedia.series_info && (
+              <span className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-white/10 text-zinc-200 border border-white/15">
+                {currentMedia.series_info}
+              </span>
+            )}
 
-          {media.misc_info && (
-            <span className="text-xs text-zinc-300 font-medium">
-              {media.misc_info}
-            </span>
-          )}
-        </div>
+            {currentMedia.rating && (
+              <div className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                <span>{currentMedia.rating}</span>
+              </div>
+            )}
+
+            {currentMedia.misc_info && (
+              <span className="text-xs text-zinc-300 font-medium">
+                {currentMedia.misc_info}
+              </span>
+            )}
+          </motion.div>
+        </AnimatePresence>
 
         {/* Title */}
-        <h1 className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-white line-clamp-2 drop-shadow-xl">
-          {media.title}
-        </h1>
+        <AnimatePresence mode="wait">
+          <motion.h1
+            key={`title-${currentMedia.id || currentMedia.url}`}
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.35 }}
+            className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-white line-clamp-2 drop-shadow-2xl"
+          >
+            {currentMedia.title}
+          </motion.h1>
+        </AnimatePresence>
 
         {/* Actions Row */}
-        <div className="flex items-center gap-3 pt-2">
-          {/* Watch Now */}
+        <div className="flex items-center gap-3 pt-2 flex-wrap">
           <button
-            onClick={() => onPlay(media)}
+            onClick={() => onPlay(currentMedia)}
             className="flex items-center gap-2.5 px-6 py-3 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-rose-500 hover:from-red-500 hover:to-rose-400 text-white font-bold text-sm shadow-xl shadow-rose-900/40 hover:shadow-rose-900/60 active:scale-95 transition-all cursor-pointer"
           >
             <Play className="w-5 h-5 fill-current" />
             <span>Дивитися зараз</span>
           </button>
 
-          {/* Details */}
           <button
-            onClick={() => onOpenDetails(media)}
+            onClick={() => onOpenDetails(currentMedia)}
             className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-zinc-900/90 hover:bg-zinc-800 active:scale-95 text-white font-semibold text-sm border border-white/15 transition-all cursor-pointer"
           >
             <Info className="w-4 h-4 text-zinc-300" />
             <span>Детальніше</span>
           </button>
 
-          {/* Bookmark Toggle */}
           {onToggleBookmark && (
             <button
-              onClick={() => onToggleBookmark(media)}
+              onClick={() => onToggleBookmark(currentMedia)}
               title={isBookmarked ? "Видалити із закладок" : "Додати в закладки"}
               className={cn(
                 "p-3 rounded-2xl border transition-all cursor-pointer active:scale-95",
@@ -125,6 +200,62 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
           )}
         </div>
       </div>
+
+      {/* Subtle Slide Navigation Controls at Bottom Right */}
+      {slides.length > 1 && (
+        <div className="absolute z-20 right-6 sm:right-10 bottom-10 flex items-center gap-3">
+          <div className="flex items-center gap-1.5 opacity-70 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={handlePrev}
+              title="Попередній хіт"
+              aria-label="Попередній хіт"
+              className="w-8 h-8 rounded-full bg-zinc-900/80 hover:bg-zinc-800 border border-white/15 flex items-center justify-center text-white active:scale-90 transition-all cursor-pointer shadow-md"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleNext}
+              title="Наступний хіт"
+              aria-label="Наступний хіт"
+              className="w-8 h-8 rounded-full bg-zinc-900/80 hover:bg-zinc-800 border border-white/15 flex items-center justify-center text-white active:scale-90 transition-all cursor-pointer shadow-md"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Progress Indicators (Isolated GPU transform to prevent WebKit Cairo subpixel dirty-rect artifacts) */}
+          <div className="flex items-center gap-1.5 p-1 rounded-full bg-zinc-950/90 border border-white/10 shadow-lg [isolation:isolate]">
+            {slides.map((s, idx) => {
+              const isActive = idx === currentIndex;
+              return (
+                <button
+                  key={s.id || s.url || idx}
+                  onClick={() => handleSelect(idx)}
+                  title={s.title}
+                  className={cn(
+                    "relative h-1.5 rounded-full transition-all cursor-pointer [contain:paint] overflow-hidden",
+                    isActive ? "w-8 bg-white/20" : "w-2.5 bg-white/20 hover:bg-white/40"
+                  )}
+                >
+                  {isActive && (
+                    <motion.div
+                      key={`prog-${slideKey}-${idx}`}
+                      initial={{ scaleX: 0 }}
+                      animate={{ scaleX: isHovered ? undefined : 1 }}
+                      transition={{
+                        duration: ROTATION_INTERVAL_MS / 1000,
+                        ease: "linear",
+                      }}
+                      style={{ originX: 0 }}
+                      className="absolute inset-0 bg-rose-500 rounded-full [will-change:transform]"
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
