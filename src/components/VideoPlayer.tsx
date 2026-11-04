@@ -13,7 +13,6 @@ import {
   X,
   Settings,
   Subtitles,
-  ExternalLink,
   SkipForward,
   SkipBack,
   ListVideo,
@@ -1114,26 +1113,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   };
 
-  // Open in External Player (MPV/VLC)
-  const handleOpenExternal = async () => {
-    const streamUrl =
-      selectedQuality?.mp4_url ||
-      selectedQuality?.hls_url ||
-      streamData?.qualities[0]?.mp4_url ||
-      streamData?.qualities[0]?.hls_url;
-
-    if (!streamUrl) return;
-
-    try {
-      const mediaTitle = `${details.title}${
-        isSeries ? ` S${activeSeason}E${activeEpisode}` : ""
-      }`;
-      await api.openInExternalPlayer(streamUrl, currentTime, mediaTitle);
-    } catch (err) {
-      alert(`Не вдалося запустити MPV/VLC: ${err}`);
-    }
-  };
-
   // Previous Episode handler
   const handlePrevEpisode = () => {
     if (!isSeries || !activeSeason || !activeEpisode || !onEpisodeChange) return;
@@ -1615,16 +1594,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </div>
 
                 <div className="flex items-center gap-3">
-                  {/* Open in MPV / VLC */}
-                  <button
-                    onClick={handleOpenExternal}
-                    title="Відкрити у зовнішньому плеєрі (MPV / VLC)"
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white text-xs font-semibold border border-white/15 transition-all cursor-pointer"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    <span className="hidden sm:inline">MPV / VLC</span>
-                  </button>
-
                   {/* Always-on-Top OS PiP Window */}
                   <button
                     onClick={() => handleSetOsPip(true)}
@@ -2421,16 +2390,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <span>Розгорнути на весь екран</span>
                 </button>
               )}
-              <button
-                onClick={() => {
-                  handleOpenExternal();
-                  setContextMenu(null);
-                }}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
-              >
-                <ExternalLink className="w-4 h-4 text-zinc-400 flex-shrink-0" />
-                <span>Відкрити в MPV / VLC</span>
-              </button>
             </div>
           )}
 
