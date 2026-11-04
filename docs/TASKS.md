@@ -77,3 +77,13 @@
   - Two-way binding for D-Bus `Play`, `Pause`, `PlayPause` toggle, `Seek`, and `SetPosition` commands from desktop widgets and media keys to HTML `<video>`.
 - [ ] **7.3. Desktop Packaging & Icon Registration**
   - Wayland `app_id` desktop file and icon deployment for production builds (`.deb`, `.rpm`, `.AppImage`).
+
+## Phase 8: Smart TV Settings, Startup Chime & v0.2.0 Polish
+- [x] **8.1. Obsidian Crimson TV Settings Modal (`src/components/MirrorModal.tsx`)**
+  - Revamped modal with 2-column sidebar navigation (Мережа, Відтворення, Вигляд, Про нас).
+  - Fixed badge text wrap (`whitespace-nowrap` on `Rust + Tauri v2`).
+  - Added author `justgl` and bumped project version to `v0.2.0`.
+  - Added background document scroll-lock (`overflow: hidden` on body & html) and `onWheel` event isolation.
+- [x] **8.2. Instant Boot Startup Chime (`public/startup.mp3`, `index.html`)**
+  - Integrated `startup.mp3` playing immediately in `index.html` on first paint of `#rdx-splash`.
+  - Tuned comfortable volume to ~55% (-5 dB) with settings toggle and sound preview button.
