@@ -58,6 +58,7 @@ pub fn run() {
                         if let Some(settings) = wk.settings() {
                             settings.set_enable_smooth_scrolling(true);
                             settings.set_enable_page_cache(true);
+                            settings.set_media_playback_requires_user_gesture(false);
                         }
                     });
                 }

@@ -12,10 +12,14 @@ import {
   Shield,
   Shuffle,
   Trash2,
-  Settings,
   Film,
   Info,
   Crown,
+  Sparkles,
+  Volume2,
+  Sliders,
+  Monitor,
+  Eye,
 } from "lucide-react";
 import type { AppSettings, MirrorStatus } from "../types";
 import { api } from "../services/api";
@@ -42,7 +46,9 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
   onMirrorChanged,
 }) => {
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [activeModalTab, setActiveModalTab] = useState<"network" | "playback" | "about">("network");
+  const [activeModalTab, setActiveModalTab] = useState<
+    "network" | "playback" | "appearance" | "about"
+  >("network");
   const [preferredQuality, setPreferredQuality] = useState<string>("720p");
   const [preferredTranslator, setPreferredTranslator] = useState<string>("");
   const [customInput, setCustomInput] = useState("");
@@ -53,9 +59,44 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
   const [savingProxy, setSavingProxy] = useState(false);
   const [captchaOpening, setCaptchaOpening] = useState(false);
 
+  // Appearance & Sound Settings
+  const [startupSound, setStartupSound] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("rdx_startup_sound") !== "false";
+    } catch {
+      return true;
+    }
+  });
+  const [ambientGlow, setAmbientGlow] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("rdx_ambient_glow") !== "false";
+    } catch {
+      return true;
+    }
+  });
+  const [motion60fps, setMotion60fps] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("rdx_motion_60fps") !== "false";
+    } catch {
+      return true;
+    }
+  });
+  const [previewPlaying, setPreviewPlaying] = useState(false);
+
   useEffect(() => {
     if (isOpen) {
       loadAndProbeAll();
+
+      // Lock background document scrolling while modal is open
+      const prevBodyOverflow = document.body.style.overflow;
+      const prevHtmlOverflow = document.documentElement.style.overflow;
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+
+      return () => {
+        document.body.style.overflow = prevBodyOverflow;
+        document.documentElement.style.overflow = prevHtmlOverflow;
+      };
     }
   }, [isOpen]);
 
@@ -71,7 +112,9 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
         new Set([
           s.active_mirror,
           ...PRESET_MIRRORS,
-          ...(s.custom_mirrors || []).filter((m) => m !== "https://hdrezka.ac" && m !== "https://hdrezka.ag"),
+          ...(s.custom_mirrors || []).filter(
+            (m) => m !== "https://hdrezka.ac" && m !== "https://hdrezka.ag"
+          ),
         ])
       );
 
@@ -108,7 +151,9 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
         new Set([
           settings.active_mirror,
           ...PRESET_MIRRORS,
-          ...settings.custom_mirrors.filter((m) => m !== "https://hdrezka.ac" && m !== "https://hdrezka.ag"),
+          ...settings.custom_mirrors.filter(
+            (m) => m !== "https://hdrezka.ac" && m !== "https://hdrezka.ag"
+          ),
         ])
       );
       const statuses = await api.checkAllMirrors(allUrls);
@@ -243,6 +288,41 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
     await api.updateSettings(updatedSettings).catch(console.warn);
   };
 
+  const handleToggleStartupSound = (enabled: boolean) => {
+    setStartupSound(enabled);
+    try {
+      localStorage.setItem("rdx_startup_sound", enabled ? "true" : "false");
+    } catch {}
+  };
+
+  const handleToggleAmbientGlow = (enabled: boolean) => {
+    setAmbientGlow(enabled);
+    try {
+      localStorage.setItem("rdx_ambient_glow", enabled ? "true" : "false");
+    } catch {}
+  };
+
+  const handleToggleMotion60fps = (enabled: boolean) => {
+    setMotion60fps(enabled);
+    try {
+      localStorage.setItem("rdx_motion_60fps", enabled ? "true" : "false");
+    } catch {}
+  };
+
+  const handlePlayPreviewChime = () => {
+    try {
+      setPreviewPlaying(true);
+      const audio = new Audio("/startup.mp3");
+      // Gentle cinema volume ~55% (as requested "трошки тихіше на -1")
+      audio.volume = 0.55;
+      audio.onended = () => setPreviewPlaying(false);
+      audio.onerror = () => setPreviewPlaying(false);
+      audio.play().catch(() => setPreviewPlaying(false));
+    } catch {
+      setPreviewPlaying(false);
+    }
+  };
+
   const allMirrors = useMemo(() => {
     const raw = Array.from(
       new Set([
@@ -254,7 +334,6 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
       ])
     );
 
-    // Sort: active mirror first, then online by latency, then untested/offline
     return raw.sort((a, b) => {
       if (a === settings?.active_mirror) return -1;
       if (b === settings?.active_mirror) return 1;
@@ -284,478 +363,718 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 overflow-y-auto"
+      onWheel={(e) => e.stopPropagation()}
+      className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-hidden select-none"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl bg-zinc-950 border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col my-auto max-h-[90vh]"
+        className="w-full max-w-4xl bg-[#0c0d12]/95 border border-white/10 rounded-3xl shadow-2xl shadow-black/90 overflow-hidden flex flex-col max-h-[88vh] backdrop-blur-2xl"
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-zinc-900/50">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-rose-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-rose-950/50">
-              <Settings className="w-5 h-5" />
+        {/* Obsidian Glass Header */}
+        <div className="flex items-center justify-between px-6 py-4.5 border-b border-white/8 bg-zinc-950/70">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-rose-600 to-rose-950 border border-rose-500/30 flex items-center justify-center text-white shadow-lg shadow-rose-950/50 flex-shrink-0">
+              <span className="font-black text-sm tracking-tighter">RDX</span>
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white tracking-tight">
-                Налаштування RDX
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-black text-white tracking-tight flex items-baseline">
+                  Налаштування RDX<span className="text-rose-500 text-lg leading-none">.</span>
+                </h2>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-white/5 border border-white/10 text-zinc-400">
+                  v0.2.0
+                </span>
+              </div>
               <p className="text-xs text-zinc-400">
-                Дзеркала HDRezka, DoH-обхід блокувань, проксі та відтворення
+                Дзеркала HDRezka, DoH-обхід, відтворення, вигляд та гарячі клавіші
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-full bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+            className="p-2.5 rounded-full bg-white/5 hover:bg-white/12 text-zinc-400 hover:text-white transition-all cursor-pointer border border-white/5 hover:border-white/15"
+            title="Закрити налаштування (Esc)"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Modal Tab Navigation */}
-        <div className="flex items-center gap-1 px-6 pt-2 border-b border-white/10 bg-zinc-950">
-          <button
-            onClick={() => setActiveModalTab("network")}
-            className={cn(
-              "px-4 py-2.5 text-xs sm:text-sm font-semibold rounded-t-xl transition-colors cursor-pointer flex items-center gap-2",
-              activeModalTab === "network"
-                ? "bg-white/10 text-white border-b-2 border-rose-500"
-                : "text-zinc-400 hover:text-white hover:bg-white/5"
-            )}
-          >
-            <Server className="w-4 h-4" />
-            <span>Мережа та Дзеркала</span>
-          </button>
-          <button
-            onClick={() => setActiveModalTab("playback")}
-            className={cn(
-              "px-4 py-2.5 text-xs sm:text-sm font-semibold rounded-t-xl transition-colors cursor-pointer flex items-center gap-2",
-              activeModalTab === "playback"
-                ? "bg-white/10 text-white border-b-2 border-rose-500"
-                : "text-zinc-400 hover:text-white hover:bg-white/5"
-            )}
-          >
-            <Film className="w-4 h-4" />
-            <span>Відтворення</span>
-          </button>
-          <button
-            onClick={() => setActiveModalTab("about")}
-            className={cn(
-              "px-4 py-2.5 text-xs sm:text-sm font-semibold rounded-t-xl transition-colors cursor-pointer flex items-center gap-2",
-              activeModalTab === "about"
-                ? "bg-white/10 text-white border-b-2 border-rose-500"
-                : "text-zinc-400 hover:text-white hover:bg-white/5"
-            )}
-          >
-            <Info className="w-4 h-4" />
-            <span>Про програму</span>
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="p-6 overflow-y-auto space-y-6">
-          {activeModalTab === "network" && (
-            <>
-              {/* Smart Mirror Rotator Hero Card */}
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-950/50 via-rose-950/30 to-zinc-900 border border-indigo-500/25 flex flex-col gap-3.5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 flex-shrink-0 mt-0.5">
-                  <Zap className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="text-sm font-bold text-white">
-                      Smart Rotator + DNS-over-HTTPS (DoH)
-                    </h4>
-                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase tracking-wider">
-                      Активно без VPN
-                    </span>
-                  </div>
-                  <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
-                    Провайдери часто підміняють DNS для <span className="text-zinc-200 font-mono">rezka.ag</span> та <span className="text-zinc-200 font-mono">hdrezka.me</span> на <span className="text-rose-400 font-mono">127.0.0.1</span>. Вбудований DoH-резолвер RDX автоматично отримує реальні IP кластера та відкриває заблоковані дзеркала напряму.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2.5 pt-1">
-              <button
-                onClick={() => handleSmartSelect(false)}
-                disabled={smartRotating || testing}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 active:scale-95 text-white font-bold text-xs transition-all shadow-lg shadow-rose-950/40 cursor-pointer disabled:opacity-50"
-              >
-                {smartRotating ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Zap className="w-3.5 h-3.5" />
+        {/* 2-Column TV Layout: Sidebar + Main Content */}
+        <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
+          {/* Left Navigation Rail */}
+          <div className="w-full md:w-60 border-b md:border-b-0 md:border-r border-white/8 bg-zinc-950/40 p-3 space-y-1.5 flex-shrink-0 flex md:flex-col overflow-x-auto md:overflow-x-visible">
+            {/* Tab 1: Network & Mirrors */}
+            <button
+              onClick={() => setActiveModalTab("network")}
+              className={cn(
+                "w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-left transition-all cursor-pointer flex-shrink-0",
+                activeModalTab === "network"
+                  ? "bg-rose-600/15 text-white border-l-2 border-rose-500 shadow-inner font-bold"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-white/5 font-medium"
+              )}
+            >
+              <div
+                className={cn(
+                  "w-8 h-8 rounded-xl flex items-center justify-center transition-colors",
+                  activeModalTab === "network"
+                    ? "bg-rose-500/20 text-rose-400"
+                    : "bg-white/5 text-zinc-400"
                 )}
-                <span>Знайти та увімкнути найшвидше</span>
-              </button>
-
-              <button
-                onClick={() => handleSmartSelect(true)}
-                disabled={smartRotating || testing}
-                className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/8 hover:bg-white/14 active:scale-95 text-zinc-200 font-semibold text-xs border border-white/10 transition-all cursor-pointer disabled:opacity-50"
               >
-                <Shuffle className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Перемкнути на інше робоче</span>
-              </button>
+                <Server className="w-4 h-4" />
+              </div>
+              <div className="hidden md:block">
+                <div className="text-xs font-bold leading-tight">Мережа та Дзеркала</div>
+                <div className="text-[10px] text-zinc-500 font-normal mt-0.5">DoH, кластери, проксі</div>
+              </div>
+              <span className="md:hidden text-xs font-bold">Мережа</span>
+            </button>
 
-              <button
-                onClick={handleOpenCaptcha}
-                disabled={captchaOpening}
-                className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-medium text-xs border border-white/10 transition-all cursor-pointer"
-                title="Відкрити вікно перевірки Cloudflare / Captcha"
+            {/* Tab 2: Playback */}
+            <button
+              onClick={() => setActiveModalTab("playback")}
+              className={cn(
+                "w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-left transition-all cursor-pointer flex-shrink-0",
+                activeModalTab === "playback"
+                  ? "bg-rose-600/15 text-white border-l-2 border-rose-500 shadow-inner font-bold"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-white/5 font-medium"
+              )}
+            >
+              <div
+                className={cn(
+                  "w-8 h-8 rounded-xl flex items-center justify-center transition-colors",
+                  activeModalTab === "playback"
+                    ? "bg-rose-500/20 text-rose-400"
+                    : "bg-white/5 text-zinc-400"
+                )}
               >
-                <ShieldCheck className="w-3.5 h-3.5 text-rose-400" />
-                <span>Captcha Bridge</span>
-                <ExternalLink className="w-3 h-3 opacity-60" />
-              </button>
-            </div>
+                <Film className="w-4 h-4" />
+              </div>
+              <div className="hidden md:block">
+                <div className="text-xs font-bold leading-tight">Відтворення</div>
+                <div className="text-[10px] text-zinc-500 font-normal mt-0.5">Якість, озвучка, буфер</div>
+              </div>
+              <span className="md:hidden text-xs font-bold">Відтворення</span>
+            </button>
+
+            {/* Tab 3: Appearance & Sound (NEW) */}
+            <button
+              onClick={() => setActiveModalTab("appearance")}
+              className={cn(
+                "w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-left transition-all cursor-pointer flex-shrink-0",
+                activeModalTab === "appearance"
+                  ? "bg-rose-600/15 text-white border-l-2 border-rose-500 shadow-inner font-bold"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-white/5 font-medium"
+              )}
+            >
+              <div
+                className={cn(
+                  "w-8 h-8 rounded-xl flex items-center justify-center transition-colors",
+                  activeModalTab === "appearance"
+                    ? "bg-rose-500/20 text-rose-400"
+                    : "bg-white/5 text-zinc-400"
+                )}
+              >
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div className="hidden md:block">
+                <div className="text-xs font-bold leading-tight">Вигляд та Звук</div>
+                <div className="text-[10px] text-zinc-500 font-normal mt-0.5">Заставка, заставки, анімації</div>
+              </div>
+              <span className="md:hidden text-xs font-bold">Вигляд</span>
+            </button>
+
+            {/* Tab 4: About & Shortcuts */}
+            <button
+              onClick={() => setActiveModalTab("about")}
+              className={cn(
+                "w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-left transition-all cursor-pointer flex-shrink-0",
+                activeModalTab === "about"
+                  ? "bg-rose-600/15 text-white border-l-2 border-rose-500 shadow-inner font-bold"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-white/5 font-medium"
+              )}
+            >
+              <div
+                className={cn(
+                  "w-8 h-8 rounded-xl flex items-center justify-center transition-colors",
+                  activeModalTab === "about"
+                    ? "bg-rose-500/20 text-rose-400"
+                    : "bg-white/5 text-zinc-400"
+                )}
+              >
+                <Info className="w-4 h-4" />
+              </div>
+              <div className="hidden md:block">
+                <div className="text-xs font-bold leading-tight">Про програму</div>
+                <div className="text-[10px] text-zinc-500 font-normal mt-0.5">Гарячі клавіші • justgl</div>
+              </div>
+              <span className="md:hidden text-xs font-bold">Про нас</span>
+            </button>
           </div>
 
-          {/* Mirrors List */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-zinc-200 uppercase tracking-wider">
-                Пул дзеркал ({allMirrors.length})
-              </h3>
-              <button
-                onClick={handleTestAll}
-                disabled={testing || smartRotating}
-                className="flex items-center gap-1.5 text-xs text-rose-400 hover:text-rose-300 transition-colors font-medium cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw
-                  className={cn("w-3.5 h-3.5", (testing || smartRotating) && "animate-spin")}
-                />
-                <span>{testing ? "Перевірка паралельно..." : "Перевірити всі"}</span>
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              {allMirrors.map((url) => {
-                const isActive = settings?.active_mirror === url;
-                const status = testingStatus[url];
-                const isFastest = fastestUrl === url && status?.online;
-                const isCustomOnly = !PRESET_MIRRORS.includes(url) && !isActive;
-
-                return (
-                  <div
-                    key={url}
-                    onClick={() => handleSelectMirror(url)}
-                    className={cn(
-                      "flex items-center justify-between p-3.5 rounded-2xl border transition-all cursor-pointer",
-                      isActive
-                        ? "bg-rose-950/20 border-rose-500/50 shadow-md"
-                        : "bg-zinc-900/60 hover:bg-zinc-900 border-white/5 hover:border-white/10"
-                    )}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
-                      <div
-                        className={cn(
-                          "w-3 h-3 rounded-full flex-shrink-0",
-                          status?.online
-                            ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"
-                            : status
-                            ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]"
-                            : "bg-zinc-600 animate-pulse"
-                        )}
-                      />
-                      <span className="font-mono text-xs sm:text-sm text-zinc-200 truncate">
-                        {url}
-                      </span>
-                      {isActive && (
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-600/90 text-white uppercase tracking-wider">
-                          Активне
-                        </span>
-                      )}
-                      {status?.doh_bypass && status.online && (
-                        <span
-                          title="Розблоковано через DNS-over-HTTPS (обхід блокування провайдера)"
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
-                        >
-                          <Shield className="w-2.5 h-2.5" />
-                          DoH
-                        </span>
-                      )}
-                      {isFastest && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                          <Zap className="w-2.5 h-2.5" />
-                          Найшвидше
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2.5 flex-shrink-0">
-                      {status ? (
-                        <div className="flex items-center gap-2 text-right">
-                          <span
-                            className={cn(
-                              "text-xs font-mono font-medium",
-                              status.online ? "text-emerald-400" : "text-rose-400"
-                            )}
-                          >
-                            {status.online
-                              ? `${status.latency_ms} ms`
-                              : status.status_message || "Помилка"}
+          {/* Right Content Pane */}
+          <div className="flex-1 p-5 sm:p-6 overflow-y-auto space-y-6">
+            {/* ================= TAB 1: NETWORK & MIRRORS ================= */}
+            {activeModalTab === "network" && (
+              <div className="space-y-6">
+                {/* Smart Mirror Rotator Card */}
+                <div className="p-4.5 rounded-2xl bg-gradient-to-br from-zinc-900/90 via-zinc-900/50 to-zinc-950 border border-rose-500/20 flex flex-col gap-3.5 shadow-xl shadow-black/40">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 flex-shrink-0 mt-0.5">
+                        <Zap className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="text-sm font-bold text-white tracking-tight">
+                            Smart Rotator + DNS-over-HTTPS (DoH)
+                          </h4>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase tracking-wider">
+                            АКТИВНО БЕЗ VPN
                           </span>
                         </div>
-                      ) : testing ? (
-                        <span className="text-[11px] text-zinc-500 font-mono">Пінг...</span>
-                      ) : null}
-
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          testMirror(url);
-                        }}
-                        title="Перевірити пінг"
-                        className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                      </button>
-
-                      {isCustomOnly && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveCustomMirror(url);
-                          }}
-                          title="Видалити дзеркало"
-                          className="p-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 text-zinc-500 hover:text-rose-400 transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                        <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                          Провайдери часто підміняють DNS для{" "}
+                          <span className="text-zinc-200 font-mono">rezka.ag</span> та{" "}
+                          <span className="text-zinc-200 font-mono">hdrezka.me</span> на{" "}
+                          <span className="text-rose-400 font-mono">127.0.0.1</span>. Вбудований
+                          DoH-резолвер RDX автоматично отримує реальні IP кластера та відкриває
+                          заблоковані дзеркала напряму.
+                        </p>
+                      </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
 
-            {/* Add Custom Mirror Input */}
-            <div className="flex gap-2 pt-2">
-              <input
-                type="text"
-                value={customInput}
-                onChange={(e) => setCustomInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAddCustomMirror();
-                }}
-                placeholder="https://нове-дзеркало.com"
-                className="flex-1 px-4 py-2.5 rounded-xl bg-zinc-900 border border-white/10 text-white placeholder-zinc-500 text-xs focus:outline-none focus:border-rose-500"
-              />
-              <button
-                onClick={handleAddCustomMirror}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs border border-white/15 transition-all cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Додати</span>
-              </button>
-            </div>
-          </div>
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <button
+                      onClick={() => handleSmartSelect(false)}
+                      disabled={smartRotating || testing}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 active:scale-95 text-white font-bold text-xs transition-all shadow-lg shadow-rose-950/40 cursor-pointer disabled:opacity-50"
+                    >
+                      {smartRotating ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Zap className="w-3.5 h-3.5" />
+                      )}
+                      <span>Знайти та увімкнути найшвидше</span>
+                    </button>
 
-          {/* Proxy Configuration */}
-          <div className="space-y-3 pt-4 border-t border-white/10">
-            <h3 className="text-sm font-bold text-zinc-200 uppercase tracking-wider">
-              Налаштування проксі (опціонально)
-            </h3>
-            <p className="text-xs text-zinc-400">
-              Підтримуються формати HTTP/HTTPS або SOCKS5 (наприклад: `http://127.0.0.1:8080` або `socks5://127.0.0.1:1080`).
-            </p>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={proxyInput}
-                onChange={(e) => setProxyInput(e.target.value)}
-                placeholder="http://127.0.0.1:8080"
-                className="flex-1 px-4 py-2.5 rounded-xl bg-zinc-900 border border-white/10 text-white placeholder-zinc-500 text-xs focus:outline-none focus:border-rose-500 font-mono"
-              />
-              <button
-                onClick={handleSaveProxy}
-                disabled={savingProxy}
-                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-              >
-                {savingProxy ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Check className="w-4 h-4" />
-                )}
-                <span>Зберегти</span>
-              </button>
-            </div>
-          </div>
-            </>
-          )}
+                    <button
+                      onClick={() => handleSmartSelect(true)}
+                      disabled={smartRotating || testing}
+                      className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 text-zinc-200 font-semibold text-xs border border-white/10 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <Shuffle className="w-3.5 h-3.5 text-zinc-300" />
+                      <span>Перемкнути на інше робоче</span>
+                    </button>
 
-          {/* ================= TAB: PLAYBACK ================= */}
-          {activeModalTab === "playback" && (
-            <div className="space-y-6">
-              {/* Default Quality Card */}
-              <div className="p-5 rounded-2xl bg-zinc-900/60 border border-white/10 space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-rose-600/20 border border-rose-500/30 flex items-center justify-center text-rose-400">
-                    <Film className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-white">Бажана якість відео за замовчуванням</h4>
-                    <p className="text-xs text-zinc-400">
-                      RDX автоматично обиратиме цю якість під час запуску будь-якого фільму чи серіалу
-                    </p>
+                    <button
+                      onClick={handleOpenCaptcha}
+                      disabled={captchaOpening}
+                      className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-medium text-xs border border-white/10 transition-all cursor-pointer"
+                      title="Відкрити вікно перевірки Cloudflare / Captcha"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Captcha Bridge</span>
+                      <ExternalLink className="w-3 h-3 opacity-60" />
+                    </button>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
-                  {[
-                    { label: "1080p Ultra", isUltra: true },
-                    { label: "1080p", isUltra: false },
-                    { label: "720p", isUltra: false },
-                    { label: "480p", isUltra: false },
-                    { label: "360p", isUltra: false },
-                  ].map((q) => {
-                    const isSelected = preferredQuality === q.label;
-                    return (
-                      <button
-                        key={q.label}
-                        onClick={() => handleSelectDefaultQuality(q.label)}
-                        className={cn(
-                          "px-3 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
-                          isSelected
-                            ? "bg-rose-600 border-rose-500 text-white shadow-lg shadow-rose-950/40"
-                            : "bg-zinc-800/60 border-white/10 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                        )}
-                      >
-                        {q.isUltra && <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400/30 flex-shrink-0" />}
-                        <span>{q.label}</span>
-                      </button>
-                    );
-                  })}
+                {/* Mirrors List */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-wider">
+                      Пул дзеркал ({allMirrors.length})
+                    </h3>
+                    <button
+                      onClick={handleTestAll}
+                      disabled={testing || smartRotating}
+                      className="flex items-center gap-1.5 text-xs text-rose-400 hover:text-rose-300 transition-colors font-medium cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw
+                        className={cn("w-3.5 h-3.5", (testing || smartRotating) && "animate-spin")}
+                      />
+                      <span>{testing ? "Перевірка..." : "Перевірити всі"}</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {allMirrors.map((url) => {
+                      const isActive = settings?.active_mirror === url;
+                      const status = testingStatus[url];
+                      const isFastest = fastestUrl === url && status?.online;
+                      const isCustomOnly = !PRESET_MIRRORS.includes(url) && !isActive;
+
+                      return (
+                        <div
+                          key={url}
+                          onClick={() => handleSelectMirror(url)}
+                          className={cn(
+                            "flex items-center justify-between p-3.5 rounded-2xl border transition-all cursor-pointer",
+                            isActive
+                              ? "bg-rose-950/20 border-rose-500/40 text-white shadow-lg shadow-rose-950/20"
+                              : "bg-zinc-900/40 border-white/5 hover:border-white/15 text-zinc-300 hover:bg-zinc-900/70"
+                          )}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={cn(
+                                "w-2.5 h-2.5 rounded-full flex-shrink-0 transition-all",
+                                status?.online
+                                  ? "bg-emerald-500 shadow-md shadow-emerald-500/50"
+                                  : status
+                                    ? "bg-rose-500 shadow-md shadow-rose-500/50"
+                                    : "bg-zinc-600"
+                              )}
+                            />
+                            <span className="text-xs sm:text-sm font-mono font-medium">{url}</span>
+                            {isActive && (
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-600 text-white uppercase tracking-wider">
+                                АКТИВНЕ
+                              </span>
+                            )}
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                              DoH
+                            </span>
+                            {isFastest && (
+                              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                                <Zap className="w-2.5 h-2.5" />
+                                Найшвидше
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {status && (
+                              <span
+                                className={cn(
+                                  "text-xs font-mono font-semibold",
+                                  status.online
+                                    ? status.latency_ms < 500
+                                      ? "text-emerald-400"
+                                      : "text-amber-400"
+                                    : "text-rose-400"
+                                )}
+                              >
+                                {status.online ? `${status.latency_ms} ms` : "Офлайн"}
+                              </span>
+                            )}
+
+                            {isCustomOnly && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveCustomMirror(url);
+                                }}
+                                className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                title="Видалити це дзеркало"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                testMirror(url);
+                              }}
+                              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                              title="Оновити пінґ"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Add Custom Mirror Input */}
+                  <div className="flex gap-2 pt-1">
+                    <input
+                      type="text"
+                      value={customInput}
+                      onChange={(e) => setCustomInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleAddCustomMirror()}
+                      placeholder="https://нове-дзеркало.com"
+                      className="flex-1 px-4 py-2.5 rounded-xl bg-zinc-900 border border-white/10 text-white placeholder-zinc-500 text-xs focus:outline-none focus:border-rose-500 transition-colors"
+                    />
+                    <button
+                      onClick={handleAddCustomMirror}
+                      className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-semibold text-xs transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Додати</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Proxy Settings Card */}
+                <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/8 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-zinc-400" />
+                    <h3 className="text-xs font-bold text-zinc-200 uppercase tracking-wider">
+                      HTTP / SOCKS5 Проксі-сервер (Опціонально)
+                    </h3>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={proxyInput}
+                      onChange={(e) => setProxyInput(e.target.value)}
+                      placeholder="socks5://127.0.0.1:9050 або http://user:pass@host:port"
+                      className="flex-1 px-4 py-2 rounded-xl bg-zinc-950 border border-white/10 text-white placeholder-zinc-500 text-xs focus:outline-none focus:border-rose-500"
+                    />
+                    <button
+                      onClick={handleSaveProxy}
+                      disabled={savingProxy}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      {savingProxy ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Check className="w-3.5 h-3.5" />
+                      )}
+                      <span>Зберегти</span>
+                    </button>
+                  </div>
                 </div>
               </div>
+            )}
 
-              {/* Default Translation / Studio Card */}
-              <div className="p-5 rounded-2xl bg-zinc-900/60 border border-white/10 space-y-3.5">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-                    <Settings className="w-4 h-4" />
+            {/* ================= TAB 2: PLAYBACK ================= */}
+            {activeModalTab === "playback" && (
+              <div className="space-y-6">
+                {/* Default Video Quality */}
+                <div className="p-4.5 rounded-2xl bg-zinc-900/50 border border-white/8 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0">
+                      <Film className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-white">Бажана якість відео за замовчуванням</h4>
+                      <p className="text-xs text-zinc-400">
+                        RDX автоматично обиратиме цю роздільну здатність при старті фільму чи серії
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-white">Пріоритетна озвучка</h4>
-                    <p className="text-xs text-zinc-400">
-                      Плеєр спробує автоматично вибрати озвучку, якщо її назва збігається
-                    </p>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
+                    {[
+                      { key: "1080p Ultra", label: "1080p Ultra", vip: true },
+                      { key: "1080p", label: "1080p" },
+                      { key: "720p", label: "720p" },
+                      { key: "480p", label: "480p" },
+                      { key: "360p", label: "360p" },
+                    ].map((q) => {
+                      const isSelected = preferredQuality === q.key;
+                      return (
+                        <button
+                          key={q.key}
+                          onClick={() => handleSelectDefaultQuality(q.key)}
+                          className={cn(
+                            "flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer border",
+                            isSelected
+                              ? "bg-rose-600 border-rose-500 text-white shadow-lg shadow-rose-950/50"
+                              : "bg-zinc-950/80 border-white/5 text-zinc-300 hover:bg-zinc-900 hover:border-white/15"
+                          )}
+                        >
+                          {q.vip && <Crown className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />}
+                          <span>{q.label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
-                <div className="flex gap-2">
+                {/* Priority Voiceover / Translator */}
+                <div className="p-4.5 rounded-2xl bg-zinc-900/50 border border-white/8 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0">
+                      <Sliders className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-white">Пріоритетна озвучка</h4>
+                      <p className="text-xs text-zinc-400">
+                        Плеєр спробує автоматично обрати цю озвучку, якщо її назва збігається
+                      </p>
+                    </div>
+                  </div>
+
                   <input
                     type="text"
                     value={preferredTranslator}
                     onChange={(e) => handleSaveTranslator(e.target.value)}
                     placeholder="Наприклад: Український, HDRezka Studio"
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-zinc-900 border border-white/10 text-white placeholder-zinc-500 text-xs focus:outline-none focus:border-rose-500"
+                    className="w-full px-4 py-2.5 rounded-xl bg-zinc-950 border border-white/10 text-white placeholder-zinc-500 text-xs focus:outline-none focus:border-rose-500"
                   />
+
+                  {/* Suggestion Chips */}
+                  <div className="flex items-center gap-2 flex-wrap text-xs pt-1">
+                    <span className="text-zinc-500 text-[11px]">Швидкі пресети:</span>
+                    {["Український", "HDRezka Studio", "Оригінал"].map((preset) => (
+                      <button
+                        key={preset}
+                        onClick={() => handleSaveTranslator(preset)}
+                        className={cn(
+                          "px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-all cursor-pointer",
+                          preferredTranslator === preset
+                            ? "bg-rose-600/30 border-rose-500/50 text-rose-300"
+                            : "bg-white/5 border-white/10 text-zinc-400 hover:text-white"
+                        )}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                {/* Quick Suggestion Chips */}
-                <div className="flex items-center gap-2 flex-wrap text-xs">
-                  <span className="text-zinc-500">Швидкі пресети:</span>
-                  {["Український", "HDRezka Studio", "Оригінал"].map((preset) => (
+                {/* Hardware Engine Card */}
+                <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/8 space-y-2">
+                  <div className="text-xs font-semibold text-zinc-300 flex items-center gap-2">
+                    <Monitor className="w-4 h-4 text-zinc-400" />
+                    <span>Апаратне декодування та буферизація</span>
+                  </div>
+                  <div className="text-[11px] text-zinc-400 leading-relaxed">
+                    Відеоплеєр RDX використовує ядро{" "}
+                    <span className="text-zinc-200 font-mono">WebKitGTK 2.4x</span> на базі
+                    системного <span className="text-zinc-200 font-mono">GStreamer</span>{" "}
+                    (VAAPI/NVDEC) та розширення{" "}
+                    <span className="text-zinc-200 font-mono">HLS.js MSE</span> зі збільшеним
+                    буфером 120 секунд для плавного мотання.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ================= TAB 3: APPEARANCE & SOUND (NEW) ================= */}
+            {activeModalTab === "appearance" && (
+              <div className="space-y-6">
+                {/* Startup Sound Chime Card */}
+                <div className="p-4.5 rounded-2xl bg-zinc-900/50 border border-white/8 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0 mt-0.5">
+                        <Volume2 className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Звуковий сигнал заставки (RDX Chime)</h4>
+                        <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
+                          Відтворювати фірмовий кінематографічний звук при запуску додатку (гучність ~55%)
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Toggle Switch */}
+                    <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={startupSound}
+                        onChange={(e) => handleToggleStartupSound(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-2 border-t border-white/5">
                     <button
-                      key={preset}
-                      onClick={() => handleSaveTranslator(preset)}
-                      className={cn(
-                        "px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-all cursor-pointer",
-                        preferredTranslator === preset
-                          ? "bg-rose-600/30 border-rose-500/50 text-rose-300"
-                          : "bg-white/5 border-white/10 text-zinc-400 hover:text-white"
-                      )}
+                      onClick={handlePlayPreviewChime}
+                      disabled={previewPlaying}
+                      className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/12 active:scale-95 text-zinc-200 font-semibold text-xs border border-white/10 transition-all cursor-pointer disabled:opacity-50"
                     >
-                      {preset}
+                      <Volume2 className={cn("w-3.5 h-3.5 text-rose-400", previewPlaying && "animate-pulse")} />
+                      <span>{previewPlaying ? "Відтворення..." : "Прослухати звук заставки"}</span>
                     </button>
+                    <span className="text-[11px] text-zinc-500">
+                      Комфортна помірна гучність для Smart TV та навушників
+                    </span>
+                  </div>
+                </div>
+
+                {/* Ambient Glow Card */}
+                <div className="p-4.5 rounded-2xl bg-zinc-900/50 border border-white/8 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0 mt-0.5">
+                        <Sparkles className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Фоновий ефект розмиття (Ambient Backdrop Glow)</h4>
+                        <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
+                          М'яке розмите світіння під колір постера у стилі Apple TV на головній сторінці
+                        </p>
+                      </div>
+                    </div>
+
+                    <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={ambientGlow}
+                        onChange={(e) => handleToggleAmbientGlow(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* 60fps Motion Animations */}
+                <div className="p-4.5 rounded-2xl bg-zinc-900/50 border border-white/8 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0 mt-0.5">
+                        <Eye className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Плавні анімації 60fps (Framer Motion)</h4>
+                        <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
+                          Апаратне прискорення переходів карток та плавний скрол без ривків
+                        </p>
+                      </div>
+                    </div>
+
+                    <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={motion60fps}
+                        onChange={(e) => handleToggleMotion60fps(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ================= TAB 4: ABOUT & SHORTCUTS ================= */}
+            {activeModalTab === "about" && (
+              <div className="space-y-6">
+                {/* Brand Hero Card */}
+                <div className="p-5 rounded-2xl bg-gradient-to-r from-rose-950/40 via-zinc-900 to-zinc-950 border border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-2xl font-black tracking-tight text-white flex items-baseline">
+                      RDX<span className="text-rose-500">.</span>
+                      <span className="text-xs font-semibold text-zinc-400 ml-2 tracking-normal">
+                        v0.2.0 (Beta)
+                      </span>
+                    </h3>
+                    <p className="text-xs text-zinc-400 mt-1">
+                      Сучасний кросплатформний клієнт для HDRezka у стилі Android TV / Spotify Desktop
+                    </p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-xs font-semibold text-zinc-300">Автор:</span>
+                      <span className="px-2 py-0.5 rounded-md bg-rose-600/20 text-rose-300 font-mono text-xs font-bold border border-rose-500/30">
+                        justgl
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Fixed Badges without awkward line wrapping */}
+                  <div className="flex flex-col sm:items-end gap-1.5 flex-shrink-0">
+                    <span className="whitespace-nowrap px-3 py-1.5 rounded-xl bg-white/10 border border-white/15 text-xs font-mono font-bold text-zinc-200 shadow-sm">
+                      Rust + Tauri v2
+                    </span>
+                    <span className="whitespace-nowrap px-3 py-1 rounded-lg bg-zinc-900 border border-white/8 text-[11px] font-mono text-zinc-400">
+                      React 19 • Vite • Linux / Win / Mac
+                    </span>
+                  </div>
+                </div>
+
+                {/* Tech Stack Pills */}
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  <span className="text-zinc-500 text-[11px]">Технології:</span>
+                  {[
+                    "Tauri v2 (Rust)",
+                    "React 19 + TypeScript",
+                    "Tailwind CSS v4",
+                    "Framer Motion",
+                    "HLS.js MSE",
+                    "Native MPRIS",
+                    "DoH DNS Resolver",
+                  ].map((tech) => (
+                    <span
+                      key={tech}
+                      className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/8 text-zinc-300 text-[11px] font-medium"
+                    >
+                      {tech}
+                    </span>
                   ))}
                 </div>
-              </div>
 
-              {/* Multimedia Engine Card */}
-              <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/5 space-y-2">
-                <div className="text-xs font-semibold text-zinc-300">Апаратне декодування та буферизація</div>
-                <div className="text-[11px] text-zinc-400 leading-relaxed">
-                  Відеоплеєр RDX використовує ядро <span className="text-zinc-200 font-mono">WebKitGTK 2.4x</span> на базі системного <span className="text-zinc-200 font-mono">GStreamer</span> (VAAPI/NVDEC) та розширення <span className="text-zinc-200 font-mono">HLS.js MSE</span> зі збільшеним буфером 120 секунд для плавного мотання.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ================= TAB: ABOUT ================= */}
-          {activeModalTab === "about" && (
-            <div className="space-y-6">
-              {/* Brand Card */}
-              <div className="p-6 rounded-2xl bg-gradient-to-r from-rose-950/40 via-zinc-900 to-indigo-950/40 border border-white/10 flex items-center justify-between">
-                <div>
-                  <h3 className="text-2xl font-black tracking-tight text-white flex items-baseline">
-                    RDX<span className="text-rose-500">.</span>
-                    <span className="text-xs font-semibold text-zinc-400 ml-2 tracking-normal">v0.1.0 (Beta)</span>
-                  </h3>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Сучасний кросплатформний клієнт для HDRezka у стилі Android TV / Spotify Desktop
-                  </p>
-                </div>
-                <div className="px-3 py-1.5 rounded-xl bg-white/10 border border-white/15 text-xs font-mono text-zinc-300">
-                  Rust + Tauri v2
-                </div>
-              </div>
-
-              {/* Shortcuts Grid */}
-              <div className="p-5 rounded-2xl bg-zinc-900/60 border border-white/10 space-y-3">
-                <h4 className="text-xs font-bold text-zinc-300 uppercase tracking-wider">Гарячі клавіші плеєра</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
-                    <span className="text-zinc-400">Відтворення / Пауза</span>
-                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">Space / K</kbd>
-                  </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
-                    <span className="text-zinc-400">Перемотка назад / вперед</span>
-                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">← / → (±5с)</kbd>
-                  </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
-                    <span className="text-zinc-400">Велика перемотка</span>
-                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">Shift + ← / → (±30с)</kbd>
-                  </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
-                    <span className="text-zinc-400">Гучність</span>
-                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">↑ / ↓ (±5%)</kbd>
-                  </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
-                    <span className="text-zinc-400">Без звуку (Mute)</span>
-                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">M</kbd>
-                  </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
-                    <span className="text-zinc-400">Повний екран</span>
-                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">F</kbd>
-                  </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
-                    <span className="text-zinc-400">Повтор відрізка A–B</span>
-                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">L</kbd>
-                  </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
-                    <span className="text-zinc-400">Зробити скріншот кадру</span>
-                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">S</kbd>
-                  </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
-                    <span className="text-zinc-400">Статистика потоку</span>
-                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">I</kbd>
-                  </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
-                    <span className="text-zinc-400">Швидкий пошук</span>
-                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">Ctrl + K</kbd>
+                {/* Shortcuts Grid */}
+                <div className="p-4.5 rounded-2xl bg-zinc-900/60 border border-white/10 space-y-3">
+                  <h4 className="text-xs font-bold text-zinc-300 uppercase tracking-wider">
+                    Гарячі клавіші плеєра
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                      <span className="text-zinc-400">Відтворення / Пауза</span>
+                      <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">
+                        Space / K
+                      </kbd>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                      <span className="text-zinc-400">Перемотка назад / вперед</span>
+                      <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">
+                        ← / → (±5с)
+                      </kbd>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                      <span className="text-zinc-400">Велика перемотка</span>
+                      <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">
+                        Shift + ← / → (±30с)
+                      </kbd>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                      <span className="text-zinc-400">Гучність</span>
+                      <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">
+                        ↑ / ↓ (±5%)
+                      </kbd>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                      <span className="text-zinc-400">Без звуку (Mute)</span>
+                      <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">
+                        M
+                      </kbd>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                      <span className="text-zinc-400">Повний екран</span>
+                      <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">
+                        F
+                      </kbd>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                      <span className="text-zinc-400">Повтор відрізка A–B</span>
+                      <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">
+                        L
+                      </kbd>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                      <span className="text-zinc-400">Зробити скріншот кадру</span>
+                      <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">
+                        S
+                      </kbd>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                      <span className="text-zinc-400">Статистика потоку</span>
+                      <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">
+                        I
+                      </kbd>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                      <span className="text-zinc-400">Швидкий пошук</span>
+                      <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">
+                        Ctrl + K
+                      </kbd>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
