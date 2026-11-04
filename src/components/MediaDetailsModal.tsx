@@ -38,6 +38,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
   onToggleBookmark,
 }) => {
   const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [details, setDetails] = useState<MediaDetails | null>(null);
   const [savedProgress, setSavedProgress] = useState<WatchProgress | null>(null);
   const [selectedTranslator, setSelectedTranslator] = useState<Translator | null>(null);
@@ -87,14 +88,16 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
       setSavedProgress(null);
       setSelectedTranslator(null);
       setIsTranslatorDropdownOpen(false);
+      setFetchError(null);
       return;
     }
 
     let isMounted = true;
     const fetchData = async () => {
       setLoading(true);
+      setFetchError(null);
       try {
-        let [det, progress] = await Promise.all([
+        const [det, progress] = await Promise.all([
           api.getMediaDetails(media.url),
           api.getWatchProgress(media.id).catch(() => null),
         ]);
@@ -117,25 +120,10 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
           setSelectedTranslator(defaultT);
         }
 
-        // If series, ensure seasons and episodes match defaultT immediately!
-        if (det.seasons && det.seasons.length > 0 && defaultT) {
-          try {
-            const epData = await api.getEpisodes(det.id, defaultT.id, det.url);
-            if (epData.episodes && epData.episodes.length > 0) {
-              det = {
-                ...det,
-                seasons: epData.seasons.length > 0 ? epData.seasons : det.seasons,
-                episodes: epData.episodes,
-                initial_streams: epData.stream_data || det.initial_streams,
-              };
-            }
-          } catch (epErr) {
-            console.warn("Failed to load initial episodes for default translator:", epErr);
-          }
-        }
-
+        // Display details immediately (cuts initial load wait in half)
         setDetails(det);
         setSavedProgress(progress);
+        setLoading(false);
 
         // Default season & episode
         if (progress?.season) {
@@ -156,8 +144,37 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
         } else {
           setSelectedEpisode(1);
         }
+
+        // If series, fetch translator-specific episode matrix asynchronously without blocking UI
+        if (det.seasons && det.seasons.length > 0 && defaultT) {
+          setLoadingEpisodes(true);
+          api.getEpisodes(det.id, defaultT.id, det.url)
+            .then((epData) => {
+              if (isMounted && epData.episodes && epData.episodes.length > 0) {
+                setDetails((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        seasons: epData.seasons.length > 0 ? epData.seasons : prev.seasons,
+                        episodes: epData.episodes,
+                        initial_streams: epData.stream_data || prev.initial_streams,
+                      }
+                    : prev
+                );
+              }
+            })
+            .catch((epErr) => {
+              console.warn("Failed to load initial episodes for default translator:", epErr);
+            })
+            .finally(() => {
+              if (isMounted) setLoadingEpisodes(false);
+            });
+        }
       } catch (err) {
         console.error("Failed to load media details:", err);
+        if (isMounted) {
+          setFetchError("Не вдалося завантажити інформацію про цей фільм. Перевірте дзеркало в налаштуваннях.");
+        }
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -207,7 +224,14 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
 
   if (!isOpen || !media) return null;
 
-  const isSeries = Boolean(details?.seasons && details.seasons.length > 0);
+  const isSeries = details
+    ? Boolean(details.seasons && details.seasons.length > 0)
+    : Boolean(
+        media.series_info ||
+        media.entity_type?.toLowerCase().includes("series") ||
+        media.entity_type?.toLowerCase().includes("сериал") ||
+        media.entity_type?.toLowerCase().includes("серіал")
+      );
 
   // Episodes for current selected season
   const currentSeasonEpisodes =
@@ -272,130 +296,179 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
         <span className="text-xs font-semibold">Назад</span>
       </button>
 
-      {loading ? (
-        <div className="min-h-screen flex flex-col items-center justify-center space-y-4">
-          <Loader2 className="w-12 h-12 text-rose-500 animate-spin" />
-          <p className="text-sm font-medium text-zinc-400">
-            Завантаження інформації про фільм...
-          </p>
+      {/* Full Modal Layout (Rendered INSTANTLY with ambient backdrop and poster) */}
+      <div className="relative w-full">
+        {/* Full-Bleed Atmospheric Backdrop with Ambient Soft-Focus Blur */}
+        <div className="relative w-full h-[55vh] min-h-[420px] max-h-[620px] overflow-hidden pointer-events-none transform-gpu [isolation:isolate]">
+          <img
+            src={details?.high_res_poster || details?.poster || media.poster}
+            alt={details?.title || media.title}
+            decoding="async"
+            className="w-full h-full object-cover object-[center_20%] sm:object-[75%_20%] opacity-35 sm:opacity-40 scale-110 blur-[12px] sm:blur-[18px] saturate-125 transform-gpu"
+          />
+          {/* Smooth seamless multi-stop gradients for cinematic vignette */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#08090d] via-[#08090d]/80 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#08090d] via-[#08090d]/70 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-[#08090d]" />
         </div>
-      ) : details ? (
-        <div className="relative w-full">
-          {/* Full-Bleed Atmospheric Backdrop with Ambient Soft-Focus Blur */}
-          <div className="relative w-full h-[55vh] min-h-[420px] max-h-[620px] overflow-hidden pointer-events-none transform-gpu [isolation:isolate]">
-            <img
-              src={details.high_res_poster || details.poster || media.poster}
-              alt={details.title}
-              decoding="async"
-              className="w-full h-full object-cover object-[center_20%] sm:object-[75%_20%] opacity-35 sm:opacity-40 scale-110 blur-[12px] sm:blur-[18px] saturate-125 transform-gpu"
-            />
-            {/* Smooth seamless multi-stop gradients for cinematic vignette */}
-            <div className="absolute inset-0 bg-gradient-to-t from-[#08090d] via-[#08090d]/80 to-transparent" />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#08090d] via-[#08090d]/70 to-transparent" />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-[#08090d]" />
-          </div>
 
-          {/* Fluid Full-Width Details Content Container */}
-          <div className="w-full px-[clamp(1.5rem,5vw,5rem)] -mt-44 sm:-mt-52 relative z-10 pb-24 space-y-10">
-            {/* Top Hero Row */}
-            <div className="flex flex-col md:flex-row items-start gap-8 lg:gap-12">
-              {/* Vertical Crisp Poster */}
-              <div className="w-56 sm:w-64 lg:w-76 aspect-[2/3] rounded-2xl overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.95)] border border-white/15 flex-shrink-0 bg-zinc-900">
-                <img
-                  src={details.poster}
-                  alt={details.title}
-                  className="w-full h-full object-cover"
-                />
+        {/* Fluid Full-Width Details Content Container */}
+        <div className="w-full px-[clamp(1.5rem,5vw,5rem)] -mt-44 sm:-mt-52 relative z-10 pb-24 space-y-10">
+          {/* Top Hero Row */}
+          <div className="flex flex-col md:flex-row items-start gap-8 lg:gap-12">
+            {/* Vertical Crisp Poster */}
+            <div className="w-56 sm:w-64 lg:w-76 aspect-[2/3] rounded-2xl overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.95)] border border-white/15 flex-shrink-0 bg-zinc-900">
+              <img
+                src={details?.poster || media.poster}
+                alt={details?.title || media.title}
+                className="w-full h-full object-cover"
+              />
+            </div>
+
+            {/* Title, Badges, Actions, Description */}
+            <div className="flex-1 space-y-5 min-w-0">
+              {/* Badges Row */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                {(details?.imdb_rating || media.rating) && (
+                  <span className="flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    <Star className="w-3.5 h-3.5 fill-amber-400" />
+                    IMDb {details?.imdb_rating || media.rating}
+                  </span>
+                )}
+                {details?.kp_rating && (
+                  <span className="flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                    Кинопоиск {details.kp_rating}
+                  </span>
+                )}
+                <span className="px-3 py-1 rounded-xl text-xs font-bold uppercase bg-rose-600/90 text-white border border-rose-400/30">
+                  {isSeries ? "Серіал" : "Фільм"}
+                </span>
+                {media.misc_info && (
+                  <span className="text-xs text-zinc-300 font-medium px-1">
+                    {media.misc_info}
+                  </span>
+                )}
               </div>
 
-              {/* Title, Badges, Actions, Description */}
-              <div className="flex-1 space-y-5 min-w-0">
-                {/* Badges Row */}
-                <div className="flex flex-wrap items-center gap-2.5">
-                  {details.imdb_rating && (
-                    <span className="flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                      <Star className="w-3.5 h-3.5 fill-amber-400" />
-                      IMDb {details.imdb_rating}
-                    </span>
-                  )}
-                  {details.kp_rating && (
-                    <span className="flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30">
-                      Кинопоиск {details.kp_rating}
-                    </span>
-                  )}
-                  <span className="px-3 py-1 rounded-xl text-xs font-bold uppercase bg-rose-600/90 text-white border border-rose-400/30">
-                    {isSeries ? "Серіал" : "Фільм"}
-                  </span>
-                  {media.misc_info && (
-                    <span className="text-xs text-zinc-300 font-medium px-1">
-                      {media.misc_info}
-                    </span>
-                  )}
-                </div>
-
-                {/* Main Titles */}
-                <div className="space-y-1">
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight">
-                    {details.title}
-                  </h1>
-                  {details.orig_title && (
-                    <p className="text-base sm:text-lg font-medium text-zinc-400">
-                      {details.orig_title}
-                    </p>
-                  )}
-                </div>
-
-                {/* Primary Action Buttons */}
-                <div className="flex flex-wrap items-center gap-3 pt-2">
-                  <button
-                    onClick={() => handleStartPlayback()}
-                    className="flex items-center gap-2.5 px-7 py-3.5 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-rose-500 hover:from-red-500 hover:to-rose-400 text-white font-bold text-sm shadow-xl shadow-rose-950/60 active:scale-95 transition-all cursor-pointer"
-                  >
-                    <Play className="w-4 h-4 fill-current" />
-                    <span>
-                      {savedProgress && savedProgress.position_sec > 10
-                        ? `Продовжити (${Math.floor(savedProgress.position_sec / 60)} хв)`
-                        : isSeries
-                        ? `Дивитися S${selectedSeason}E${selectedEpisode}`
-                        : "Дивитися фільм"}
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      const bookmarkItem: Bookmark = {
-                        media_id: details.id,
-                        media_url: details.url,
-                        title: details.title,
-                        poster_url: details.poster,
-                        media_type: isSeries ? "series" : "movie",
-                        year_info: details.orig_title || null,
-                        rating: details.imdb_rating || details.kp_rating || null,
-                        category: "favorites",
-                        added_at: Math.floor(Date.now() / 1000),
-                      };
-                      onToggleBookmark(bookmarkItem);
-                    }}
-                    className={cn(
-                      "flex items-center gap-2 px-5 py-3.5 rounded-2xl font-semibold text-sm border transition-all cursor-pointer active:scale-95",
-                      isBookmarked
-                        ? "bg-amber-500/20 text-amber-400 border-amber-500/40 hover:bg-amber-500/30"
-                        : "bg-white/10 hover:bg-white/20 text-white border-white/15"
-                    )}
-                  >
-                    <BookmarkIcon
-                      className={cn("w-4 h-4", isBookmarked && "fill-amber-400")}
-                    />
-                    <span>{isBookmarked ? "У закладках" : "У закладки"}</span>
-                  </button>
-                </div>
-
-                {/* Description */}
-                {details.description && (
-                  <p className="text-sm sm:text-base text-zinc-300 leading-relaxed max-w-4xl pt-1">
-                    {details.description}
+              {/* Main Titles */}
+              <div className="space-y-1">
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight">
+                  {details?.title || media.title}
+                </h1>
+                {details?.orig_title && (
+                  <p className="text-base sm:text-lg font-medium text-zinc-400">
+                    {details.orig_title}
                   </p>
                 )}
+              </div>
+
+              {/* Actions & Details Area (Instant Skeleton Shimmer or Real Actions) */}
+              {loading && !details ? (
+                <div className="space-y-5 pt-1">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2.5 px-7 py-3.5 rounded-2xl bg-gradient-to-r from-red-600/70 via-rose-600/70 to-rose-500/70 text-white font-bold text-sm shadow-xl shadow-rose-950/40 select-none">
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <span>Завантаження плеєра...</span>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        const bookmarkItem: Bookmark = {
+                          media_id: media.id,
+                          media_url: media.url,
+                          title: media.title,
+                          poster_url: media.poster,
+                          media_type: isSeries ? "series" : "movie",
+                          year_info: media.misc_info || null,
+                          rating: media.rating || null,
+                          category: "favorites",
+                          added_at: Math.floor(Date.now() / 1000),
+                        };
+                        onToggleBookmark(bookmarkItem);
+                      }}
+                      className={cn(
+                        "flex items-center gap-2 px-5 py-3.5 rounded-2xl font-semibold text-sm border transition-all cursor-pointer active:scale-95",
+                        isBookmarked
+                          ? "bg-amber-500/20 text-amber-400 border-amber-500/40 hover:bg-amber-500/30"
+                          : "bg-white/10 hover:bg-white/20 text-white border-white/15"
+                      )}
+                    >
+                      <BookmarkIcon
+                        className={cn("w-4 h-4", isBookmarked && "fill-amber-400")}
+                      />
+                      <span>{isBookmarked ? "У закладках" : "У закладки"}</span>
+                    </button>
+                  </div>
+
+                  {/* Shimmer Description Lines */}
+                  <div className="space-y-2.5 pt-1 max-w-3xl animate-pulse">
+                    <div className="h-4 bg-white/10 rounded-lg w-full" />
+                    <div className="h-4 bg-white/10 rounded-lg w-11/12" />
+                    <div className="h-4 bg-white/10 rounded-lg w-3/4" />
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs text-zinc-400 font-medium">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-500" />
+                    <span>Отримання інформації про озвучення та якість...</span>
+                  </div>
+                </div>
+              ) : fetchError ? (
+                <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-200 text-xs flex items-center justify-between gap-4 mt-2">
+                  <span>{fetchError}</span>
+                </div>
+              ) : details ? (
+                <>
+                  {/* Primary Action Buttons */}
+                  <div className="flex flex-wrap items-center gap-3 pt-2">
+                    <button
+                      onClick={() => handleStartPlayback()}
+                      className="flex items-center gap-2.5 px-7 py-3.5 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-rose-500 hover:from-red-500 hover:to-rose-400 text-white font-bold text-sm shadow-xl shadow-rose-950/60 active:scale-95 transition-all cursor-pointer"
+                    >
+                      <Play className="w-4 h-4 fill-current" />
+                      <span>
+                        {savedProgress && savedProgress.position_sec > 10
+                          ? `Продовжити (${Math.floor(savedProgress.position_sec / 60)} хв)`
+                          : isSeries
+                          ? `Дивитися S${selectedSeason}E${selectedEpisode}`
+                          : "Дивитися фільм"}
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        const bookmarkItem: Bookmark = {
+                          media_id: details.id,
+                          media_url: details.url,
+                          title: details.title,
+                          poster_url: details.poster,
+                          media_type: isSeries ? "series" : "movie",
+                          year_info: details.orig_title || null,
+                          rating: details.imdb_rating || details.kp_rating || null,
+                          category: "favorites",
+                          added_at: Math.floor(Date.now() / 1000),
+                        };
+                        onToggleBookmark(bookmarkItem);
+                      }}
+                      className={cn(
+                        "flex items-center gap-2 px-5 py-3.5 rounded-2xl font-semibold text-sm border transition-all cursor-pointer active:scale-95",
+                        isBookmarked
+                          ? "bg-amber-500/20 text-amber-400 border-amber-500/40 hover:bg-amber-500/30"
+                          : "bg-white/10 hover:bg-white/20 text-white border-white/15"
+                      )}
+                    >
+                      <BookmarkIcon
+                        className={cn("w-4 h-4", isBookmarked && "fill-amber-400")}
+                      />
+                      <span>{isBookmarked ? "У закладках" : "У закладки"}</span>
+                    </button>
+                  </div>
+
+                  {/* Description */}
+                  {details.description && (
+                    <p className="text-sm sm:text-base text-zinc-300 leading-relaxed max-w-4xl pt-1">
+                      {details.description}
+                    </p>
+                  )}
 
                 {/* Structured Voiceover Selector (No Wall of 28 Pills!) */}
                 {details.translators && details.translators.length > 0 && (
@@ -528,11 +601,13 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                     </div>
                   </div>
                 )}
+                </>
+              ) : null}
               </div>
             </div>
 
             {/* Below Hero Row: Seasons & Episodes (ALWAYS show seasons row for series) */}
-            {isSeries && details.seasons.length >= 1 && (
+            {details && isSeries && details.seasons.length >= 1 && (
               <div className="space-y-6 pt-6 border-t border-white/10">
                 {/* Seasons Row */}
                 <div className="space-y-2.5">
@@ -643,7 +718,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
             )}
 
             {/* Information Table (Metadata) */}
-            {details.info_table && details.info_table.length > 0 && (
+            {details && details.info_table && details.info_table.length > 0 && (
               <div className="space-y-3 pt-6 border-t border-white/10">
                 <h3 className="text-sm font-bold text-zinc-300 uppercase tracking-wider">
                   Інформація про фільм
@@ -665,11 +740,6 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
             )}
           </div>
         </div>
-      ) : (
-        <div className="min-h-screen flex flex-col items-center justify-center py-20 text-center text-zinc-400">
-          Не вдалося завантажити інформацію про цей фільм. Перевірте дзеркало в налаштуваннях.
-        </div>
-      )}
-    </div>
+      </div>
   );
 };
