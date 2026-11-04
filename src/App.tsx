@@ -406,14 +406,8 @@ export default function App() {
 
   const isBackgroundHidden = isDetailsOpen || Boolean(activePlayerDetails && playerMode === "full");
 
-  // Close Video Player (and immediately dismiss Linux MPRIS / desktop media session)
+  // Close Video Player
   const handleClosePlayer = () => {
-    if ("mediaSession" in navigator) {
-      try {
-        navigator.mediaSession.playbackState = "none";
-        navigator.mediaSession.metadata = null;
-      } catch {}
-    }
     setActivePlayerDetails(null);
     refreshContinueWatching();
   };

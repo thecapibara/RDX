@@ -761,7 +761,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, [saveCurrentProgress]);
 
-  // Comprehensive player teardown and close (pauses video, unloads sources, clears Linux MPRIS shade)
+  // Comprehensive player teardown and close (pauses video, unloads sources)
   const handleTeardownAndClose = useCallback(() => {
     // 1. Auto-save current watch progress
     saveCurrentProgress();
@@ -786,85 +786,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       } catch {}
     }
 
-    // 4. Kill OS MediaSession / MPRIS notification shade widget
-    if ("mediaSession" in navigator) {
-      try {
-        navigator.mediaSession.playbackState = "none";
-        navigator.mediaSession.metadata = null;
-        navigator.mediaSession.setActionHandler("play", null);
-        navigator.mediaSession.setActionHandler("pause", null);
-        navigator.mediaSession.setActionHandler("seekbackward", null);
-        navigator.mediaSession.setActionHandler("seekforward", null);
-        navigator.mediaSession.setActionHandler("seekto", null);
-        navigator.mediaSession.setActionHandler("stop", null);
-      } catch {}
-    }
-
-    // 5. Fire parent onClose
+    // 4. Fire parent onClose
     onClose();
   }, [saveCurrentProgress, onClose]);
 
-  // Media Session (MPRIS in Linux / OS Notification Controls) & Teardown Lifecycle
+  // Teardown Lifecycle on unmount
   useEffect(() => {
-    if ("mediaSession" in navigator) {
-      try {
-        navigator.mediaSession.metadata = new MediaMetadata({
-          title: details.title,
-          artist: isSeries
-            ? `Сезон ${activeSeason || 1}, Серія ${activeEpisode || 1}`
-            : details.orig_title || "Фільм",
-          album: "RDX",
-          artwork: details.poster
-            ? [
-                {
-                  src: details.poster,
-                  sizes: "512x512",
-                  type: "image/jpeg",
-                },
-              ]
-            : [],
-        });
-
-        navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
-
-        navigator.mediaSession.setActionHandler("play", () => {
-          videoRef.current?.play().catch(() => {});
-        });
-        navigator.mediaSession.setActionHandler("pause", () => {
-          videoRef.current?.pause();
-        });
-        navigator.mediaSession.setActionHandler("seekbackward", (ev) => {
-          if (videoRef.current) {
-            videoRef.current.currentTime = Math.max(
-              0,
-              videoRef.current.currentTime - (ev.seekOffset || 10)
-            );
-          }
-        });
-        navigator.mediaSession.setActionHandler("seekforward", (ev) => {
-          if (videoRef.current) {
-            const maxD = videoRef.current.duration || 999999;
-            videoRef.current.currentTime = Math.min(
-              maxD,
-              videoRef.current.currentTime + (ev.seekOffset || 10)
-            );
-          }
-        });
-        navigator.mediaSession.setActionHandler("seekto", (ev) => {
-          if (videoRef.current && ev.seekTime !== undefined) {
-            videoRef.current.currentTime = ev.seekTime;
-          }
-        });
-        navigator.mediaSession.setActionHandler("stop", () => {
-          handleTeardownAndClose();
-        });
-      } catch (err) {
-        console.warn("MediaSession initialization failed:", err);
-      }
-    }
-
     return () => {
-      // Pause video element and detach sources to kill the OS media session
       const video = videoRef.current;
       if (video) {
         try {
@@ -874,7 +802,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         } catch {}
       }
 
-      // Destroy Hls pipeline
       if (hlsRef.current) {
         try {
           hlsRef.current.stopLoad();
@@ -883,39 +810,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           hlsRef.current = null;
         } catch {}
       }
-
-      // Clear Media Session in Linux MPRIS / desktop shade
-      if ("mediaSession" in navigator) {
-        try {
-          navigator.mediaSession.playbackState = "none";
-          navigator.mediaSession.metadata = null;
-          navigator.mediaSession.setActionHandler("play", null);
-          navigator.mediaSession.setActionHandler("pause", null);
-          navigator.mediaSession.setActionHandler("seekbackward", null);
-          navigator.mediaSession.setActionHandler("seekforward", null);
-          navigator.mediaSession.setActionHandler("seekto", null);
-          navigator.mediaSession.setActionHandler("stop", null);
-        } catch {}
-      }
     };
-  }, [
-    details.title,
-    details.orig_title,
-    details.poster,
-    isSeries,
-    activeSeason,
-    activeEpisode,
-    handleTeardownAndClose,
-  ]);
-
-  // Sync mediaSession playbackState whenever isPlaying changes
-  useEffect(() => {
-    if ("mediaSession" in navigator) {
-      try {
-        navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
-      } catch {}
-    }
-  }, [isPlaying]);
+  }, []);
 
   // Controls activity timer
   const triggerActivity = () => {
