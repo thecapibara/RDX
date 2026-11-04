@@ -421,6 +421,7 @@ export default function App() {
           onTabChange={handleTabChange}
           onOpenSearch={() => setIsSearchOpen(true)}
           onOpenMirrorModal={() => setIsMirrorModalOpen(true)}
+          onOpenSettings={() => setIsMirrorModalOpen(true)}
           mirrorStatus={mirrorStatus}
           activeMirrorUrl={settings?.active_mirror || "https://rezka-tv.org"}
         />

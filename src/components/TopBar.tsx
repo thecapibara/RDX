@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Search, Maximize, Minimize, ChevronDown } from "lucide-react";
+import { Search, Maximize, Minimize, ChevronDown, Settings } from "lucide-react";
 import type { MirrorStatus } from "../types";
 import { cn } from "../lib/utils";
 
@@ -17,6 +17,7 @@ interface TopBarProps {
   onTabChange: (tab: NavTab) => void;
   onOpenSearch: () => void;
   onOpenMirrorModal: () => void;
+  onOpenSettings?: () => void;
   mirrorStatus: MirrorStatus | null;
   activeMirrorUrl: string;
 }
@@ -39,6 +40,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onTabChange,
   onOpenSearch,
   onOpenMirrorModal,
+  onOpenSettings,
   mirrorStatus,
   activeMirrorUrl,
 }) => {
@@ -263,6 +265,15 @@ export const TopBar: React.FC<TopBarProps> = ({
             )}
           />
           <span className="hidden xl:inline text-[13px]">{mirrorHost}</span>
+        </button>
+
+        {/* Settings Gear Button */}
+        <button
+          onClick={onOpenSettings || onOpenMirrorModal}
+          title="Налаштування програми"
+          className="text-zinc-300 hover:text-white transition-colors cursor-pointer p-1"
+        >
+          <Settings className="w-5 h-5" />
         </button>
 
         {/* Fullscreen Button */}

@@ -12,6 +12,10 @@ import {
   Shield,
   Shuffle,
   Trash2,
+  Settings,
+  Film,
+  Info,
+  Crown,
 } from "lucide-react";
 import type { AppSettings, MirrorStatus } from "../types";
 import { api } from "../services/api";
@@ -38,6 +42,9 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
   onMirrorChanged,
 }) => {
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [activeModalTab, setActiveModalTab] = useState<"network" | "playback" | "about">("network");
+  const [preferredQuality, setPreferredQuality] = useState<string>("720p");
+  const [preferredTranslator, setPreferredTranslator] = useState<string>("");
   const [customInput, setCustomInput] = useState("");
   const [proxyInput, setProxyInput] = useState("");
   const [testingStatus, setTestingStatus] = useState<Record<string, MirrorStatus>>({});
@@ -57,6 +64,8 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
       const s = await api.getSettings();
       setSettings(s);
       setProxyInput(s.proxy_url || "");
+      setPreferredQuality(s.preferred_quality || "720p");
+      setPreferredTranslator(s.preferred_translator || "");
 
       const urls = Array.from(
         new Set([
@@ -215,6 +224,25 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
     }
   };
 
+  const handleSelectDefaultQuality = async (q: string) => {
+    if (!settings) return;
+    setPreferredQuality(q);
+    try {
+      localStorage.setItem("rdx_preferred_quality", q);
+    } catch {}
+    const updatedSettings: AppSettings = { ...settings, preferred_quality: q };
+    setSettings(updatedSettings);
+    await api.updateSettings(updatedSettings).catch(console.warn);
+  };
+
+  const handleSaveTranslator = async (t: string) => {
+    if (!settings) return;
+    setPreferredTranslator(t);
+    const updatedSettings: AppSettings = { ...settings, preferred_translator: t.trim() };
+    setSettings(updatedSettings);
+    await api.updateSettings(updatedSettings).catch(console.warn);
+  };
+
   const allMirrors = useMemo(() => {
     const raw = Array.from(
       new Set([
@@ -263,17 +291,17 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
         className="w-full max-w-2xl bg-zinc-950 border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col my-auto max-h-[90vh]"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-white/10 bg-zinc-900/50">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-zinc-900/50">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-rose-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-rose-950/50">
-              <Server className="w-5 h-5" />
+              <Settings className="w-5 h-5" />
             </div>
             <div>
               <h2 className="text-lg font-bold text-white tracking-tight">
-                Розумний ротатор дзеркал та DoH-мережа
+                Налаштування RDX
               </h2>
               <p className="text-xs text-zinc-400">
-                Автоматичний обхід DNS-блокувань провайдера (Cloudflare / Google DoH) та вибір найшвидшого вузла
+                Дзеркала HDRezka, DoH-обхід блокувань, проксі та відтворення
               </p>
             </div>
           </div>
@@ -285,9 +313,51 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
           </button>
         </div>
 
+        {/* Modal Tab Navigation */}
+        <div className="flex items-center gap-1 px-6 pt-2 border-b border-white/10 bg-zinc-950">
+          <button
+            onClick={() => setActiveModalTab("network")}
+            className={cn(
+              "px-4 py-2.5 text-xs sm:text-sm font-semibold rounded-t-xl transition-colors cursor-pointer flex items-center gap-2",
+              activeModalTab === "network"
+                ? "bg-white/10 text-white border-b-2 border-rose-500"
+                : "text-zinc-400 hover:text-white hover:bg-white/5"
+            )}
+          >
+            <Server className="w-4 h-4" />
+            <span>Мережа та Дзеркала</span>
+          </button>
+          <button
+            onClick={() => setActiveModalTab("playback")}
+            className={cn(
+              "px-4 py-2.5 text-xs sm:text-sm font-semibold rounded-t-xl transition-colors cursor-pointer flex items-center gap-2",
+              activeModalTab === "playback"
+                ? "bg-white/10 text-white border-b-2 border-rose-500"
+                : "text-zinc-400 hover:text-white hover:bg-white/5"
+            )}
+          >
+            <Film className="w-4 h-4" />
+            <span>Відтворення</span>
+          </button>
+          <button
+            onClick={() => setActiveModalTab("about")}
+            className={cn(
+              "px-4 py-2.5 text-xs sm:text-sm font-semibold rounded-t-xl transition-colors cursor-pointer flex items-center gap-2",
+              activeModalTab === "about"
+                ? "bg-white/10 text-white border-b-2 border-rose-500"
+                : "text-zinc-400 hover:text-white hover:bg-white/5"
+            )}
+          >
+            <Info className="w-4 h-4" />
+            <span>Про програму</span>
+          </button>
+        </div>
+
         {/* Content */}
         <div className="p-6 overflow-y-auto space-y-6">
-          {/* Smart Mirror Rotator Hero Card */}
+          {activeModalTab === "network" && (
+            <>
+              {/* Smart Mirror Rotator Hero Card */}
           <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-950/50 via-rose-950/30 to-zinc-900 border border-indigo-500/25 flex flex-col gap-3.5">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">
@@ -517,6 +587,175 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
               </button>
             </div>
           </div>
+            </>
+          )}
+
+          {/* ================= TAB: PLAYBACK ================= */}
+          {activeModalTab === "playback" && (
+            <div className="space-y-6">
+              {/* Default Quality Card */}
+              <div className="p-5 rounded-2xl bg-zinc-900/60 border border-white/10 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-rose-600/20 border border-rose-500/30 flex items-center justify-center text-rose-400">
+                    <Film className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Бажана якість відео за замовчуванням</h4>
+                    <p className="text-xs text-zinc-400">
+                      RDX автоматично обиратиме цю якість під час запуску будь-якого фільму чи серіалу
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
+                  {[
+                    { label: "1080p Ultra", isUltra: true },
+                    { label: "1080p", isUltra: false },
+                    { label: "720p", isUltra: false },
+                    { label: "480p", isUltra: false },
+                    { label: "360p", isUltra: false },
+                  ].map((q) => {
+                    const isSelected = preferredQuality === q.label;
+                    return (
+                      <button
+                        key={q.label}
+                        onClick={() => handleSelectDefaultQuality(q.label)}
+                        className={cn(
+                          "px-3 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
+                          isSelected
+                            ? "bg-rose-600 border-rose-500 text-white shadow-lg shadow-rose-950/40"
+                            : "bg-zinc-800/60 border-white/10 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                        )}
+                      >
+                        {q.isUltra && <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400/30 flex-shrink-0" />}
+                        <span>{q.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Default Translation / Studio Card */}
+              <div className="p-5 rounded-2xl bg-zinc-900/60 border border-white/10 space-y-3.5">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                    <Settings className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Пріоритетна озвучка</h4>
+                    <p className="text-xs text-zinc-400">
+                      Плеєр спробує автоматично вибрати озвучку, якщо її назва збігається
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={preferredTranslator}
+                    onChange={(e) => handleSaveTranslator(e.target.value)}
+                    placeholder="Наприклад: Український, HDRezka Studio"
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-zinc-900 border border-white/10 text-white placeholder-zinc-500 text-xs focus:outline-none focus:border-rose-500"
+                  />
+                </div>
+
+                {/* Quick Suggestion Chips */}
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  <span className="text-zinc-500">Швидкі пресети:</span>
+                  {["Український", "HDRezka Studio", "Оригінал"].map((preset) => (
+                    <button
+                      key={preset}
+                      onClick={() => handleSaveTranslator(preset)}
+                      className={cn(
+                        "px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-all cursor-pointer",
+                        preferredTranslator === preset
+                          ? "bg-rose-600/30 border-rose-500/50 text-rose-300"
+                          : "bg-white/5 border-white/10 text-zinc-400 hover:text-white"
+                      )}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Multimedia Engine Card */}
+              <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/5 space-y-2">
+                <div className="text-xs font-semibold text-zinc-300">Апаратне декодування та буферизація</div>
+                <div className="text-[11px] text-zinc-400 leading-relaxed">
+                  Відеоплеєр RDX використовує ядро <span className="text-zinc-200 font-mono">WebKitGTK 2.4x</span> на базі системного <span className="text-zinc-200 font-mono">GStreamer</span> (VAAPI/NVDEC) та розширення <span className="text-zinc-200 font-mono">HLS.js MSE</span> зі збільшеним буфером 120 секунд для плавного мотання.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ================= TAB: ABOUT ================= */}
+          {activeModalTab === "about" && (
+            <div className="space-y-6">
+              {/* Brand Card */}
+              <div className="p-6 rounded-2xl bg-gradient-to-r from-rose-950/40 via-zinc-900 to-indigo-950/40 border border-white/10 flex items-center justify-between">
+                <div>
+                  <h3 className="text-2xl font-black tracking-tight text-white flex items-baseline">
+                    RDX<span className="text-rose-500">.</span>
+                    <span className="text-xs font-semibold text-zinc-400 ml-2 tracking-normal">v0.1.0 (Beta)</span>
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    Сучасний кросплатформний клієнт для HDRezka у стилі Android TV / Spotify Desktop
+                  </p>
+                </div>
+                <div className="px-3 py-1.5 rounded-xl bg-white/10 border border-white/15 text-xs font-mono text-zinc-300">
+                  Rust + Tauri v2
+                </div>
+              </div>
+
+              {/* Shortcuts Grid */}
+              <div className="p-5 rounded-2xl bg-zinc-900/60 border border-white/10 space-y-3">
+                <h4 className="text-xs font-bold text-zinc-300 uppercase tracking-wider">Гарячі клавіші плеєра</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                    <span className="text-zinc-400">Відтворення / Пауза</span>
+                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">Space / K</kbd>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                    <span className="text-zinc-400">Перемотка назад / вперед</span>
+                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">← / → (±5с)</kbd>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                    <span className="text-zinc-400">Велика перемотка</span>
+                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">Shift + ← / → (±30с)</kbd>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                    <span className="text-zinc-400">Гучність</span>
+                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">↑ / ↓ (±5%)</kbd>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                    <span className="text-zinc-400">Без звуку (Mute)</span>
+                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">M</kbd>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                    <span className="text-zinc-400">Повний екран</span>
+                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">F</kbd>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                    <span className="text-zinc-400">Повтор відрізка A–B</span>
+                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">L</kbd>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                    <span className="text-zinc-400">Зробити скріншот кадру</span>
+                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">S</kbd>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                    <span className="text-zinc-400">Статистика потоку</span>
+                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">I</kbd>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-white/5">
+                    <span className="text-zinc-400">Швидкий пошук</span>
+                    <kbd className="px-2 py-0.5 rounded bg-white/10 font-mono text-[11px] text-zinc-200">Ctrl + K</kbd>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
