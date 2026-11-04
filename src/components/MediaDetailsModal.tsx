@@ -9,6 +9,7 @@ import {
   Check,
   Search,
   Info,
+  Clock,
 } from "lucide-react";
 import type { Bookmark, MediaCard, MediaDetails, WatchProgress, Translator } from "../types";
 import { api } from "../services/api";
@@ -239,6 +240,13 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
       (ep) => ep.season_id === String(selectedSeason)
     ) || [];
 
+  // Check if media is actually available to stream (or is an upcoming unreleased title "В очікуванні")
+  const hasAvailableStream = Boolean(
+    (details?.translators && details.translators.length > 0) ||
+    (details?.initial_streams && details.initial_streams.qualities.length > 0) ||
+    (details?.episodes && details.episodes.length > 0)
+  );
+
   const handleStartPlayback = (season?: number, ep?: number) => {
     if (!details) return;
 
@@ -343,6 +351,12 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                 <span className="px-3 py-1 rounded-xl text-xs font-bold uppercase bg-rose-600/90 text-white border border-rose-400/30">
                   {isSeries ? "Серіал" : "Фільм"}
                 </span>
+                {details && !hasAvailableStream && (
+                  <span className="flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/35">
+                    <Clock className="w-3.5 h-3.5 text-amber-400" />
+                    В очікуванні
+                  </span>
+                )}
                 {media.misc_info && (
                   <span className="text-xs text-zinc-300 font-medium px-1">
                     {media.misc_info}
@@ -420,19 +434,26 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                 <>
                   {/* Primary Action Buttons */}
                   <div className="flex flex-wrap items-center gap-3 pt-2">
-                    <button
-                      onClick={() => handleStartPlayback()}
-                      className="flex items-center gap-2.5 px-7 py-3.5 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-rose-500 hover:from-red-500 hover:to-rose-400 text-white font-bold text-sm shadow-xl shadow-rose-950/60 active:scale-95 transition-all cursor-pointer"
-                    >
-                      <Play className="w-4 h-4 fill-current" />
-                      <span>
-                        {savedProgress && savedProgress.position_sec > 10
-                          ? `Продовжити (${Math.floor(savedProgress.position_sec / 60)} хв)`
-                          : isSeries
-                          ? `Дивитися S${selectedSeason}E${selectedEpisode}`
-                          : "Дивитися фільм"}
-                      </span>
-                    </button>
+                    {hasAvailableStream ? (
+                      <button
+                        onClick={() => handleStartPlayback()}
+                        className="flex items-center gap-2.5 px-7 py-3.5 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-rose-500 hover:from-red-500 hover:to-rose-400 text-white font-bold text-sm shadow-xl shadow-rose-950/60 active:scale-95 transition-all cursor-pointer"
+                      >
+                        <Play className="w-4 h-4 fill-current" />
+                        <span>
+                          {savedProgress && savedProgress.position_sec > 10
+                            ? `Продовжити (${Math.floor(savedProgress.position_sec / 60)} хв)`
+                            : isSeries
+                            ? `Дивитися S${selectedSeason}E${selectedEpisode}`
+                            : "Дивитися фільм"}
+                        </span>
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2 px-5 py-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold text-sm shadow-md select-none cursor-default">
+                        <Clock className="w-4 h-4 text-amber-400" />
+                        <span>В очікуванні релізу</span>
+                      </div>
+                    )}
 
                     <button
                       onClick={() => {
@@ -450,9 +471,11 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                         onToggleBookmark(bookmarkItem);
                       }}
                       className={cn(
-                        "flex items-center gap-2 px-5 py-3.5 rounded-2xl font-semibold text-sm border transition-all cursor-pointer active:scale-95",
+                        "flex items-center gap-2 px-6 py-3.5 rounded-2xl font-semibold text-sm border transition-all cursor-pointer active:scale-95",
                         isBookmarked
                           ? "bg-amber-500/20 text-amber-400 border-amber-500/40 hover:bg-amber-500/30"
+                          : !hasAvailableStream
+                          ? "bg-rose-600 hover:bg-rose-500 text-white border-rose-500 shadow-xl shadow-rose-950/60 font-bold"
                           : "bg-white/10 hover:bg-white/20 text-white border-white/15"
                       )}
                     >
@@ -462,6 +485,21 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                       <span>{isBookmarked ? "У закладках" : "У закладки"}</span>
                     </button>
                   </div>
+
+                  {/* Informational banner if title has no streams yet ("В очікуванні") */}
+                  {!hasAvailableStream && (
+                    <div className="flex items-start gap-3 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs sm:text-sm max-w-2xl">
+                      <Clock className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <p className="font-semibold text-amber-300">
+                          Фільм ще не вийшов у прокат або очікує надходження
+                        </p>
+                        <p className="text-zinc-400 text-xs leading-relaxed">
+                          Відеопотік або озвучення поки відсутні на HDRezka. Ви можете додати тайтл у закладки, щоб не пропустити появу плеєра на сайті!
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Description */}
                   {details.description && (
