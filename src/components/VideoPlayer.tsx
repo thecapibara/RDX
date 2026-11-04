@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Hls from "hls.js";
 import { motion } from "framer-motion";
 import {
@@ -761,8 +761,24 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, [saveCurrentProgress]);
 
+  const mediaTitle = useMemo(() => {
+    return isSeries
+      ? `${details.title} (С${activeSeason || 1} Е${activeEpisode || 1})`
+      : details.title;
+  }, [details.title, isSeries, activeSeason, activeEpisode]);
+
+  // Sync window/media title for OS status bar while playing, and reset on close
+  useEffect(() => {
+    document.title = mediaTitle;
+    return () => {
+      document.title = "";
+    };
+  }, [mediaTitle]);
+
   // Comprehensive player teardown and close (pauses video, unloads sources)
   const handleTeardownAndClose = useCallback(() => {
+    document.title = "";
+
     // 1. Auto-save current watch progress
     saveCurrentProgress();
 
@@ -1247,6 +1263,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         <video
           key="persistent-video"
           ref={videoRef}
+          title={mediaTitle}
           controls={false}
           disablePictureInPicture={false}
           controlsList="nodownload nofullscreen noremoteplayback"
