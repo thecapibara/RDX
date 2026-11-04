@@ -249,12 +249,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverX, setHoverX] = useState<number>(0);
 
-  // Custom Context Menu state
+  // Custom Context Menu & Settings state
+  const settingsBtnRef = useRef<HTMLButtonElement>(null);
   const [contextMenu, setContextMenu] = useState<{
     open: boolean;
     x: number;
     y: number;
-    page: "main" | "translators" | "episodes" | "quality" | "speed" | "aspect" | "sleep";
+    page: "main" | "translators" | "episodes" | "quality" | "speed" | "aspect" | "sleep" | "subtitles";
   } | null>(null);
 
   // Sleep Timer countdown effect
@@ -509,6 +510,33 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       open: true,
       x: left,
       y: top,
+      page: "main",
+    });
+  };
+
+  const handleToggleSettingsMenu = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (contextMenu?.open) {
+      setContextMenu(null);
+      return;
+    }
+    const rect = settingsBtnRef.current?.getBoundingClientRect();
+    const menuWidth = 260;
+    const pad = 16;
+    const x = rect
+      ? Math.max(pad, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - pad))
+      : window.innerWidth - menuWidth - pad;
+    const y = rect ? rect.bottom + 10 : 70;
+
+    setShowQualityMenu(false);
+    setShowTranslatorMenu(false);
+    setShowSubtitleMenu(false);
+    setShowSpeedMenu(false);
+
+    setContextMenu({
+      open: true,
+      x,
+      y,
       page: "main",
     });
   };
@@ -1593,7 +1621,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2.5">
+                  {/* Settings Menu Gear Button */}
+                  <button
+                    ref={settingsBtnRef}
+                    onClick={handleToggleSettingsMenu}
+                    title="Налаштування плеєра"
+                    className={cn(
+                      "p-2.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-center",
+                      contextMenu?.open
+                        ? "bg-rose-600 text-white border-rose-500 shadow-lg shadow-rose-950/50"
+                        : "bg-white/10 hover:bg-zinc-800 text-white border-white/15"
+                    )}
+                  >
+                    <Settings className="w-5 h-5" />
+                  </button>
+
                   {/* Always-on-Top OS PiP Window */}
                   <button
                     onClick={() => handleSetOsPip(true)}
@@ -2266,6 +2309,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </div>
               </button>
 
+              {/* Subtitles Submenu */}
+              {streamData && streamData.subtitles.length > 0 && (
+                <button
+                  onClick={() => setContextMenu({ ...contextMenu, page: "subtitles" })}
+                  className="w-full flex items-center justify-between px-3 py-2 text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5 truncate">
+                    <Subtitles className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+                    <span className="truncate">Субтитри</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-[11px] text-zinc-400 font-medium">
+                    <span>{selectedSubtitle === "off" ? "Вимкнено" : "Увімкнено"}</span>
+                    <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
+                  </div>
+                </button>
+              )}
+
               {/* Aspect Ratio Submenu */}
               <button
                 onClick={() => setContextMenu({ ...contextMenu, page: "aspect" })}
@@ -2645,6 +2705,49 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 >
                   <span>{mins} хвилин</span>
                   {sleepTimerMinutes === mins && <Check className="w-3.5 h-3.5" />}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Submenu: Subtitles */}
+          {contextMenu.page === "subtitles" && streamData && (
+            <div className="space-y-0.5">
+              <button
+                onClick={() => setContextMenu({ ...contextMenu, page: "main" })}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer font-semibold text-[11px]"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Субтитри</span>
+              </button>
+              <div className="h-px bg-white/10 my-1 mx-2" />
+              <button
+                onClick={() => {
+                  handleSelectSubtitle("off");
+                  setContextMenu(null);
+                }}
+                className={cn(
+                  "w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer",
+                  selectedSubtitle === "off" ? "bg-rose-600 text-white" : "text-zinc-300 hover:bg-white/10"
+                )}
+              >
+                <span>Вимкнено</span>
+                {selectedSubtitle === "off" && <Check className="w-3.5 h-3.5" />}
+              </button>
+              {streamData.subtitles.map((sub, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    handleSelectSubtitle(sub.url);
+                    setContextMenu(null);
+                  }}
+                  className={cn(
+                    "w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer",
+                    selectedSubtitle === sub.url ? "bg-rose-600 text-white" : "text-zinc-300 hover:bg-white/10"
+                  )}
+                >
+                  <span>{sub.label || `Субтитри ${i + 1}`}</span>
+                  {selectedSubtitle === sub.url && <Check className="w-3.5 h-3.5" />}
                 </button>
               ))}
             </div>
