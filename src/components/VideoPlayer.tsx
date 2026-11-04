@@ -1628,10 +1628,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     onClick={handleToggleSettingsMenu}
                     title="Налаштування плеєра"
                     className={cn(
-                      "p-2.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-center",
+                      "p-2.5 rounded-xl border border-white/15 transition-all cursor-pointer flex items-center justify-center",
                       contextMenu?.open
                         ? "bg-rose-600 text-white border-rose-500 shadow-lg shadow-rose-950/50"
-                        : "bg-white/10 hover:bg-zinc-800 text-white border-white/15"
+                        : "bg-zinc-900/90 hover:bg-zinc-800 text-white"
                     )}
                   >
                     <Settings className="w-5 h-5" />
@@ -1651,7 +1651,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <button
                     onClick={handleTeardownAndClose}
                     title="Закрити плеєр"
-                    className="p-2.5 rounded-2xl bg-white/10 hover:bg-rose-600 text-white border border-white/15 transition-all cursor-pointer"
+                    className="p-2.5 rounded-xl bg-zinc-900/90 hover:bg-rose-600 text-white border border-white/15 transition-all cursor-pointer"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -1792,7 +1792,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       <button
                         onClick={handlePrevEpisode}
                         title="Попередня серія"
-                        className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                        className="p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 transition-colors cursor-pointer"
                       >
                         <SkipBack className="w-4 h-4" />
                       </button>
@@ -1802,7 +1802,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <button
                       onClick={() => seekDelta(-5)}
                       title="Назад на 5 сек (←)"
-                      className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                      className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 transition-colors cursor-pointer"
                     >
                       <RotateCcw className="w-4 h-4" />
                       <span className="text-[11px] font-bold">5s</span>
@@ -1812,7 +1812,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <button
                       onClick={() => seekDelta(5)}
                       title="Вперед на 5 сек (→)"
-                      className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                      className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 transition-colors cursor-pointer"
                     >
                       <RotateCw className="w-4 h-4" />
                       <span className="text-[11px] font-bold">5s</span>
@@ -1823,7 +1823,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       <button
                         onClick={handleNextEpisode}
                         title="Наступна серія"
-                        className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                        className="p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 transition-colors cursor-pointer"
                       >
                         <SkipForward className="w-4 h-4" />
                       </button>
@@ -1870,10 +1870,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         onClick={handleCycleAbLoop}
                         title={`Повтор відрізка A–B (L) ${loopA !== null ? (loopB !== null ? `[${formatTime(loopA)} ➔ ${formatTime(loopB)}]` : `[A: ${formatTime(loopA)}]`) : ""}`}
                         className={cn(
-                          "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer",
+                          "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-white/15 transition-all cursor-pointer",
                           loopA !== null
                             ? "bg-amber-500/25 border-amber-500/50 text-amber-300 shadow-lg shadow-amber-950/40"
-                            : "bg-white/10 hover:bg-white/20 text-white border-white/15"
+                            : "bg-zinc-900/90 hover:bg-zinc-800 text-white"
                         )}
                       >
                         <Repeat className={cn("w-4 h-4", loopA !== null ? "text-amber-400" : "text-white")} />
@@ -1904,7 +1904,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <button
                       onClick={handleScreenshot}
                       title="Зробити знімок кадру (S)"
-                      className="p-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 cursor-pointer"
+                      className="p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 cursor-pointer"
                     >
                       <Camera className="w-4 h-4" />
                     </button>
@@ -1914,10 +1914,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       onClick={() => setShowMediaInfo(!showMediaInfo)}
                       title="Статистика потоку (I)"
                       className={cn(
-                        "p-2 rounded-xl border transition-colors cursor-pointer",
+                        "p-2.5 rounded-xl border border-white/15 transition-colors cursor-pointer",
                         showMediaInfo
                           ? "bg-rose-600 border-rose-500 text-white"
-                          : "bg-white/10 hover:bg-white/20 text-white border-white/15"
+                          : "bg-zinc-900/90 hover:bg-zinc-800 text-white"
                       )}
                     >
                       <Info className="w-4 h-4" />
