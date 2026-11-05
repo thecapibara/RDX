@@ -7,15 +7,10 @@ fn main() {
         // 1. Disable WebKitGTK Bubblewrap sandbox in AppImage / FUSE mount namespaces.
         // On Arch Linux, Ubuntu 24.04+, and modern kernels, unprivileged user namespaces inside
         // a FUSE-mounted AppImage are blocked, causing WebKitWebProcess to abort with a fatal error.
-        // Note: WebKitGTK >= 2.40 requires WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1.
+        // WebKitGTK >= 2.40 requires WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1.
         if std::env::var_os("WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS").is_none() {
             unsafe {
                 std::env::set_var("WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS", "1");
-            }
-        }
-        if std::env::var_os("WEBKIT_FORCE_SANDBOX").is_none() {
-            unsafe {
-                std::env::set_var("WEBKIT_FORCE_SANDBOX", "0");
             }
         }
 

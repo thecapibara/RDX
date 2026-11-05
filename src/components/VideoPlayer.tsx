@@ -803,31 +803,59 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, [saveCurrentProgress]);
 
-  // Synchronize native OS MPRIS metadata via Rust backend
-  useEffect(() => {
-    if (typeof navigator !== "undefined" && navigator.mediaSession) {
-      try {
-        navigator.mediaSession.metadata = new MediaMetadata({ title: "", artist: "", album: "" });
-        navigator.mediaSession.playbackState = "none";
-      } catch {}
-    }
+  // References to keep MPRIS in sync without recreating listeners
+  const lastMprisSyncRef = useRef<number>(0);
 
-    if (!details.title) return;
+  const syncMprisState = useCallback(
+    (force = false, overridePlaying?: boolean, overrideTime?: number) => {
+      if (!details.title) return;
+      const now = performance.now();
+      // Throttle continuous position updates to once per 1000ms unless forced
+      if (!force && now - lastMprisSyncRef.current < 1000) {
+        return;
+      }
+      lastMprisSyncRef.current = now;
 
-    const effDur = getEffectiveDuration();
-    api.updateMprisState({
-      title: details.title,
-      artist: isSeries
+      const artist = isSeries
         ? `Сезон ${activeSeason || 1}, Серія ${activeEpisode || 1}`
-        : (details.orig_title || "RDX"),
-      album: currentTranslator?.name
+        : (details.orig_title || "RDX");
+      const album = currentTranslator?.name
         ? `Озвучка: ${currentTranslator.name}`
-        : (details.orig_title || "RDX"),
-      poster: details.poster,
-      durationSec: effDur > 0 ? effDur : undefined,
-      positionSec: currentTime >= 0 ? currentTime : undefined,
+        : (details.orig_title || "RDX");
+
+      const effDur = getEffectiveDuration();
+      const currentPos = overrideTime !== undefined ? overrideTime : currentTime;
+      const playing = overridePlaying !== undefined ? overridePlaying : isPlaying;
+
+      api
+        .updateMprisState({
+          title: details.title,
+          artist,
+          album,
+          poster: details.poster,
+          durationSec: effDur > 0 ? effDur : undefined,
+          positionSec: currentPos >= 0 ? currentPos : undefined,
+          isPlaying: playing,
+        })
+        .catch(() => {});
+    },
+    [
+      details.title,
+      details.orig_title,
+      details.poster,
+      isSeries,
+      activeSeason,
+      activeEpisode,
+      currentTranslator?.name,
       isPlaying,
-    }).catch(() => {});
+      currentTime,
+      getEffectiveDuration,
+    ]
+  );
+
+  // Sync MPRIS when track / episode / translator / play state changes
+  useEffect(() => {
+    syncMprisState(true);
   }, [
     details.title,
     details.orig_title,
@@ -837,13 +865,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     activeEpisode,
     currentTranslator?.name,
     isPlaying,
-    currentTime,
-    getEffectiveDuration,
+    syncMprisState,
   ]);
 
   // Comprehensive player teardown and close (pauses video, unloads sources, clears MPRIS)
   const handleTeardownAndClose = useCallback(() => {
     document.title = "";
+
+    // 0. Instantly clear webview mediaSession so WebKit drops its MPRIS player
+    if (typeof navigator !== "undefined" && "mediaSession" in navigator && navigator.mediaSession) {
+      try {
+        navigator.mediaSession.metadata = null;
+        navigator.mediaSession.playbackState = "none";
+      } catch {}
+    }
 
     // Instantly remove player card from Linux / OS system shade
     api.clearMprisState().catch(() => {});
@@ -879,6 +914,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   useEffect(() => {
     return () => {
       document.title = "";
+      if (typeof navigator !== "undefined" && "mediaSession" in navigator && navigator.mediaSession) {
+        try {
+          navigator.mediaSession.metadata = null;
+          navigator.mediaSession.playbackState = "none";
+        } catch {}
+      }
       api.clearMprisState().catch(() => {});
 
       const video = videoRef.current;
@@ -1065,11 +1106,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const togglePlay = () => {
     if (!videoRef.current) return;
     if (videoRef.current.paused) {
-      videoRef.current.play();
+      videoRef.current.play().catch(() => {});
+      setIsPlaying(true);
       showHud("▶ Відтворення");
+      syncMprisState(true, true);
     } else {
       videoRef.current.pause();
+      setIsPlaying(false);
       showHud("⏸ Пауза");
+      syncMprisState(true, false);
     }
   };
 
@@ -1225,6 +1270,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   };
 
+  // References to latest handlers so listeners are mounted ONCE and never leak or drop events
+  const syncMprisRef = useRef(syncMprisState);
+  syncMprisRef.current = syncMprisState;
+  const commitSeekRef = useRef(commitSeekToVideo);
+  commitSeekRef.current = commitSeekToVideo;
+  const seekDeltaRef = useRef(seekDelta);
+  seekDeltaRef.current = seekDelta;
+  const handleNextEpisodeRef = useRef(handleNextEpisode);
+  handleNextEpisodeRef.current = handleNextEpisode;
+  const handlePrevEpisodeRef = useRef(handlePrevEpisode);
+  handlePrevEpisodeRef.current = handlePrevEpisode;
+  const isSeriesRef = useRef(isSeries);
+  isSeriesRef.current = isSeries;
+
   // MPRIS Remote Actions from OS (keyboard media keys, system shade, lockscreen)
   useEffect(() => {
     let unlistenAction: (() => void) | undefined;
@@ -1232,27 +1291,40 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     let unlistenPosition: (() => void) | undefined;
 
     listen<string>("mpris-action", (event) => {
+      const video = videoRef.current;
+      if (!video) return;
+
       switch (event.payload) {
         case "play":
-          if (videoRef.current && videoRef.current.paused) {
-            videoRef.current.play().catch(() => {});
-            setIsPlaying(true);
-          }
+          video.play().catch(() => {});
+          setIsPlaying(true);
+          showHud("▶ Відтворення");
+          syncMprisRef.current(true, true);
           break;
         case "pause":
-          if (videoRef.current && !videoRef.current.paused) {
-            videoRef.current.pause();
-            setIsPlaying(false);
-          }
+          video.pause();
+          setIsPlaying(false);
+          showHud("⏸ Пауза");
+          syncMprisRef.current(true, false);
           break;
         case "toggle":
-          togglePlay();
+          if (video.paused) {
+            video.play().catch(() => {});
+            setIsPlaying(true);
+            showHud("▶ Відтворення");
+            syncMprisRef.current(true, true);
+          } else {
+            video.pause();
+            setIsPlaying(false);
+            showHud("⏸ Пауза");
+            syncMprisRef.current(true, false);
+          }
           break;
         case "next":
-          if (isSeries) handleNextEpisode();
+          if (isSeriesRef.current) handleNextEpisodeRef.current();
           break;
         case "prev":
-          if (isSeries) handlePrevEpisode();
+          if (isSeriesRef.current) handlePrevEpisodeRef.current();
           break;
       }
     }).then((un) => {
@@ -1260,15 +1332,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     });
 
     listen<number>("mpris-seek", (event) => {
-      seekDelta(event.payload);
+      seekDeltaRef.current(event.payload);
     }).then((un) => {
       unlistenSeek = un;
     });
 
     listen<number>("mpris-set-position", (event) => {
-      if (videoRef.current && Number.isFinite(event.payload)) {
-        videoRef.current.currentTime = event.payload;
-        setCurrentTime(event.payload);
+      const targetTime = event.payload;
+      if (Number.isFinite(targetTime) && targetTime >= 0) {
+        commitSeekRef.current(targetTime);
+        syncMprisRef.current(true, undefined, targetTime);
       }
     }).then((un) => {
       unlistenPosition = un;
@@ -1279,7 +1352,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       unlistenSeek?.();
       unlistenPosition?.();
     };
-  }, [isSeries, handleNextEpisode, handlePrevEpisode]);
+  }, []);
 
   // Episodes for drawer's selected season
   const drawerSeasonEpisodes =
@@ -1394,6 +1467,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 videoRef.current.currentTime = loopA;
               }
             }
+            syncMprisState(false);
           }}
           onLoadedMetadata={syncDurationFromVideo}
           onDurationChange={syncDurationFromVideo}
@@ -1409,10 +1483,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             if (videoRef.current && !videoRef.current.paused) {
               setIsPlaying(true);
             }
+            syncMprisState(true);
           }}
           onPlay={() => {
             if (!isSeekingRef.current) {
               setIsPlaying(true);
+              syncMprisState(true, true);
             }
           }}
           onPause={() => {
@@ -1420,6 +1496,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               return;
             }
             setIsPlaying(false);
+            syncMprisState(true, false);
           }}
           onClick={handleVideoClick}
           onDoubleClick={handleVideoDoubleClick}

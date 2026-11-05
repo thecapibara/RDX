@@ -1,14 +1,19 @@
-// Neutralize webview mediaSession so WebKitGTK never claims an orphan MPRIS player on D-Bus (native Rust souvlaki handles MPRIS)
-if (typeof document !== "undefined") {
-  document.title = "";
-}
+// Suppress WebKitGTK built-in MPRIS registration.
+// WebKit's MediaSessionGLib aborts D-Bus registration if metadata.title is locked to an empty string ("").
+// This prevents WebKit from spawning the orphan "LOCALHOST" card while native Rust souvlaki handles MPRIS.
 if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
   try {
-    Object.defineProperty(navigator, "mediaSession", {
-      get: () => undefined,
+    const emptyMeta = new MediaMetadata({ title: "" });
+    navigator.mediaSession.metadata = emptyMeta;
+
+    Object.defineProperty(navigator.mediaSession, "metadata", {
+      get: () => emptyMeta,
+      set: () => {},
       configurable: false,
       enumerable: true,
     });
+
+    navigator.mediaSession.setActionHandler = () => {};
   } catch {}
 }
 
