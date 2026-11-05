@@ -1,15 +1,14 @@
-// Title and mediaSession suppression to prevent WebKitGTK from registering orphan MPRIS players on Linux D-Bus
+// Neutralize webview mediaSession so WebKitGTK never claims an orphan MPRIS player on D-Bus (native Rust souvlaki handles MPRIS)
 if (typeof document !== "undefined") {
   document.title = "";
 }
-if (typeof navigator !== "undefined" && "mediaSession" in navigator && navigator.mediaSession) {
+if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
   try {
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: "",
-      artist: "",
-      album: "",
+    Object.defineProperty(navigator, "mediaSession", {
+      get: () => undefined,
+      configurable: false,
+      enumerable: true,
     });
-    navigator.mediaSession.playbackState = "none";
   } catch {}
 }
 

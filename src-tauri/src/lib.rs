@@ -58,11 +58,6 @@ pub fn run() {
 
             #[cfg(target_os = "linux")]
             {
-                // 2. Disable D-Bus address for WebKit child processes so WebKit cannot spawn ghost localhost MPRIS
-                unsafe {
-                    std::env::set_var("DBUS_SESSION_BUS_ADDRESS", "disabled:");
-                }
-
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.with_webview(|webview| {
                         use webkit2gtk::{SettingsExt, WebViewExt};
