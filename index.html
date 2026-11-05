@@ -242,22 +242,6 @@
     </div>
 
     <div id="root"></div>
-    <script>
-      (function() {
-        try {
-          if (localStorage.getItem("rdx_startup_sound") !== "false") {
-            const chime = new Audio("/startup.mp3");
-            // Gentle cinema volume ~55% (as requested "трошки тихіше на -1")
-            chime.volume = 0.55;
-            chime.play().catch(function() {
-              window.addEventListener("pointerdown", function() {
-                chime.play().catch(function() {});
-              }, { once: true });
-            });
-          }
-        } catch (e) {}
-      })();
-    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -4,6 +4,7 @@ export interface AppSettings {
   proxy_url: string;
   preferred_quality: string;
   preferred_translator: string;
+  startup_sound?: boolean;
 }
 
 export interface WatchProgress {

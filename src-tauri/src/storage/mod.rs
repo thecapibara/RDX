@@ -10,6 +10,12 @@ pub struct AppSettings {
     pub proxy_url: String,
     pub preferred_quality: String,
     pub preferred_translator: String,
+    #[serde(default = "default_true")]
+    pub startup_sound: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for AppSettings {
@@ -24,6 +30,7 @@ impl Default for AppSettings {
             proxy_url: "".to_string(),
             preferred_quality: "720p".to_string(),
             preferred_translator: "".to_string(),
+            startup_sound: true,
         }
     }
 }
@@ -136,6 +143,7 @@ impl Storage {
             ("proxy_url", defaults.proxy_url),
             ("preferred_quality", defaults.preferred_quality),
             ("preferred_translator", defaults.preferred_translator),
+            ("startup_sound", if defaults.startup_sound { "true".to_string() } else { "false".to_string() }),
         ];
 
         for (key, val) in init_settings {
@@ -173,6 +181,7 @@ impl Storage {
                 "proxy_url" => defaults.proxy_url = value,
                 "preferred_quality" => defaults.preferred_quality = value,
                 "preferred_translator" => defaults.preferred_translator = value,
+                "startup_sound" => defaults.startup_sound = value != "false",
                 _ => {}
             }
         }
@@ -184,13 +193,15 @@ impl Storage {
         let conn = self.conn.lock().unwrap();
         let custom_mirrors_json = serde_json::to_string(&settings.custom_mirrors)
             .unwrap_or_else(|_| "[]".to_string());
+        let sound_str = if settings.startup_sound { "true" } else { "false" };
 
         let pairs = [
-            ("active_mirror", &settings.active_mirror),
-            ("custom_mirrors", &custom_mirrors_json),
-            ("proxy_url", &settings.proxy_url),
-            ("preferred_quality", &settings.preferred_quality),
-            ("preferred_translator", &settings.preferred_translator),
+            ("active_mirror", settings.active_mirror.as_str()),
+            ("custom_mirrors", custom_mirrors_json.as_str()),
+            ("proxy_url", settings.proxy_url.as_str()),
+            ("preferred_quality", settings.preferred_quality.as_str()),
+            ("preferred_translator", settings.preferred_translator.as_str()),
+            ("startup_sound", sound_str),
         ];
 
         for (key, val) in pairs {

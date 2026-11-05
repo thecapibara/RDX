@@ -84,9 +84,11 @@
   - Fixed badge text wrap (`whitespace-nowrap` on `Rust + Tauri v2`).
   - Added author `justgl` and bumped project version to `v0.2.0`.
   - Added background document scroll-lock (`overflow: hidden` on body & html) and `onWheel` event isolation.
-- [x] **8.2. Instant Boot Startup Chime (`public/startup.mp3`, `index.html`)**
-  - Integrated `startup.mp3` playing immediately in `index.html` on first paint of `#rdx-splash`.
-  - Tuned comfortable volume to ~55% (-5 dB) with settings toggle and sound preview button.
+- [x] **8.2. Native Rust Instant Boot Startup Chime (`src-tauri/src/audio.rs`, `src-tauri/src/lib.rs`, `public/startup.mp3`)**
+  - Embedded 73 KB `startup.mp3` directly into the binary with `include_bytes!`.
+  - Implemented native audio playback via `rodio` with pure Rust `symphonia-mp3` decoder, completely bypassing WebKitGTK GStreamer `tauri://` protocol limitations and browser Autoplay policies.
+  - Plays immediately in `app.setup()` on first boot if enabled in settings (ALSA/PulseAudio/PipeWire direct output).
+  - Added `play_startup_sound` Tauri command for instant Settings modal preview and SQLite persistence (`AppSettings.startup_sound`).
 - [x] **8.3. Spotify-Style Floating Horizontal Navigation Chevrons (`src/components/Swimlane.tsx`, `src/components/ContinueWatchingSwimlane.tsx`)**
   - Replaced clumsy mouse drag with Spotify Desktop style floating circular navigation buttons (`<` and `>`) along the left and right edges.
   - Dark glass circle styling (`bg-zinc-950/90`, `border-white/20`, `backdrop-blur`, `shadow-2xl`, `hover:scale-110`).

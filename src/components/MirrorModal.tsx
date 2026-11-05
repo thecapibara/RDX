@@ -107,6 +107,9 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
       setProxyInput(s.proxy_url || "");
       setPreferredQuality(s.preferred_quality || "720p");
       setPreferredTranslator(s.preferred_translator || "");
+      if (s.startup_sound !== undefined) {
+        setStartupSound(s.startup_sound);
+      }
 
       const urls = Array.from(
         new Set([
@@ -288,11 +291,16 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
     await api.updateSettings(updatedSettings).catch(console.warn);
   };
 
-  const handleToggleStartupSound = (enabled: boolean) => {
+  const handleToggleStartupSound = async (enabled: boolean) => {
     setStartupSound(enabled);
     try {
       localStorage.setItem("rdx_startup_sound", enabled ? "true" : "false");
     } catch {}
+    if (settings) {
+      const updatedSettings: AppSettings = { ...settings, startup_sound: enabled };
+      setSettings(updatedSettings);
+      await api.updateSettings(updatedSettings).catch(console.warn);
+    }
   };
 
   const handleToggleAmbientGlow = (enabled: boolean) => {
@@ -309,17 +317,14 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
     } catch {}
   };
 
-  const handlePlayPreviewChime = () => {
+  const handlePlayPreviewChime = async () => {
     try {
       setPreviewPlaying(true);
-      const audio = new Audio("/startup.mp3");
-      // Gentle cinema volume ~55% (as requested "трошки тихіше на -1")
-      audio.volume = 0.55;
-      audio.onended = () => setPreviewPlaying(false);
-      audio.onerror = () => setPreviewPlaying(false);
-      audio.play().catch(() => setPreviewPlaying(false));
-    } catch {
-      setPreviewPlaying(false);
+      await api.playStartupSound(0.55);
+    } catch (e) {
+      console.warn("Failed to play preview chime via Tauri:", e);
+    } finally {
+      setTimeout(() => setPreviewPlaying(false), 2000);
     }
   };
 

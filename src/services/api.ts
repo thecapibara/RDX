@@ -564,4 +564,10 @@ export const api = {
       return invoke<void>("clear_mpris_state");
     }
   },
+
+  playStartupSound: async (volume?: number): Promise<void> => {
+    if (isTauri) {
+      return invoke<void>("play_startup_sound", { volume });
+    }
+  },
 };

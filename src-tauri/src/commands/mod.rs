@@ -405,3 +405,11 @@ pub async fn clear_mpris_state(state: State<'_, AppState>) -> Result<(), String>
     state.mpris.clear();
     Ok(())
 }
+
+// ==================== Audio Commands ====================
+
+#[tauri::command]
+pub fn play_startup_sound(volume: Option<f32>) {
+    crate::audio::play_startup_sound(volume);
+}
+

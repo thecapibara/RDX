@@ -1,3 +1,4 @@
+pub mod audio;
 pub mod client;
 pub mod commands;
 pub mod mirror;
@@ -43,6 +44,17 @@ pub fn run() {
             // 1. Initialize native Rust MPRIS while DBUS_SESSION_BUS_ADDRESS is valid
             let state: tauri::State<AppState> = app.state();
             state.mpris.init(&app.handle());
+
+            // 2. Play instant boot chime if enabled (native PipeWire/PulseAudio/ALSA)
+            let startup_sound_enabled = state
+                .storage
+                .get_settings()
+                .map(|s| s.startup_sound)
+                .unwrap_or(true);
+
+            if startup_sound_enabled {
+                crate::audio::play_startup_sound(Some(0.55));
+            }
 
             #[cfg(target_os = "linux")]
             {
@@ -93,6 +105,7 @@ pub fn run() {
             commands::open_in_external_player,
             commands::update_mpris_state,
             commands::clear_mpris_state,
+            commands::play_startup_sound,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
