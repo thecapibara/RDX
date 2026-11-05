@@ -101,6 +101,7 @@ pub fn run() {
             commands::update_mpris_state,
             commands::clear_mpris_state,
             commands::play_startup_sound,
+            commands::play_ui_sound,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -570,4 +570,10 @@ export const api = {
       return invoke<void>("play_startup_sound", { volume });
     }
   },
+
+  playUiSound: async (soundType: "hover" | "modal_open"): Promise<void> => {
+    if (isTauri) {
+      return invoke<void>("play_ui_sound", { soundType }).catch(() => {});
+    }
+  },
 };

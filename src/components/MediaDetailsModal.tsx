@@ -14,6 +14,7 @@ import {
 import type { Bookmark, MediaCard, MediaDetails, WatchProgress, Translator } from "../types";
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
+import { playModalOpenSound, suppressHoverSound } from "../services/sound";
 
 interface MediaDetailsModalProps {
   media: MediaCard | null;
@@ -66,6 +67,17 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isTranslatorDropdownOpen]);
 
+  const handleClose = () => {
+    suppressHoverSound(400);
+    onClose();
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      playModalOpenSound();
+    }
+  }, [isOpen]);
+
   // Keyboard shortcut: Escape to close modal (or close dropdown if open)
   useEffect(() => {
     if (!isOpen) return;
@@ -75,13 +87,13 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
         if (isTranslatorDropdownOpen) {
           setIsTranslatorDropdownOpen(false);
         } else {
-          onClose();
+          handleClose();
         }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, isTranslatorDropdownOpen, onClose]);
+  }, [isOpen, isTranslatorDropdownOpen]);
 
   useEffect(() => {
     if (!isOpen || !media) {
@@ -297,7 +309,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
     <div className="fixed inset-0 z-50 bg-[#08090d] overflow-y-auto overflow-x-hidden select-none">
       {/* Top Floating Back Button */}
       <button
-        onClick={onClose}
+        onClick={handleClose}
         className="fixed top-6 left-6 sm:left-10 lg:left-14 z-40 flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-950/80 hover:bg-zinc-900 text-zinc-300 hover:text-white border border-white/15 backdrop-blur-md transition-all shadow-2xl active:scale-95 cursor-pointer"
       >
         <ArrowLeft className="w-4 h-4" />

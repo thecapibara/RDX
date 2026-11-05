@@ -413,3 +413,8 @@ pub fn play_startup_sound(volume: Option<f32>) {
     crate::audio::play_startup_sound(volume);
 }
 
+#[tauri::command]
+pub fn play_ui_sound(sound_type: String) {
+    crate::audio::play_ui_sound(&sound_type);
+}
+

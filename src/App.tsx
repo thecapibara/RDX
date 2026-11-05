@@ -75,9 +75,9 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [initializeApp]);
 
-  // Smoothly dismiss and remove persistent DOM #rdx-splash once both min timer and initial catalog load finish
+  // Smoothly dismiss and remove persistent DOM #rdx-splash once animation finishes
   useEffect(() => {
-    if ((!isInitialBoot || !loadingCatalog) && minSplashDone) {
+    if (minSplashDone) {
       const splash = document.getElementById("rdx-splash");
       if (splash) {
         splash.classList.add("rdx-splash-hide");
@@ -87,7 +87,7 @@ export default function App() {
         return () => clearTimeout(cleanup);
       }
     }
-  }, [isInitialBoot, loadingCatalog, minSplashDone]);
+  }, [minSplashDone]);
 
   // Load "Continue Watching" row
   const refreshContinueWatching = useCallback(async () => {

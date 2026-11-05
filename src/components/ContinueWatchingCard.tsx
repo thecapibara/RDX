@@ -1,6 +1,7 @@
 import React from "react";
 import { Play, X } from "lucide-react";
 import type { WatchProgress } from "../types";
+import { playHoverSound } from "../services/sound";
 
 interface ContinueWatchingCardProps {
   item: WatchProgress;
@@ -36,7 +37,10 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
       : "Фільм";
 
   return (
-    <div className="group relative flex-shrink-0 w-64 cursor-pointer select-none [contain:layout_style]">
+    <div
+      onMouseEnter={playHoverSound}
+      className="group relative flex-shrink-0 w-64 cursor-pointer select-none [contain:layout_style]"
+    >
       <div
         onClick={() => onResume(item)}
         className="relative aspect-video w-full overflow-hidden rounded-2xl bg-zinc-900 border border-white/10 shadow-md transition-transform duration-200 ease-out transform-gpu group-hover:scale-[1.03] group-hover:border-rose-500/50"

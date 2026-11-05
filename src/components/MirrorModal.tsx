@@ -24,6 +24,11 @@ import {
 import type { AppSettings, MirrorStatus } from "../types";
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
+import {
+  getUiSoundsEnabled,
+  setUiSoundsEnabled,
+  playModalOpenSound,
+} from "../services/sound";
 
 interface MirrorModalProps {
   isOpen: boolean;
@@ -74,6 +79,9 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
       return true;
     }
   });
+  const [uiSounds, setUiSounds] = useState<boolean>(() => {
+    return getUiSoundsEnabled();
+  });
   const [motion60fps, setMotion60fps] = useState<boolean>(() => {
     try {
       return localStorage.getItem("rdx_motion_60fps") !== "false";
@@ -81,7 +89,6 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
       return true;
     }
   });
-  const [previewPlaying, setPreviewPlaying] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -303,6 +310,14 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
     }
   };
 
+  const handleToggleUiSounds = (enabled: boolean) => {
+    setUiSounds(enabled);
+    setUiSoundsEnabled(enabled);
+    if (enabled) {
+      playModalOpenSound();
+    }
+  };
+
   const handleToggleAmbientGlow = (enabled: boolean) => {
     setAmbientGlow(enabled);
     try {
@@ -315,17 +330,6 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
     try {
       localStorage.setItem("rdx_motion_60fps", enabled ? "true" : "false");
     } catch {}
-  };
-
-  const handlePlayPreviewChime = async () => {
-    try {
-      setPreviewPlaying(true);
-      await api.playStartupSound(0.55);
-    } catch (e) {
-      console.warn("Failed to play preview chime via Tauri:", e);
-    } finally {
-      setTimeout(() => setPreviewPlaying(false), 2000);
-    }
   };
 
   const allMirrors = useMemo(() => {
@@ -857,16 +861,16 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
             {activeModalTab === "appearance" && (
               <div className="space-y-6">
                 {/* Startup Sound Chime Card */}
-                <div className="p-4.5 rounded-2xl bg-zinc-900/50 border border-white/8 space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0 mt-0.5">
+                <div className="p-4.5 rounded-2xl bg-zinc-900/50 border border-white/8">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0">
                         <Volume2 className="w-4 h-4" />
                       </div>
                       <div>
                         <h4 className="text-sm font-bold text-white">Звуковий сигнал заставки (RDX Chime)</h4>
                         <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
-                          Відтворювати фірмовий кінематографічний звук при запуску додатку (гучність ~55%)
+                          Відтворювати фірмовий кінематографічний звук при запуску додатку
                         </p>
                       </div>
                     </div>
@@ -882,19 +886,33 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                       <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
                     </label>
                   </div>
+                </div>
 
-                  <div className="flex items-center gap-3 pt-2 border-t border-white/5">
-                    <button
-                      onClick={handlePlayPreviewChime}
-                      disabled={previewPlaying}
-                      className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/12 active:scale-95 text-zinc-200 font-semibold text-xs border border-white/10 transition-all cursor-pointer disabled:opacity-50"
-                    >
-                      <Volume2 className={cn("w-3.5 h-3.5 text-rose-400", previewPlaying && "animate-pulse")} />
-                      <span>{previewPlaying ? "Відтворення..." : "Прослухати звук заставки"}</span>
-                    </button>
-                    <span className="text-[11px] text-zinc-500">
-                      Комфортна помірна гучність для Smart TV та навушників
-                    </span>
+                {/* System UI Feedback Sounds Card */}
+                <div className="p-4.5 rounded-2xl bg-zinc-900/50 border border-white/8">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0">
+                        <Sliders className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Звуки інтерфейсу (TV UI Feedback)</h4>
+                        <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
+                          М'який тактильний відгук при наведенні та відкритті карток
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Toggle Switch */}
+                    <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={uiSounds}
+                        onChange={(e) => handleToggleUiSounds(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+                    </label>
                   </div>
                 </div>
 

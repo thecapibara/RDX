@@ -242,6 +242,16 @@
     </div>
 
     <div id="root"></div>
+    <script>
+      // Failsafe: guarantee #rdx-splash is dismissed after at most 3s regardless of network or React state
+      setTimeout(function() {
+        var s = document.getElementById("rdx-splash");
+        if (s && !s.classList.contains("rdx-splash-hide")) {
+          s.classList.add("rdx-splash-hide");
+          setTimeout(function() { s.remove(); }, 550);
+        }
+      }, 2500);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

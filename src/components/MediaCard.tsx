@@ -2,6 +2,7 @@ import React from "react";
 import { Play, Star } from "lucide-react";
 import type { MediaCard as MediaCardType } from "../types";
 import { cn } from "../lib/utils";
+import { playHoverSound } from "../services/sound";
 
 interface MediaCardProps {
   card: MediaCardType;
@@ -34,6 +35,7 @@ export const MediaCard: React.FC<MediaCardProps> = React.memo(({
   return (
     <div
       onClick={() => onSelect(card)}
+      onMouseEnter={playHoverSound}
       className={cn(
         "group relative flex flex-col cursor-pointer select-none focus:outline-none",
         className
