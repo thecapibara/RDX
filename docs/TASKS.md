@@ -87,6 +87,10 @@
 - [x] **8.2. Instant Boot Startup Chime (`public/startup.mp3`, `index.html`)**
   - Integrated `startup.mp3` playing immediately in `index.html` on first paint of `#rdx-splash`.
   - Tuned comfortable volume to ~55% (-5 dB) with settings toggle and sound preview button.
-- [x] **8.3. Horizontal Drag-to-Scroll & Touchscreen Swipe (`src/hooks/useHorizontalScroll.ts`, `src/components/Swimlane.tsx`)**
-  - Pointer click-and-drag and touch swipe for horizontal movie swimlanes without hijacking standard mouse wheel vertical page scrolling.
-  - Image drag prevention (`draggable={false}`) and drag-vs-click event cancellation.
+- [x] **8.3. Spotify-Style Floating Horizontal Navigation Chevrons (`src/components/Swimlane.tsx`, `src/components/ContinueWatchingSwimlane.tsx`)**
+  - Replaced clumsy mouse drag with Spotify Desktop style floating circular navigation buttons (`<` and `>`) along the left and right edges.
+  - Dark glass circle styling (`bg-zinc-950/90`, `border-white/20`, `backdrop-blur`, `shadow-2xl`, `hover:scale-110`).
+  - Boundary accuracy with `IntersectionObserver` sentinels and padding-aware boundary math (`maxScroll - 50` buffer).
+  - Left arrow `<` appears dynamically when scrolled right; right arrow `>` vanishes cleanly when reaching the end of the cards row.
+  - Multi-stage animation frame polling for smooth pagination by ~75% viewport width.
+  - Native trackpad and touchscreen horizontal swipes remain 100% functional without drag event conflicts.
