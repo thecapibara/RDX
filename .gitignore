@@ -34,3 +34,6 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Internal task tracker
+docs/TASKS.md
