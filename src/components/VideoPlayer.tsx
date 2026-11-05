@@ -4,8 +4,8 @@ import { motion } from "framer-motion";
 import {
   Play,
   Pause,
-  RotateCcw,
-  RotateCw,
+  Rewind,
+  FastForward,
   Volume2,
   VolumeX,
   Maximize2,
@@ -1517,11 +1517,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <Play className="w-4 h-4 fill-current" />
                   )}
                 </button>
-                <button onClick={() => seekDelta(-5)} className="p-1 hover:text-rose-400 cursor-pointer">
-                  <RotateCcw className="w-3.5 h-3.5" />
+                <button onClick={() => seekDelta(-5)} className="p-1 hover:text-rose-400 cursor-pointer" title="Назад 5 сек">
+                  <Rewind className="w-3.5 h-3.5 fill-current/30" />
                 </button>
-                <button onClick={() => seekDelta(5)} className="p-1 hover:text-rose-400 cursor-pointer">
-                  <RotateCw className="w-3.5 h-3.5" />
+                <button onClick={() => seekDelta(5)} className="p-1 hover:text-rose-400 cursor-pointer" title="Вперед 5 сек">
+                  <FastForward className="w-3.5 h-3.5 fill-current/30" />
                 </button>
                 <span className="font-mono text-[11px] text-zinc-300">
                   {formatTime(currentTime)} / {formatTime(effectiveDur)}
@@ -1792,32 +1792,31 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     onClick={handleToggleSettingsMenu}
                     title="Налаштування плеєра"
                     className={cn(
-                      "p-2.5 rounded-xl border border-white/15 transition-all cursor-pointer flex items-center justify-center",
+                      "h-10 w-10 rounded-xl border border-white/15 transition-all cursor-pointer flex items-center justify-center flex-shrink-0",
                       contextMenu?.open
                         ? "bg-rose-600 text-white border-rose-500 shadow-lg shadow-rose-950/50"
                         : "bg-zinc-900/90 hover:bg-zinc-800 text-white"
                     )}
                   >
-                    <Settings className="w-5 h-5" />
+                    <Settings className="w-4 h-4" />
                   </button>
 
-                  {/* Always-on-Top OS PiP Window */}
+                  {/* Always-on-Top OS PiP Window (Matching square icon button) */}
                   <button
                     onClick={() => handleSetOsPip(true)}
                     title="Перейти в режим поверх усіх вікон (Always-on-Top)"
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white text-xs font-semibold border border-white/15 transition-all cursor-pointer"
+                    className="h-10 w-10 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 transition-all cursor-pointer flex items-center justify-center flex-shrink-0"
                   >
                     <PictureInPicture2 className="w-4 h-4" />
-                    <span className="hidden sm:inline">Поверх вікон</span>
                   </button>
 
                   {/* Close */}
                   <button
                     onClick={handleTeardownAndClose}
                     title="Закрити плеєр"
-                    className="p-2.5 rounded-xl bg-zinc-900/90 hover:bg-rose-600 text-white border border-white/15 transition-all cursor-pointer"
+                    className="h-10 w-10 rounded-xl bg-zinc-900/90 hover:bg-rose-600 text-white border border-white/15 transition-all cursor-pointer flex items-center justify-center flex-shrink-0"
                   >
-                    <X className="w-5 h-5" />
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -1936,18 +1935,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   </div>
                 </div>
 
-                {/* Controls Bottom Row */}
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                {/* Controls Bottom Row: Clean single row that never wraps into 2 lines */}
+                <div className="flex items-center justify-between gap-1.5 sm:gap-3 flex-nowrap min-w-0">
                   {/* Left Controls: Play/Pause, Prev/Next Ep, Seek ±5s, Volume */}
-                  <div className="flex items-center gap-2 sm:gap-2.5">
+                  <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                     <button
                       onClick={togglePlay}
-                      className="w-12 h-12 rounded-2xl bg-rose-600 hover:bg-rose-500 active:scale-95 text-white flex items-center justify-center shadow-lg shadow-rose-950/60 transition-all cursor-pointer flex-shrink-0"
+                      className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-rose-600 hover:bg-rose-500 active:scale-95 text-white flex items-center justify-center shadow-lg shadow-rose-950/60 transition-all cursor-pointer flex-shrink-0"
                     >
                       {isPlaying ? (
-                        <Pause className="w-6 h-6" />
+                        <Pause className="w-5 h-5 sm:w-6 sm:h-6" />
                       ) : (
-                        <Play className="w-6 h-6 fill-current ml-0.5" />
+                        <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-current ml-0.5" />
                       )}
                     </button>
 
@@ -1956,7 +1955,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       <button
                         onClick={handlePrevEpisode}
                         title="Попередня серія"
-                        className="p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 transition-colors cursor-pointer"
+                        className="h-10 w-10 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 transition-colors cursor-pointer flex items-center justify-center flex-shrink-0"
                       >
                         <SkipBack className="w-4 h-4" />
                       </button>
@@ -1966,9 +1965,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <button
                       onClick={() => seekDelta(-5)}
                       title="Назад на 5 сек (←)"
-                      className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 transition-colors cursor-pointer"
+                      className="h-10 px-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 transition-colors cursor-pointer flex items-center justify-center gap-1 flex-shrink-0"
                     >
-                      <RotateCcw className="w-4 h-4" />
+                      <Rewind className="w-4 h-4 fill-current/30" />
                       <span className="text-[11px] font-bold">5s</span>
                     </button>
 
@@ -1976,9 +1975,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <button
                       onClick={() => seekDelta(5)}
                       title="Вперед на 5 сек (→)"
-                      className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 transition-colors cursor-pointer"
+                      className="h-10 px-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 transition-colors cursor-pointer flex items-center justify-center gap-1 flex-shrink-0"
                     >
-                      <RotateCw className="w-4 h-4" />
+                      <FastForward className="w-4 h-4 fill-current/30" />
                       <span className="text-[11px] font-bold">5s</span>
                     </button>
 
@@ -1987,23 +1986,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       <button
                         onClick={handleNextEpisode}
                         title="Наступна серія"
-                        className="p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 transition-colors cursor-pointer"
+                        className="h-10 w-10 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 transition-colors cursor-pointer flex items-center justify-center flex-shrink-0"
                       >
                         <SkipForward className="w-4 h-4" />
                       </button>
                     )}
 
-                    {/* Volume Slider */}
-                    <div className="flex items-center gap-1.5 ml-2">
+                    {/* Volume Slider integrated in cohesive h-10 dark glass capsule */}
+                    <div className="h-10 px-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800/80 border border-white/15 flex items-center gap-2 cursor-pointer flex-shrink-0 transition-colors">
                       <button
                         onClick={toggleMute}
                         title="Без звуку (M)"
-                        className="p-2 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                        className="text-zinc-300 hover:text-white transition-colors cursor-pointer flex items-center justify-center"
                       >
                         {isMuted || volume === 0 ? (
-                          <VolumeX className="w-5 h-5" />
+                          <VolumeX className="w-4 h-4" />
                         ) : (
-                          <Volume2 className="w-5 h-5" />
+                          <Volume2 className="w-4 h-4" />
                         )}
                       </button>
                       <input
@@ -2021,64 +2020,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           setVolume(v);
                           setIsMuted(false);
                         }}
-                        className="w-16 sm:w-20 h-1 rounded appearance-none bg-white/20 accent-rose-500 cursor-pointer"
+                        className="w-14 sm:w-18 h-1 rounded appearance-none bg-white/20 accent-rose-500 cursor-pointer hidden xs:block"
                       />
                     </div>
                   </div>
 
-                  {/* Right Controls: In-Player Season/Episode Selector, Speed, Quality, Audio, Subtitles, A-B Loop, Screenshot, Info */}
-                  <div className="flex flex-wrap items-center gap-2 relative">
-                    {/* A-B Loop Button & Active Pill */}
-                    <div className="relative flex items-center">
-                      <button
-                        onClick={handleCycleAbLoop}
-                        title={`Повтор відрізка A–B (L) ${loopA !== null ? (loopB !== null ? `[${formatTime(loopA)} ➔ ${formatTime(loopB)}]` : `[A: ${formatTime(loopA)}]`) : ""}`}
-                        className={cn(
-                          "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-white/15 transition-all cursor-pointer",
-                          loopA !== null
-                            ? "bg-amber-500/25 border-amber-500/50 text-amber-300 shadow-lg shadow-amber-950/40"
-                            : "bg-zinc-900/90 hover:bg-zinc-800 text-white"
-                        )}
-                      >
-                        <Repeat className={cn("w-4 h-4", loopA !== null ? "text-amber-400" : "text-white")} />
-                        <span>
-                          {loopA === null
-                            ? "A–B"
-                            : loopB === null
-                            ? `A: ${formatTime(loopA)}`
-                            : `${formatTime(loopA)} ➔ ${formatTime(loopB)}`}
-                        </span>
-                      </button>
-                      {loopA !== null && (
-                        <button
-                          onClick={() => {
-                            setLoopA(null);
-                            setLoopB(null);
-                            showHud("🔁 Цикл A–B вимкнено");
-                          }}
-                          title="Скинути цикл A–B"
-                          className="ml-1 p-1 hover:text-rose-400 text-zinc-400 cursor-pointer"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Screenshot Frame Button (S) */}
+                  {/* Right Controls: In-Player Season/Episode Selector, Audio, Speed, Quality, Subtitles */}
+                  <div className="flex items-center gap-1 sm:gap-1.5 relative flex-shrink-0">
+                    {/* Screenshot Frame Button (S) - desktop only */}
                     <button
                       onClick={handleScreenshot}
                       title="Зробити знімок кадру (S)"
-                      className="p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 cursor-pointer"
+                      className="hidden lg:flex h-10 w-10 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 cursor-pointer items-center justify-center flex-shrink-0"
                     >
                       <Camera className="w-4 h-4" />
                     </button>
 
-                    {/* Stream Info Overlay Button (I) */}
+                    {/* Stream Info Overlay Button (I) - desktop only */}
                     <button
                       onClick={() => setShowMediaInfo(!showMediaInfo)}
                       title="Статистика потоку (I)"
                       className={cn(
-                        "p-2.5 rounded-xl border border-white/15 transition-colors cursor-pointer",
+                        "hidden lg:flex h-10 w-10 rounded-xl border border-white/15 transition-colors cursor-pointer items-center justify-center flex-shrink-0",
                         showMediaInfo
                           ? "bg-rose-600 border-rose-500 text-white"
                           : "bg-zinc-900/90 hover:bg-zinc-800 text-white"
@@ -2087,7 +2050,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       <Info className="w-4 h-4" />
                     </button>
 
-                    {/* Prominent In-Player Season & Episode Selector */}
+                    {/* Compact In-Player Season & Episode Selector */}
                     {isSeries && (
                       <button
                         onClick={() => {
@@ -2097,18 +2060,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           setShowSubtitleMenu(false);
                           setShowSpeedMenu(false);
                         }}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600/30 hover:bg-rose-600/50 text-white text-xs font-semibold border border-rose-500/40 cursor-pointer shadow-md transition-all"
+                        className="h-10 flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 rounded-xl bg-rose-600/30 hover:bg-rose-600/50 text-white text-xs font-semibold border border-rose-500/40 cursor-pointer shadow-md transition-all flex-shrink-0"
                         title="Вибір сезону та серії"
                       >
-                        <ListVideo className="w-4 h-4 text-rose-400" />
-                        <span>
-                          Серії: <strong className="text-zinc-100">S{activeSeason}E{activeEpisode}</strong>
-                        </span>
-                        <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+                        <ListVideo className="w-4 h-4 text-rose-400 flex-shrink-0" />
+                        <span className="hidden sm:inline text-zinc-300 font-normal">Серії:</span>
+                        <strong className="text-zinc-100 font-bold whitespace-nowrap">S{activeSeason}E{activeEpisode}</strong>
+                        <ChevronDown className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
                       </button>
                     )}
 
-                    {/* Prominently Visible Audio Track (Озвучка) Selector */}
+                    {/* Compact Audio Track (Озвучка) Selector */}
                     {details.translators.length > 1 && (
                       <div className="relative">
                         <button
@@ -2119,13 +2081,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             setShowSpeedMenu(false);
                             setShowEpisodesDrawer(false);
                           }}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white text-xs font-semibold border border-white/15 cursor-pointer shadow-md transition-all"
+                          className="h-10 flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white text-xs font-semibold border border-white/15 cursor-pointer shadow-md transition-all flex-shrink-0"
+                          title="Вибір озвучення"
                         >
-                          <Tv className="w-4 h-4 text-rose-400" />
-                          <span>
-                            Озвучка: <strong className="text-zinc-100 max-w-[130px] truncate inline-block align-bottom">{currentTranslator?.name}</strong>
-                          </span>
-                          <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+                          <Tv className="w-4 h-4 text-rose-400 flex-shrink-0" />
+                          <span className="hidden md:inline text-zinc-300 font-normal">Озвучка:</span>
+                          <strong className="text-zinc-100 max-w-[80px] sm:max-w-[120px] truncate inline-block align-bottom font-medium">
+                            {currentTranslator?.name}
+                          </strong>
+                          <ChevronDown className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
                         </button>
 
                         {showTranslatorMenu && (
@@ -2166,7 +2130,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       </div>
                     )}
 
-                    {/* Playback Speed Trigger (vayou-desktop style) */}
+                    {/* Playback Speed Trigger */}
                     <div className="relative">
                       <button
                         onClick={() => {
@@ -2176,7 +2140,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           setShowSubtitleMenu(false);
                           setShowEpisodesDrawer(false);
                         }}
-                        className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white text-xs font-semibold border border-white/15 cursor-pointer"
+                        className="h-10 flex items-center gap-1 px-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white text-xs font-semibold border border-white/15 cursor-pointer flex-shrink-0"
                         title="Швидкість відтворення"
                       >
                         <Gauge className="w-4 h-4" />
@@ -2217,7 +2181,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           setShowSpeedMenu(false);
                           setShowEpisodesDrawer(false);
                         }}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white text-xs font-semibold border border-white/15 cursor-pointer"
+                        className="h-10 flex items-center gap-1.5 px-3 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white text-xs font-semibold border border-white/15 cursor-pointer flex-shrink-0"
                       >
                         {isPremiumQuality(selectedQuality?.label) ? (
                           <Crown className="w-4 h-4 text-amber-400 fill-amber-400/25" />
@@ -2274,10 +2238,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             setShowSpeedMenu(false);
                             setShowEpisodesDrawer(false);
                           }}
-                          className="p-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 cursor-pointer"
+                          className="h-10 w-10 flex items-center justify-center rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 cursor-pointer flex-shrink-0"
                           title="Субтитри"
                         >
-                          <Subtitles className="w-5 h-5" />
+                          <Subtitles className="w-4 h-4" />
                         </button>
 
                         {showSubtitleMenu && (
