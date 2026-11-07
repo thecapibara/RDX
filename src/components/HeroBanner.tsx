@@ -106,7 +106,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
       onMouseLeave={() => setIsHovered(false)}
       className="relative w-full h-[58vh] min-h-[440px] max-h-[640px] overflow-hidden select-none group [contain:layout_paint]"
     >
-      {/* Full-bleed Background Poster with Optimized Top/Center Positioning */}
+      {/* Atmospheric Ambient Color Wash (Diffused 48px blur aura - zero pixelation, pure color mood) */}
       <AnimatePresence mode="wait">
         <motion.div
           key={currentMedia.id || currentMedia.url}
@@ -114,106 +114,137 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.35, ease: "easeOut" }}
-          className="absolute inset-0"
+          className="absolute inset-0 overflow-hidden pointer-events-none"
         >
           <img
             src={currentMedia.poster}
-            alt={currentMedia.title}
+            alt=""
+            aria-hidden="true"
             decoding="async"
-            className="w-full h-full object-cover object-[center_20%] sm:object-[60%_20%] opacity-65 scale-102 transform-gpu"
+            className="w-full h-full object-cover object-[center_35%] opacity-25 blur-[48px] scale-135 transform-gpu"
           />
 
-          {/* Cinematic Overlays: Soft dark gradient on the left for readable text, bottom fade into black */}
-          <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/40 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/80 to-transparent w-full md:w-3/5" />
+          {/* Cinematic Vignette */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/60 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/70 to-transparent w-full md:w-3/5" />
         </motion.div>
       </AnimatePresence>
 
-      {/* Content Container (Left-aligned text & actions) */}
-      <div className="relative z-10 h-full flex flex-col justify-end px-[clamp(1.5rem,5vw,5rem)] pb-12 max-w-5xl space-y-4">
-        {/* Badges Row */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={`meta-${currentMedia.id || currentMedia.url}`}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.3 }}
-            className="flex flex-wrap items-center gap-2.5"
-          >
-            <span className="px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-rose-600/90 text-white shadow-md shadow-rose-950/50 border border-rose-400/30">
-              {isSeries ? "Серіал" : "Фільм"}
-            </span>
-
-            {currentMedia.series_info && (
-              <span className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-white/10 text-zinc-200 border border-white/15">
-                {currentMedia.series_info}
-              </span>
-            )}
-
-            {currentMedia.rating && (
-              <div className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                <span>{currentMedia.rating}</span>
-              </div>
-            )}
-
-            {currentMedia.misc_info && (
-              <span className="text-xs text-zinc-300 font-medium">
-                {currentMedia.misc_info}
-              </span>
-            )}
-          </motion.div>
-        </AnimatePresence>
-
-        {/* Title */}
-        <AnimatePresence mode="wait">
-          <motion.h1
-            key={`title-${currentMedia.id || currentMedia.url}`}
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.35 }}
-            className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-white line-clamp-2 drop-shadow-2xl"
-          >
-            {currentMedia.title}
-          </motion.h1>
-        </AnimatePresence>
-
-        {/* Actions Row */}
-        <div className="flex items-center gap-3 pt-2 flex-wrap">
-          <button
-            onClick={() => onPlay(currentMedia)}
-            className="flex items-center gap-2.5 px-6 py-3 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-rose-500 hover:from-red-500 hover:to-rose-400 text-white font-bold text-sm shadow-xl shadow-rose-900/40 hover:shadow-rose-900/60 active:scale-95 transition-all cursor-pointer"
-          >
-            <Play className="w-5 h-5 fill-current" />
-            <span>Дивитися зараз</span>
-          </button>
-
-          <button
-            onClick={() => onOpenDetails(currentMedia)}
-            className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-zinc-900/90 hover:bg-zinc-800 active:scale-95 text-white font-semibold text-sm border border-white/15 transition-all cursor-pointer"
-          >
-            <Info className="w-4 h-4 text-zinc-300" />
-            <span>Детальніше</span>
-          </button>
-
-          {onToggleBookmark && (
-            <button
-              onClick={() => onToggleBookmark(currentMedia)}
-              title={isBookmarked ? "Видалити із закладок" : "Додати в закладки"}
-              className={cn(
-                "p-3 rounded-2xl border transition-all cursor-pointer active:scale-95",
-                isBookmarked
-                  ? "bg-amber-500/20 text-amber-400 border-amber-500/40 hover:bg-amber-500/30"
-                  : "bg-white/10 text-zinc-300 border-white/15 hover:bg-white/20 hover:text-white"
-              )}
+      {/* Main Split Hero Container (Apple TV+ / Prime Video Spotlight design) */}
+      <div className="relative z-10 h-full flex items-end justify-between px-[clamp(1.5rem,5vw,5rem)] pb-12 w-full gap-8">
+        {/* Left: Text & Actions */}
+        <div className="flex flex-col max-w-2xl space-y-4">
+          {/* Badges Row */}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={`meta-${currentMedia.id || currentMedia.url}`}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.3 }}
+              className="flex flex-wrap items-center gap-2.5"
             >
-              <BookmarkIcon
-                className={cn("w-5 h-5", isBookmarked && "fill-amber-400")}
-              />
+              <span className="px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-rose-600/90 text-white shadow-md shadow-rose-950/50 border border-rose-400/30">
+                {isSeries ? "Серіал" : "Фільм"}
+              </span>
+
+              {currentMedia.series_info && (
+                <span className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-white/10 text-zinc-200 border border-white/15">
+                  {currentMedia.series_info}
+                </span>
+              )}
+
+              {currentMedia.rating && (
+                <div className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                  <span>{currentMedia.rating}</span>
+                </div>
+              )}
+
+              {currentMedia.misc_info && (
+                <span className="text-xs text-zinc-300 font-medium">
+                  {currentMedia.misc_info}
+                </span>
+              )}
+            </motion.div>
+          </AnimatePresence>
+
+          {/* Title */}
+          <AnimatePresence mode="wait">
+            <motion.h1
+              key={`title-${currentMedia.id || currentMedia.url}`}
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.35 }}
+              className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-white line-clamp-2 drop-shadow-2xl"
+            >
+              {currentMedia.title}
+            </motion.h1>
+          </AnimatePresence>
+
+          {/* Actions Row */}
+          <div className="flex items-center gap-3 pt-2 flex-wrap">
+            <button
+              onClick={() => onPlay(currentMedia)}
+              className="flex items-center gap-2.5 px-6 py-3 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-rose-500 hover:from-red-500 hover:to-rose-400 text-white font-bold text-sm shadow-xl shadow-rose-900/40 hover:shadow-rose-900/60 active:scale-95 transition-all cursor-pointer"
+            >
+              <Play className="w-5 h-5 fill-current" />
+              <span>Дивитися зараз</span>
             </button>
-          )}
+
+            <button
+              onClick={() => onOpenDetails(currentMedia)}
+              className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-zinc-900/90 hover:bg-zinc-800 active:scale-95 text-white font-semibold text-sm border border-white/15 transition-all cursor-pointer"
+            >
+              <Info className="w-4 h-4 text-zinc-300" />
+              <span>Детальніше</span>
+            </button>
+
+            {onToggleBookmark && (
+              <button
+                onClick={() => onToggleBookmark(currentMedia)}
+                title={isBookmarked ? "Видалити із закладок" : "Додати в закладки"}
+                className={cn(
+                  "p-3 rounded-2xl border transition-all cursor-pointer active:scale-95",
+                  isBookmarked
+                    ? "bg-amber-500/20 text-amber-400 border-amber-500/40 hover:bg-amber-500/30"
+                    : "bg-white/10 text-zinc-300 border-white/15 hover:bg-white/20 hover:text-white"
+                )}
+              >
+                <BookmarkIcon
+                  className={cn("w-5 h-5", isBookmarked && "fill-amber-400")}
+                />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Right: Crisp, pristine, un-stretched 2:3 vertical poster (Apple TV+ / Prime Video spotlight style) */}
+        <div className="hidden md:flex flex-col items-center justify-end flex-shrink-0 pb-1 z-20">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={`poster-${currentMedia.id || currentMedia.url}`}
+              initial={{ opacity: 0, scale: 0.94, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: -10 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+              onClick={() => onOpenDetails(currentMedia)}
+              className="relative w-44 lg:w-52 aspect-[2/3] rounded-2xl overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.9)] border border-white/20 bg-zinc-900 group/poster cursor-pointer hover:scale-104 transition-transform duration-200"
+            >
+              <img
+                src={currentMedia.poster}
+                alt={currentMedia.title}
+                decoding="async"
+                className="w-full h-full object-cover select-none"
+              />
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/poster:opacity-100 transition-opacity flex items-center justify-center">
+                <div className="w-12 h-12 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-lg active:scale-95 transition-transform">
+                  <Play className="w-5 h-5 fill-current ml-0.5" />
+                </div>
+              </div>
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
 
