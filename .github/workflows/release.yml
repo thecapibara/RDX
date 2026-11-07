@@ -71,7 +71,22 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'RDX v__VERSION__'
-          releaseBody: 'See release notes and assets below for Windows (.exe, .msi), Linux (.AppImage, .deb, .rpm), and macOS (.dmg).'
+          generateReleaseNotes: true
+          releaseBody: |
+            ## RDX v__VERSION__ — Desktop Streaming Client for HDRezka
+
+            ### 📦 Download & Installation Guide
+
+            | Platform | Package | Description |
+            | :--- | :--- | :--- |
+            | **Windows** | `RDX___VERSION___x64-setup.exe` | Recommended installer for Windows 10 & 11 |
+            | **Windows** | `RDX___VERSION___x64_en-US.msi` | Windows Installer package |
+            | **Linux (Universal)** | `RDX___VERSION___amd64.AppImage` | Portable binary with bundled GStreamer codecs (Arch, Ubuntu, Fedora, Debian) |
+            | **Linux (Debian/Ubuntu)** | `RDX___VERSION___amd64.deb` | Standard package for Ubuntu / Debian / Linux Mint |
+            | **Linux (RPM)** | `RDX-__VERSION__-1.x86_64.rpm` | Package for Fedora / openSUSE / RHEL |
+            | **macOS** | `RDX___VERSION___aarch64.dmg` | Disk Image for Apple Silicon Mac (M1/M2/M3/M4) |
+
+            ---
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
