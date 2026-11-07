@@ -14,12 +14,17 @@ fn main() {
             }
         }
 
-        // 2. Disable WebKitGTK DMA-BUF hardware renderer by default.
-        // In AppImages on Arch Linux / Wayland / Mesa 24.x / NVIDIA, DMA-BUF driver mismatches
-        // between host GPU drivers and AppImage libraries cause WebKitWebProcess to crash on startup.
+        // 2. Disable WebKitGTK DMA-BUF hardware renderer ONLY on proprietary NVIDIA drivers.
+        // On Intel (Iris Xe/UHD) and AMD Radeon Mesa drivers on Wayland, DMA-BUF zero-copy
+        // GPU compositing is essential for fluid 60/120 FPS scrolling without CPU bottlenecking.
         if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-            unsafe {
-                std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+            let is_nvidia = std::path::Path::new("/dev/nvidia0").exists()
+                || std::path::Path::new("/dev/nvidiactl").exists()
+                || std::path::Path::new("/proc/driver/nvidia").exists();
+            if is_nvidia {
+                unsafe {
+                    std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+                }
             }
         }
 

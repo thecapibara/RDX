@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
 import type { MediaCard as MediaCardType } from "../types";
 import { MediaCard } from "./MediaCard";
@@ -31,36 +31,11 @@ export const Swimlane: React.FC<SwimlaneProps> = React.memo(({
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(() => (items ? items.length > 5 : true));
 
-  const checkScroll = useCallback(() => {
+  useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const { scrollLeft, scrollWidth, clientWidth } = el;
-    if (clientWidth === 0) return;
 
-    const nextLeft = scrollLeft > 15;
-    const maxScroll = scrollWidth - clientWidth;
-    const nextRight = maxScroll > 20 && scrollLeft < maxScroll - 50;
-
-    setCanScrollLeft(nextLeft);
-    setCanScrollRight(nextRight);
-  }, []);
-
-  useEffect(() => {
-    checkScroll();
-    const t1 = setTimeout(checkScroll, 80);
-    const t2 = setTimeout(checkScroll, 300);
-    const t3 = setTimeout(checkScroll, 700);
-
-    const el = scrollRef.current;
-    if (!el) {
-      return () => {
-        clearTimeout(t1);
-        clearTimeout(t2);
-        clearTimeout(t3);
-      };
-    }
-
-    // IntersectionObserver for 100% boundary accuracy
+    // Zero-overhead boundary tracking via IntersectionObserver (no synchronous layout thrashing)
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -80,18 +55,10 @@ export const Swimlane: React.FC<SwimlaneProps> = React.memo(({
     if (startSentinelRef.current) observer.observe(startSentinelRef.current);
     if (endSentinelRef.current) observer.observe(endSentinelRef.current);
 
-    el.addEventListener("scroll", checkScroll, { passive: true });
-    window.addEventListener("resize", checkScroll);
-
     return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
       observer.disconnect();
-      el.removeEventListener("scroll", checkScroll);
-      window.removeEventListener("resize", checkScroll);
     };
-  }, [items, checkScroll]);
+  }, [items]);
 
   const scroll = (direction: "left" | "right") => {
     if (scrollRef.current) {
@@ -100,11 +67,6 @@ export const Swimlane: React.FC<SwimlaneProps> = React.memo(({
         left: direction === "left" ? -scrollAmount : scrollAmount,
         behavior: "smooth",
       });
-      // Fire checks during and after smooth scroll animation
-      setTimeout(checkScroll, 100);
-      setTimeout(checkScroll, 250);
-      setTimeout(checkScroll, 450);
-      setTimeout(checkScroll, 700);
     }
   };
 
@@ -170,7 +132,6 @@ export const Swimlane: React.FC<SwimlaneProps> = React.memo(({
         {/* Carousel Track */}
         <div
           ref={scrollRef}
-          onScroll={checkScroll}
           className="flex gap-4 overflow-x-auto px-[clamp(1.25rem,4vw,4rem)] pb-4 pt-1 no-scrollbar scroll-smooth"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
