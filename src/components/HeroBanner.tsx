@@ -120,13 +120,12 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
             src={currentMedia.poster}
             alt={currentMedia.title}
             decoding="async"
-            className="w-full h-full object-cover object-[center_20%] sm:object-[75%_20%] opacity-35 scale-102 transform-gpu"
+            className="w-full h-full object-cover object-[center_20%] sm:object-[60%_20%] opacity-65 scale-102 transform-gpu"
           />
 
           {/* Cinematic Overlays: Soft dark gradient on the left for readable text, bottom fade into black */}
-          <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/60 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/90 to-transparent w-full md:w-3/4" />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-[var(--bg-base,#000000)]" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/40 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/80 to-transparent w-full md:w-3/5" />
         </motion.div>
       </AnimatePresence>
 
