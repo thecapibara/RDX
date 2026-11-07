@@ -21,7 +21,6 @@ import {
   PictureInPicture2,
   Tv,
   Check,
-  Move,
   Loader2,
   Repeat,
   Camera,
@@ -231,6 +230,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setHudToast(text);
     if (hudTimerRef.current) clearTimeout(hudTimerRef.current);
     hudTimerRef.current = setTimeout(() => setHudToast(null), 1200);
+  };
+
+  // Mini-player seek ripple animation state
+  const [miniSeekRipple, setMiniSeekRipple] = useState<"left" | "right" | null>(null);
+  const miniRippleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerMiniSeekRipple = (side: "left" | "right") => {
+    setMiniSeekRipple(side);
+    if (miniRippleTimerRef.current) clearTimeout(miniRippleTimerRef.current);
+    miniRippleTimerRef.current = setTimeout(() => setMiniSeekRipple(null), 500);
   };
 
   // Vayou-inspired Features: Aspect Ratio, A-B Loop, Screenshot, Sleep Timer, Media Info
@@ -1087,10 +1096,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }, 220);
   };
 
-  const handleVideoDoubleClick = () => {
+  const handleVideoDoubleClick = (e: React.MouseEvent) => {
     if (clickTimerRef.current) {
       clearTimeout(clickTimerRef.current);
       clickTimerRef.current = null;
+    }
+    if (mode === "os_pip" || mode === "docked") {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      if (clickX < rect.width / 2) {
+        seekDelta(-5);
+        triggerMiniSeekRipple("left");
+      } else {
+        seekDelta(5);
+        triggerMiniSeekRipple("right");
+      }
+      return;
     }
     if (mode === "full") {
       onModeChange("docked");
@@ -1127,11 +1148,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     showHud(seconds > 0 ? `⏩ +${seconds} сек` : `⏪ ${seconds} сек`);
   };
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newTime = parseFloat(e.target.value);
-    commitSeekToVideo(newTime);
-  };
-
   const adjustVolume = (delta: number) => {
     if (!videoRef.current) return;
     const newVol = Math.max(0, Math.min(1, volume + delta));
@@ -1147,6 +1163,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     videoRef.current.muted = newMuted;
     setIsMuted(newMuted);
     showHud(newMuted ? "🔇 Без звуку" : `🔊 ${Math.round(volume * 100)}%`);
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (mode === "os_pip" || mode === "docked") {
+      e.stopPropagation();
+      const delta = e.deltaY < 0 ? 0.05 : -0.05;
+      const newVol = Math.max(0, Math.min(1, Math.round((volume + delta) * 100) / 100));
+      setVolume(newVol);
+      if (videoRef.current) {
+        videoRef.current.volume = newVol;
+        videoRef.current.muted = newVol === 0;
+      }
+      setIsMuted(newVol === 0);
+      showHud(newVol === 0 ? "🔇 Без звуку" : `🔊 ${Math.round(newVol * 100)}%`);
+    }
   };
 
   // Switch Quality preserving position & persist user's quality preference
@@ -1368,6 +1399,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [isSeries, seasons, drawerSeason, drawerSeasonEpisodes.length]);
 
+  const isMiniMode = mode === "os_pip" || mode === "docked";
+
   // ==================== RENDERING (UNIFIED SINGLE VIDEO TREE) ====================
   return (
     <motion.div
@@ -1379,66 +1412,30 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       onMouseMove={mode === "full" ? triggerActivity : undefined}
       onClick={mode === "full" ? triggerActivity : undefined}
       onContextMenu={handleContextMenu}
+      onWheel={handleWheel}
+      data-tauri-drag-region={mode === "os_pip" ? "" : undefined}
+      onMouseDown={(e) => {
+        if (
+          mode === "os_pip" &&
+          e.button === 0 &&
+          !(e.target as HTMLElement).closest("button") &&
+          !(e.target as HTMLElement).closest("input")
+        ) {
+          api.startDragWindow().catch(() => {});
+        }
+      }}
       className={cn(
         "z-50 select-none overflow-hidden bg-black",
         mode === "full" && "fixed inset-0 flex items-center justify-center",
-        mode === "os_pip" && "fixed inset-0 flex flex-col",
+        mode === "os_pip" && "fixed inset-0 flex flex-col group cursor-grab active:cursor-grabbing",
         mode === "docked" &&
           "fixed bottom-6 right-6 w-96 aspect-video rounded-2xl shadow-2xl border border-white/20 group cursor-grab active:cursor-grabbing"
       )}
     >
-      {/* 1. Header Drag Bar for OS Always-on-Top Floating Window */}
-      {mode === "os_pip" && (
-        <div
-          data-tauri-drag-region
-          onMouseDown={(e) => {
-            if (
-              e.button === 0 &&
-              (e.target as HTMLElement).tagName !== "BUTTON" &&
-              !(e.target as HTMLElement).closest("button")
-            ) {
-              api.startDragWindow().catch(() => {});
-            }
-          }}
-          className="h-9 w-full bg-zinc-950/95 border-b border-white/10 flex items-center justify-between px-3 cursor-move z-30 flex-shrink-0"
-        >
-          <div className="flex items-center gap-2 text-xs font-semibold text-zinc-300 truncate max-w-[320px] pointer-events-none">
-            <Move className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
-            <span className="truncate">
-              {details.title}{" "}
-              {isSeries && `(S${activeSeason}E${activeEpisode})`}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <button
-              onClick={() => handleSetOsPip(false)}
-              title="Розгорнути на весь екран"
-              className="p-1 rounded-md hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
-            >
-              <Maximize2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => {
-                handleSetOsPip(false);
-                handleTeardownAndClose();
-              }}
-              title="Закрити"
-              className="p-1 rounded-md hover:bg-rose-600 text-zinc-400 hover:text-white transition-colors cursor-pointer"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* 2. Persistent Video Stage (Single DOM node across all modes) */}
+      {/* Persistent Video Stage (Single DOM node across all modes) */}
       <div
         key="video-stage"
-        className={cn(
-          "relative w-full overflow-hidden bg-black flex items-center justify-center",
-          mode === "os_pip" ? "flex-1 min-h-0" : "h-full"
-        )}
+        className="relative w-full h-full overflow-hidden bg-black flex items-center justify-center"
       >
         <video
           key="persistent-video"
@@ -1502,148 +1499,212 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onDoubleClick={handleVideoDoubleClick}
         />
 
-        {/* ================= OS PIP OVERLAY ================= */}
-        {mode === "os_pip" && (
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2.5 z-20 pointer-events-none">
-            <div className="pointer-events-auto flex items-center justify-between text-white text-xs">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={togglePlay}
-                  className="p-1.5 rounded-full bg-white/20 hover:bg-rose-600 cursor-pointer"
-                >
-                  {isPlaying ? (
-                    <Pause className="w-4 h-4" />
-                  ) : (
-                    <Play className="w-4 h-4 fill-current" />
-                  )}
-                </button>
-                <button onClick={() => seekDelta(-5)} className="p-1 hover:text-rose-400 cursor-pointer" title="Назад 5 сек">
-                  <Rewind className="w-3.5 h-3.5 fill-current/30" />
-                </button>
-                <button onClick={() => seekDelta(5)} className="p-1 hover:text-rose-400 cursor-pointer" title="Вперед 5 сек">
-                  <FastForward className="w-3.5 h-3.5 fill-current/30" />
-                </button>
-                <span className="font-mono text-[11px] text-zinc-300">
-                  {formatTime(currentTime)} / {formatTime(effectiveDur)}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {isSeries && (
-                  <button
-                    onClick={handleNextEpisode}
-                    title="Наступна серія"
-                    className="p-1 hover:text-rose-400 cursor-pointer"
-                  >
-                    <SkipForward className="w-3.5 h-3.5" />
-                  </button>
-                )}
-                <button
-                  onClick={() => handleSetOsPip(false)}
-                  className="text-[11px] font-semibold text-rose-400 hover:text-rose-300 underline cursor-pointer"
-                >
-                  Розгорнути
-                </button>
-              </div>
+        {/* ================= DOUBLE-TAP SEEK RIPPLE INDICATORS ================= */}
+        {isMiniMode && miniSeekRipple === "left" && (
+          <div className="absolute inset-y-0 left-0 w-1/3 flex items-center justify-center pointer-events-none z-30 animate-pulse">
+            <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-md flex flex-col items-center justify-center text-white text-xs font-bold shadow-2xl">
+              <Rewind className="w-5 h-5 fill-current" />
+              <span>-5с</span>
             </div>
-
-            {/* Mini Progress Bar */}
-            <div
-              className="pointer-events-auto mt-1.5"
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              <input
-                type="range"
-                min={0}
-                max={effectiveDur || 100}
-                value={currentTime}
-                onChange={handleSeek}
-                className="w-full h-1 accent-rose-500 cursor-pointer"
-              />
+          </div>
+        )}
+        {isMiniMode && miniSeekRipple === "right" && (
+          <div className="absolute inset-y-0 right-0 w-1/3 flex items-center justify-center pointer-events-none z-30 animate-pulse">
+            <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-md flex flex-col items-center justify-center text-white text-xs font-bold shadow-2xl">
+              <FastForward className="w-5 h-5 fill-current" />
+              <span>+5с</span>
             </div>
           </div>
         )}
 
-        {/* ================= DOCKED MINI-PLAYER OVERLAY ================= */}
-        {mode === "docked" && (
-          <>
-            {/* Top Drag Indicator */}
-            <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/60 border border-white/10 text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity text-[11px] pointer-events-none z-20">
-              <Move className="w-3 h-3 text-zinc-400" />
-              <span>RDX</span>
-            </div>
+        {/* ================= UNIFIED MINI-PLAYER OVERLAY (OS PiP & Docked) ================= */}
+        {isMiniMode && (
+          <div className="absolute inset-0 z-20 flex flex-col justify-between transition-opacity duration-200 opacity-0 group-hover:opacity-100 pointer-events-none">
+            {/* Top Shadow Gradient */}
+            <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/85 via-black/40 to-transparent pointer-events-none" />
 
-            {/* Top Floating Controls */}
-            <div
-              className="absolute top-2 right-2 flex items-center gap-1 z-20 opacity-0 group-hover:opacity-100 transition-opacity"
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              <button
-                onClick={() => handleSetOsPip(true)}
-                title="Поверх усіх вікон (Always-on-Top)"
-                className="p-1.5 rounded-lg bg-black/70 hover:bg-white/20 text-white border border-white/10 cursor-pointer"
-              >
-                <PictureInPicture2 className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => onModeChange("full")}
-                title="Розгорнути на весь екран"
-                className="p-1.5 rounded-lg bg-black/70 hover:bg-white/20 text-white border border-white/10 cursor-pointer"
-              >
-                <Maximize2 className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={handleTeardownAndClose}
-                title="Закрити плеєр"
-                className="p-1.5 rounded-lg bg-black/70 hover:bg-rose-600 text-white border border-white/10 cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Hover Bottom Controls */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3 pointer-events-none z-20">
+            {/* Top Row: Volume & Title Capsule on Left, Window Controls on Right */}
+            <div className="relative z-10 flex items-center justify-between p-3">
+              {/* Left Capsule: Speaker + Volume Slider + Series/Movie Tag */}
               <div
-                className="pointer-events-auto flex items-center justify-between text-white"
+                className="pointer-events-auto flex items-center gap-2 bg-black/60 backdrop-blur-md rounded-full px-2.5 py-1.5 border border-white/15 shadow-lg"
                 onPointerDown={(e) => e.stopPropagation()}
               >
-                <div className="truncate max-w-[190px]">
-                  <h4 className="text-xs font-bold truncate">{details.title}</h4>
-                  <p className="text-[10px] text-zinc-400 font-mono">
-                    {isSeries ? `S${activeSeason}E${activeEpisode}` : "Фільм"} •{" "}
-                    {formatTime(currentTime)}
-                  </p>
-                </div>
+                <button
+                  onClick={toggleMute}
+                  className="text-white hover:text-rose-400 transition-colors cursor-pointer"
+                  title={isMuted ? "Увімкнути звук (M)" : "Вимкнути звук (M)"}
+                >
+                  {isMuted || volume === 0 ? (
+                    <VolumeX className="w-3.5 h-3.5 text-zinc-400" />
+                  ) : (
+                    <Volume2 className="w-3.5 h-3.5 text-white" />
+                  )}
+                </button>
 
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={togglePlay}
-                    className="w-8 h-8 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-lg cursor-pointer"
-                  >
-                    {isPlaying ? (
-                      <Pause className="w-4 h-4" />
-                    ) : (
-                      <Play className="w-4 h-4 fill-current ml-0.5" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              <div
-                className="pointer-events-auto mt-2"
-                onPointerDown={(e) => e.stopPropagation()}
-              >
                 <input
                   type="range"
                   min={0}
-                  max={effectiveDur || 100}
-                  value={currentTime}
-                  onChange={handleSeek}
-                  className="w-full h-1 accent-rose-500 cursor-pointer"
+                  max={1}
+                  step={0.05}
+                  value={isMuted ? 0 : volume}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    if (videoRef.current) {
+                      videoRef.current.volume = v;
+                      videoRef.current.muted = v === 0;
+                    }
+                    setVolume(v);
+                    setIsMuted(v === 0);
+                  }}
+                  className="w-14 sm:w-16 h-1 accent-rose-500 cursor-pointer"
+                  title={`Гучність: ${Math.round(volume * 100)}%`}
+                />
+
+                {/* S1E2 or Movie Title with strict max-width limit */}
+                {isSeries ? (
+                  <span className="text-[10px] text-zinc-300 font-mono font-bold border-l border-white/20 pl-2 shrink-0">
+                    S{activeSeason}E{activeEpisode}
+                  </span>
+                ) : (
+                  <span
+                    className="text-[10px] text-zinc-300 font-medium border-l border-white/20 pl-2 max-w-[110px] sm:max-w-[140px] truncate shrink-0"
+                    title={details.title}
+                  >
+                    {details.title}
+                  </span>
+                )}
+              </div>
+
+              {/* Right: Maximize / Return to Full App + Close X */}
+              <div
+                className="pointer-events-auto flex items-center gap-1.5"
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                {mode === "docked" && (
+                  <button
+                    onClick={() => handleSetOsPip(true)}
+                    title="Поверх усіх вікон (Always-on-Top)"
+                    className="w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/15 text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
+                  >
+                    <PictureInPicture2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    if (mode === "os_pip") handleSetOsPip(false);
+                    onModeChange("full");
+                  }}
+                  title="Розгорнути на весь екран"
+                  className="w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/15 text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
+                >
+                  <Maximize2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => {
+                    if (mode === "os_pip") handleSetOsPip(false);
+                    handleTeardownAndClose();
+                  }}
+                  title="Закрити плеєр"
+                  className="w-8 h-8 rounded-full bg-black/60 hover:bg-rose-600 backdrop-blur-md border border-white/15 text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Center Controls: Rewind -5s, Big Play/Pause, Forward +5s, Next Episode */}
+            <div className="relative z-10 flex items-center justify-center gap-4 sm:gap-5 pointer-events-none">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  seekDelta(-5);
+                  triggerMiniSeekRipple("left");
+                }}
+                title="Назад на 5 сек"
+                className="pointer-events-auto w-10 h-10 rounded-full bg-black/50 hover:bg-black/75 backdrop-blur-md border border-white/15 text-white flex items-center justify-center transition-all hover:scale-110 active:scale-90 cursor-pointer shadow-lg"
+              >
+                <Rewind className="w-4 h-4 fill-current/30" />
+              </button>
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  togglePlay();
+                }}
+                title={isPlaying ? "Пауза" : "Відтворити"}
+                className="pointer-events-auto w-13 h-13 sm:w-14 sm:h-14 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-2xl shadow-rose-950/80 transition-all hover:scale-110 active:scale-90 cursor-pointer"
+              >
+                {isPlaying ? (
+                  <Pause className="w-6 h-6 fill-current" />
+                ) : (
+                  <Play className="w-6 h-6 fill-current ml-0.5" />
+                )}
+              </button>
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  seekDelta(5);
+                  triggerMiniSeekRipple("right");
+                }}
+                title="Вперед на 5 сек"
+                className="pointer-events-auto w-10 h-10 rounded-full bg-black/50 hover:bg-black/75 backdrop-blur-md border border-white/15 text-white flex items-center justify-center transition-all hover:scale-110 active:scale-90 cursor-pointer shadow-lg"
+              >
+                <FastForward className="w-4 h-4 fill-current/30" />
+              </button>
+
+              {isSeries && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleNextEpisode();
+                  }}
+                  title="Наступна серія"
+                  className="pointer-events-auto w-9 h-9 rounded-full bg-black/50 hover:bg-black/75 backdrop-blur-md border border-white/15 text-white flex items-center justify-center transition-all hover:scale-110 active:scale-90 cursor-pointer shadow-lg"
+                >
+                  <SkipForward className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Bottom Row: Scrubber & Timecodes */}
+            <div
+              className="relative z-10 px-4 pb-3 pt-4 bg-gradient-to-t from-black/85 via-black/40 to-transparent pointer-events-auto"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between text-[11px] font-mono text-zinc-300 font-semibold mb-1 pointer-events-none">
+                <span>{formatTime(currentTime)}</span>
+                <span>-{formatTime(Math.max(0, effectiveDur - currentTime))}</span>
+              </div>
+
+              {/* Edge-to-edge sleek scrubber */}
+              <div
+                className="relative w-full h-1 group/track hover:h-2 rounded-full bg-white/20 cursor-pointer transition-all"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  if (rect.width <= 0) return;
+                  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                  const effDur = getEffectiveDuration();
+                  if (effDur > 0) {
+                    const target = pct * effDur;
+                    setCurrentTime(target);
+                    commitSeekToVideo(target);
+                  }
+                }}
+              >
+                <div
+                  className="absolute top-0 bottom-0 left-0 bg-white/25 rounded-full pointer-events-none"
+                  style={{ width: `${bufferedPct}%` }}
+                />
+                <div
+                  className="absolute top-0 bottom-0 left-0 bg-rose-600 rounded-full shadow-md shadow-rose-600/50 pointer-events-none"
+                  style={{ width: `${playedPct}%` }}
                 />
               </div>
             </div>
-          </>
+          </div>
         )}
 
         {/* ================= FULL SCREEN CINEMA OSD OVERLAY ================= */}

@@ -417,7 +417,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                   Налаштування RDX<span className="text-rose-500 text-lg leading-none">.</span>
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-white/5 border border-white/10 text-zinc-400">
-                  v0.6.7
+                  v0.7.0
                 </span>
               </div>
               <p className="text-xs text-zinc-400">
@@ -1132,7 +1132,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                     <h3 className="text-2xl font-black tracking-tight text-white flex items-baseline">
                       RDX<span className="text-rose-500">.</span>
                       <span className="text-xs font-semibold text-zinc-400 ml-2 tracking-normal">
-                        v0.6.7 (Beta)
+                        v0.7.0 (Beta)
                       </span>
                     </h3>
                     <p className="text-xs text-zinc-400 mt-1">

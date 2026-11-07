@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="uk" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RDX — Інтерактивні макети Міні-плеєра (PiP)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            rose: {
+              400: 'var(--accent-400, #fb7185)',
+              500: 'var(--accent-500, #f43f5e)',
+              600: 'var(--accent-600, #e11d48)',
+              950: 'var(--accent-950, #4c0519)',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
+    
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      user-select: none;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    
+    /* Range input styling */
+    input[type=range] {
+      -webkit-appearance: none;
+      background: transparent;
+    }
+    input[type=range]:focus {
+      outline: none;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      height: 12px;
+      width: 12px;
+      border-radius: 50%;
+      background: #ffffff;
+      cursor: pointer;
+      margin-top: -4px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.6);
+      transition: transform 0.1s ease;
+    }
+    input[type=range]:hover::-webkit-slider-thumb {
+      transform: scale(1.25);
+    }
+    input[type=range]::-webkit-slider-runnable-track {
+      width: 100%;
+      height: 4px;
+      cursor: pointer;
+      border-radius: 2px;
+    }
+
+    /* Ripple double click animation */
+    @keyframes rippleEffect {
+      0% { opacity: 0.8; transform: scale(0.6); }
+      100% { opacity: 0; transform: scale(1.4); }
+    }
+    .seek-ripple {
+      animation: rippleEffect 0.5s ease-out forwards;
+    }
+  </style>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col antialiased selection:bg-rose-500 selection:text-white">
+
+  <!-- Header Bar -->
+  <header class="border-b border-white/10 bg-zinc-900/60 backdrop-blur-xl px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-50">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-600 to-amber-500 flex items-center justify-center font-black text-white text-sm shadow-lg shadow-rose-950/50">
+        R
+      </div>
+      <div>
+        <h1 class="text-base font-bold text-white flex items-center gap-2">
+          RDX Mini-Player Interactive Lab
+          <span class="text-[11px] font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30 px-2 py-0.5 rounded-full">v2.0</span>
+        </h1>
+        <p class="text-xs text-zinc-400">Аналіз фідбеку та об'єднання Варіантів 1 і 2 в ергономічний плеєр</p>
+      </div>
+    </div>
+
+    <!-- Variant Selector Tabs -->
+    <div class="flex flex-wrap items-center p-1 bg-zinc-800/80 border border-white/10 rounded-2xl gap-1">
+      <button onclick="setVariant(4)" id="tab-4" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all bg-rose-600 text-white shadow-md flex items-center gap-1.5">
+        <span>✨ Варіант 4: Синтез 1+2 (Unified Bottom Bar)</span>
+      </button>
+      <button onclick="setVariant(5)" id="tab-5" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all text-zinc-400 hover:text-white flex items-center gap-1.5">
+        <span>💎 Варіант 5: Мікро-капсула (Micro-Dock)</span>
+      </button>
+      <button onclick="setVariant(1)" id="tab-1" class="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all text-zinc-400 hover:text-white">
+        Вар. 1 (Telegram)
+      </button>
+      <button onclick="setVariant(2)" id="tab-2" class="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all text-zinc-400 hover:text-white">
+        Вар. 2 (Apple)
+      </button>
+      <button onclick="setVariant(3)" id="tab-3" class="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all text-zinc-400 hover:text-white">
+        Вар. 3 (Double-Tap)
+      </button>
+    </div>
+
+    <!-- Accent Color Switcher -->
+    <div class="flex items-center gap-1.5 p-1 bg-zinc-800/80 border border-white/10 rounded-2xl">
+      <span class="text-[10px] text-zinc-400 font-bold px-2 uppercase tracking-wider">Акцент:</span>
+      <button onclick="setAccent('crimson')" class="w-5 h-5 rounded-full bg-rose-500 hover:scale-125 transition-transform border border-white/20 shadow-sm" title="Crimson"></button>
+      <button onclick="setAccent('amethyst')" class="w-5 h-5 rounded-full bg-purple-500 hover:scale-125 transition-transform border border-white/20 shadow-sm" title="Amethyst"></button>
+      <button onclick="setAccent('sapphire')" class="w-5 h-5 rounded-full bg-blue-500 hover:scale-125 transition-transform border border-white/20 shadow-sm" title="Sapphire"></button>
+      <button onclick="setAccent('emerald')" class="w-5 h-5 rounded-full bg-emerald-500 hover:scale-125 transition-transform border border-white/20 shadow-sm" title="Emerald"></button>
+      <button onclick="setAccent('amber')" class="w-5 h-5 rounded-full bg-amber-500 hover:scale-125 transition-transform border border-white/20 shadow-sm" title="Amber"></button>
+    </div>
+  </header>
+
+  <!-- Main Canvas / Workspace -->
+  <main class="flex-1 flex flex-col lg:flex-row relative overflow-hidden">
+    
+    <!-- Left: Desktop Sandbox with Draggable Mini-Player -->
+    <div class="flex-1 p-6 flex flex-col items-center justify-center relative bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-zinc-900 via-zinc-950 to-black min-h-[580px]">
+      
+      <!-- Simulated Desktop Background Windows -->
+      <div class="absolute inset-8 rounded-3xl border border-white/5 bg-zinc-900/30 backdrop-blur-3xl p-6 pointer-events-none flex flex-col justify-between">
+        <div class="flex items-center justify-between text-xs text-zinc-600 font-mono">
+          <span>СИМУЛЯТОР РОБОЧОГО СТОЛУ (LINUX WAYLAND / X11 / WINDOWS)</span>
+          <span>RDX ALWAYS-ON-TOP WINDOW</span>
+        </div>
+        <div class="text-center text-zinc-700 text-sm max-w-md mx-auto">
+          <p>Міні-плеєр можна вільно перетягувати мишкою за будь-яке місце відео.</p>
+          <p class="mt-1 text-xs text-zinc-500">Наведіть курсор на вікно, щоб побачити оверлей.</p>
+        </div>
+        <div class="text-xs text-zinc-600 font-mono">
+          <span>РОЗМІР ВІКНА: 460 x 258 px (16:9)</span>
+        </div>
+      </div>
+
+      <!-- THE MINI PLAYER WINDOW (Simulated OS Window) -->
+      <div id="player-window" class="relative z-20 w-[460px] h-[258px] rounded-2xl overflow-hidden shadow-2xl shadow-black/95 border border-white/15 bg-black cursor-grab active:cursor-grabbing transition-shadow duration-300 group">
+        
+        <!-- HTML5 Video Stream -->
+        <video id="pip-video" playsinline loop muted autoplay class="w-full h-full object-cover pointer-events-none" src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"></video>
+
+        <!-- Double Click Ripple Overlays -->
+        <div id="ripple-left" class="absolute inset-y-0 left-0 w-1/3 flex items-center justify-center pointer-events-none opacity-0 z-30">
+          <div class="w-16 h-16 rounded-full bg-white/20 backdrop-blur-md flex flex-col items-center justify-center text-white text-xs font-bold">
+            <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24"><path d="M11 16.07V7.93c0-.81-.91-1.28-1.57-.8l-5.6 4.07c-.57.41-.57 1.25 0 1.66l5.6 4.07c.66.48 1.57.01 1.57-.8zm8-8.14v8.14c0 .81-.91 1.28-1.57.8l-5.6-4.07c-.57-.41-.57-1.25 0-1.66l5.6-4.07c.66-.48 1.57-.01 1.57.8z"/></svg>
+            <span>-5с</span>
+          </div>
+        </div>
+        <div id="ripple-right" class="absolute inset-y-0 right-0 w-1/3 flex items-center justify-center pointer-events-none opacity-0 z-30">
+          <div class="w-16 h-16 rounded-full bg-white/20 backdrop-blur-md flex flex-col items-center justify-center text-white text-xs font-bold">
+            <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24"><path d="M5 16.07V7.93c0-.81.91-1.28 1.57-.8l5.6 4.07c.57.41.57 1.25 0 1.66l-5.6 4.07c-.66.48-1.57.01-1.57-.8zm8-8.14v8.14c0 .81.91 1.28 1.57.8l5.6-4.07c.57-.41.57-1.25 0-1.66l-5.6-4.07c-.66-.48-1.57-.01-1.57.8z"/></svg>
+            <span>+5с</span>
+          </div>
+        </div>
+
+        <!-- ======================================================== -->
+        <!-- VARIANT 4: SYNTHESIS 1+2 (Unified Bottom Bar - NEW!)     -->
+        <!-- ======================================================== -->
+        <div id="variant-4-layer" class="absolute inset-0 z-20 flex flex-col justify-between transition-opacity duration-200 opacity-0 group-hover:opacity-100 pointer-events-none">
+          <!-- Top Row: Minimal Series Title + Quick Window Close (clean, never in the way) -->
+          <div class="relative z-10 flex items-center justify-between p-3">
+            <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-[11px] font-semibold text-zinc-300">
+              <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+              <span class="truncate max-w-[200px]">Хитрый койот</span>
+              <span class="text-zinc-500 font-mono">S1E2</span>
+            </div>
+
+            <!-- Top Right: Close X only (standard OS window muscle memory) -->
+            <button onclick="mockClose()" class="pointer-events-auto w-7 h-7 rounded-full bg-black/40 hover:bg-rose-600 backdrop-blur-md border border-white/10 text-white flex items-center justify-center transition-colors cursor-pointer" title="Закрити міні-плеєр">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+
+          <!-- Bottom: Unified Media Bar (All controls in ONE place!) -->
+          <div class="relative z-10 p-3 pt-6 bg-gradient-to-t from-black/95 via-black/70 to-transparent pointer-events-auto flex flex-col gap-2">
+            
+            <!-- Edge-to-edge sleek scrubber with hover expand -->
+            <div class="relative w-full h-1 group/track hover:h-2 rounded-full bg-white/20 cursor-pointer transition-all" onclick="seekClick(event)">
+              <div id="v4-prog-buffered" class="absolute top-0 bottom-0 left-0 bg-white/25 rounded-full w-[65%]"></div>
+              <div id="v4-prog-played" class="absolute top-0 bottom-0 left-0 bg-rose-600 rounded-full w-[15%]"></div>
+            </div>
+
+            <!-- Controls Single Line: Play, Seek ±5s, Sound + Slider, Time, Maximize -->
+            <div class="flex items-center justify-between text-xs pt-0.5">
+              
+              <!-- Left cluster: Play, Rewind 5s, Forward 5s, Volume with inline slider -->
+              <div class="flex items-center gap-1.5 sm:gap-2">
+                <!-- Play/Pause -->
+                <button onclick="togglePlay()" class="w-7 h-7 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-md shadow-rose-950/60 transition-transform active:scale-95 cursor-pointer" title="Play/Pause">
+                  <svg id="v4-play-icon" class="w-3.5 h-3.5 fill-current ml-0.5" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                </button>
+
+                <!-- -5s -->
+                <button onclick="seekDelta(-5)" class="p-1 rounded text-zinc-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer" title="-5 сек">
+                  <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M11 16.07V7.93c0-.81-.91-1.28-1.57-.8l-5.6 4.07c-.57.41-.57 1.25 0 1.66l5.6 4.07c.66.48 1.57.01 1.57-.8zm8-8.14v8.14c0 .81-.91 1.28-1.57.8l-5.6-4.07c-.57-.41-.57-1.25 0-1.66l5.6-4.07c.66-.48 1.57-.01 1.57.8z"/></svg>
+                </button>
+
+                <!-- +5s -->
+                <button onclick="seekDelta(5)" class="p-1 rounded text-zinc-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer" title="+5 сек">
+                  <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M5 16.07V7.93c0-.81.91-1.28 1.57-.8l5.6 4.07c.57.41.57 1.25 0 1.66l-5.6 4.07c-.66.48-1.57.01-1.57-.8zm8-8.14v8.14c0 .81.91 1.28 1.57.8l5.6-4.07c.57-.41.57-1.25 0-1.66l-5.6-4.07c-.66-.48-1.57-.01-1.57.8z"/></svg>
+                </button>
+
+                <!-- Volume group -->
+                <div class="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 rounded-full px-2 py-1 transition-colors">
+                  <button onclick="toggleMute()" class="text-zinc-300 hover:text-white cursor-pointer" title="Вимкнути звук">
+                    <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+                  </button>
+                  <input type="range" min="0" max="1" step="0.05" value="0.7" oninput="setVolume(this.value)" class="w-14 h-1 accent-rose-500 cursor-pointer" title="Гучність">
+                </div>
+              </div>
+
+              <!-- Right cluster: Timecodes + Maximize -->
+              <div class="flex items-center gap-2">
+                <div class="font-mono text-[11px] text-zinc-400">
+                  <span id="v4-cur-time" class="text-zinc-200 font-semibold">00:05</span>
+                  <span class="text-zinc-600">/</span>
+                  <span id="v4-rem-time">00:32</span>
+                </div>
+
+                <!-- Maximize / Return to Full App -->
+                <button onclick="mockMaximize()" class="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer flex items-center gap-1" title="Розгорнути на весь екран">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" /></svg>
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- ======================================================== -->
+        <!-- VARIANT 5: SMART MICRO-CAPSULE (Compact Dock - NEW!)     -->
+        <!-- ======================================================== -->
+        <div id="variant-5-layer" class="absolute inset-0 z-20 flex flex-col justify-between transition-opacity duration-200 opacity-0 group-hover:opacity-100 pointer-events-none hidden">
+          <!-- Top Row: Minimal Close -->
+          <div class="relative z-10 flex items-center justify-between p-3">
+            <span class="text-[11px] font-mono text-zinc-400 bg-black/50 px-2 py-0.5 rounded-md backdrop-blur-md">RDX PiP</span>
+            <button onclick="mockClose()" class="pointer-events-auto w-7 h-7 rounded-full bg-black/50 hover:bg-rose-600 backdrop-blur-md border border-white/10 text-white flex items-center justify-center cursor-pointer">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+
+          <!-- Bottom: Floating Micro Pill (Only 38px tall! Leaves 85% of video visible) -->
+          <div class="relative z-10 p-3 pointer-events-auto flex flex-col items-center">
+            <div class="w-full bg-zinc-950/85 backdrop-blur-2xl border border-white/15 rounded-xl px-3 py-2 shadow-2xl flex flex-col gap-1.5">
+              <!-- Integrated Micro Scrubber -->
+              <div class="relative w-full h-1 bg-white/20 rounded-full cursor-pointer hover:h-1.5 transition-all" onclick="seekClick(event)">
+                <div id="v5-prog-played" class="absolute top-0 bottom-0 left-0 bg-white rounded-full w-[15%]"></div>
+              </div>
+              <div class="flex items-center justify-between text-xs">
+                <div class="flex items-center gap-2">
+                  <button onclick="togglePlay()" class="w-6 h-6 rounded-full bg-white text-black flex items-center justify-center font-bold hover:scale-105 transition-transform">
+                    <svg id="v5-play-icon" class="w-3 h-3 fill-current ml-0.5" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                  </button>
+                  <button onclick="seekDelta(-5)" class="text-zinc-300 hover:text-white" title="-5с">
+                    <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M11 16.07V7.93c0-.81-.91-1.28-1.57-.8l-5.6 4.07c-.57.41-.57 1.25 0 1.66l5.6 4.07c.66.48 1.57.01 1.57-.8zm8-8.14v8.14c0 .81-.91 1.28-1.57.8l-5.6-4.07c-.57-.41-.57-1.25 0-1.66l5.6-4.07c.66-.48 1.57-.01 1.57.8z"/></svg>
+                  </button>
+                  <button onclick="seekDelta(5)" class="text-zinc-300 hover:text-white" title="+5с">
+                    <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M5 16.07V7.93c0-.81.91-1.28 1.57-.8l5.6 4.07c.57.41.57 1.25 0 1.66l-5.6 4.07c-.66.48-1.57.01-1.57-.8zm8-8.14v8.14c0 .81.91 1.28 1.57.8l5.6-4.07c.57-.41.57-1.25 0-1.66l-5.6-4.07c-.66-.48-1.57-.01-1.57.8z"/></svg>
+                  </button>
+                  <button onclick="toggleMute()" class="text-zinc-300 hover:text-white ml-1">
+                    <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+                  </button>
+                  <input type="range" min="0" max="1" step="0.05" value="0.7" oninput="setVolume(this.value)" class="w-12 h-1 accent-white cursor-pointer">
+                </div>
+                <div class="flex items-center gap-2 font-mono text-[10px] text-zinc-400">
+                  <span id="v5-cur-time" class="text-zinc-200">00:05</span>
+                  <button onclick="mockMaximize()" class="p-1 rounded hover:bg-white/10 text-white" title="Розгорнути">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ======================================================== -->
+        <!-- VARIANT 1: TELEGRAM PURE                                 -->
+        <!-- ======================================================== -->
+        <div id="variant-1-layer" class="absolute inset-0 z-20 flex flex-col justify-between transition-opacity duration-200 opacity-0 group-hover:opacity-100 pointer-events-none hidden">
+          <div class="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/80 via-black/40 to-transparent pointer-events-none"></div>
+
+          <div class="relative z-10 flex items-center justify-between p-3.5">
+            <div class="pointer-events-auto flex items-center gap-2 group/vol bg-black/40 backdrop-blur-md rounded-full px-2.5 py-1.5 border border-white/10 hover:bg-black/60 transition-colors">
+              <button onclick="toggleMute()" class="text-white hover:text-rose-400 transition-colors cursor-pointer">
+                <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+              </button>
+              <input type="range" id="v1-vol-slider" min="0" max="1" step="0.05" value="0.7" oninput="setVolume(this.value)" class="w-16 h-1 accent-white cursor-pointer">
+            </div>
+
+            <div class="pointer-events-auto flex items-center gap-1.5">
+              <button onclick="mockMaximize()" class="w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 backdrop-blur-md border border-white/10 text-white flex items-center justify-center cursor-pointer">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" /></svg>
+              </button>
+              <button onclick="mockClose()" class="w-8 h-8 rounded-full bg-black/40 hover:bg-rose-600 backdrop-blur-md border border-white/10 text-white flex items-center justify-center cursor-pointer">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="relative z-10 flex items-center justify-center pointer-events-none">
+            <button onclick="togglePlay()" class="pointer-events-auto w-14 h-14 rounded-full bg-black/50 hover:bg-black/80 backdrop-blur-md border border-white/20 text-white flex items-center justify-center shadow-2xl transition-all hover:scale-110 active:scale-90 cursor-pointer">
+              <svg id="v1-play-icon" class="w-7 h-7 fill-current ml-0.5" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+          </div>
+
+          <div class="relative z-10 px-4 pb-3 pointer-events-auto">
+            <div class="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none -z-10"></div>
+            <div class="flex items-center justify-between text-[11px] font-mono text-zinc-300 font-semibold mb-1">
+              <span id="v1-cur-time">00:05</span>
+              <span id="v1-rem-time">-00:27</span>
+            </div>
+            <div class="relative w-full h-1 group/track hover:h-2 rounded-full bg-white/25 cursor-pointer transition-all" onclick="seekClick(event)">
+              <div id="v1-prog-buffered" class="absolute top-0 bottom-0 left-0 bg-white/30 rounded-full w-[65%]"></div>
+              <div id="v1-prog-played" class="absolute top-0 bottom-0 left-0 bg-white rounded-full w-[15%]"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ======================================================== -->
+        <!-- VARIANT 2: APPLE FLOATING GLASS CAPSULE                  -->
+        <!-- ======================================================== -->
+        <div id="variant-2-layer" class="absolute inset-0 z-20 flex flex-col justify-between transition-opacity duration-200 opacity-0 group-hover:opacity-100 pointer-events-none hidden">
+          <div class="relative z-10 flex items-center justify-between p-3">
+            <div class="px-2.5 py-1 rounded-full bg-zinc-900/80 backdrop-blur-xl border border-white/10 text-[11px] font-semibold text-zinc-200 truncate max-w-[240px]">
+              Хитрый койот • S01E02
+            </div>
+            <div class="pointer-events-auto flex items-center gap-1.5">
+              <button onclick="mockMaximize()" class="w-7 h-7 rounded-full bg-zinc-900/80 hover:bg-zinc-800 backdrop-blur-xl border border-white/15 text-white flex items-center justify-center cursor-pointer">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+              </button>
+              <button onclick="mockClose()" class="w-7 h-7 rounded-full bg-zinc-900/80 hover:bg-rose-600 backdrop-blur-xl border border-white/15 text-white flex items-center justify-center cursor-pointer">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="relative z-10 p-3 pointer-events-auto flex flex-col items-center">
+            <div class="w-full bg-zinc-950/80 backdrop-blur-2xl border border-white/15 rounded-2xl p-2.5 shadow-2xl flex flex-col gap-2">
+              <div class="relative w-full h-1 bg-white/20 rounded-full cursor-pointer hover:h-1.5 transition-all" onclick="seekClick(event)">
+                <div id="v2-prog-played" class="absolute top-0 bottom-0 left-0 bg-rose-500 rounded-full w-[15%]"></div>
+              </div>
+              <div class="flex items-center justify-between text-xs px-1">
+                <span id="v2-cur-time" class="font-mono text-[10px] text-zinc-400">00:05</span>
+                <div class="flex items-center gap-3">
+                  <button onclick="seekDelta(-5)" class="text-zinc-300 hover:text-white" title="-5с">
+                    <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M11 16.07V7.93c0-.81-.91-1.28-1.57-.8l-5.6 4.07c-.57.41-.57 1.25 0 1.66l5.6 4.07c.66.48 1.57.01 1.57-.8zm8-8.14v8.14c0 .81-.91 1.28-1.57.8l-5.6-4.07c-.57-.41-.57-1.25 0-1.66l5.6-4.07c.66-.48 1.57-.01 1.57.8z"/></svg>
+                  </button>
+                  <button onclick="togglePlay()" class="w-7 h-7 rounded-full bg-white text-black flex items-center justify-center font-bold hover:scale-105 transition-transform">
+                    <svg id="v2-play-icon" class="w-3.5 h-3.5 fill-current ml-0.5" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                  </button>
+                  <button onclick="seekDelta(5)" class="text-zinc-300 hover:text-white" title="+5с">
+                    <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M5 16.07V7.93c0-.81.91-1.28 1.57-.8l5.6 4.07c.57.41.57 1.25 0 1.66l-5.6 4.07c-.66.48-1.57.01-1.57-.8zm8-8.14v8.14c0 .81.91 1.28 1.57.8l5.6-4.07c.57-.41.57-1.25 0-1.66l-5.6-4.07c-.66-.48-1.57-.01-1.57.8z"/></svg>
+                  </button>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <button onclick="toggleMute()" class="text-zinc-400 hover:text-white">
+                    <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+                  </button>
+                  <span id="v2-rem-time" class="font-mono text-[10px] text-zinc-400">-00:27</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ======================================================== -->
+        <!-- VARIANT 3: TELEGRAM + DOUBLE TAP QUICK SEEK              -->
+        <!-- ======================================================== -->
+        <div id="variant-3-layer" class="absolute inset-0 z-20 flex flex-col justify-between transition-opacity duration-200 opacity-0 group-hover:opacity-100 pointer-events-none hidden">
+          <div class="relative z-10 flex items-center justify-between p-3.5">
+            <div class="pointer-events-auto flex items-center gap-2 bg-black/50 backdrop-blur-md rounded-full px-2.5 py-1.5 border border-white/10">
+              <button onclick="toggleMute()" class="text-white hover:text-rose-400 transition-colors">
+                <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+              </button>
+              <input type="range" min="0" max="1" step="0.05" value="0.7" oninput="setVolume(this.value)" class="w-14 h-1 accent-white cursor-pointer">
+              <span class="text-[10px] text-zinc-400 font-mono font-bold border-l border-white/15 pl-1.5">S1E2</span>
+            </div>
+
+            <div class="pointer-events-auto flex items-center gap-1.5">
+              <button onclick="mockMaximize()" class="w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 backdrop-blur-md border border-white/10 text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" /></svg>
+              </button>
+              <button onclick="mockClose()" class="w-8 h-8 rounded-full bg-black/40 hover:bg-rose-600 backdrop-blur-md border border-white/10 text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="relative z-10 flex items-center justify-center gap-6 pointer-events-none">
+            <button onclick="seekDelta(-5)" class="pointer-events-auto w-10 h-10 rounded-full bg-black/40 hover:bg-black/70 backdrop-blur-md border border-white/10 text-white flex items-center justify-center transition-all hover:scale-110 active:scale-90" title="-5 сек">
+              <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M11 16.07V7.93c0-.81-.91-1.28-1.57-.8l-5.6 4.07c-.57.41-.57 1.25 0 1.66l5.6 4.07c.66.48 1.57.01 1.57-.8zm8-8.14v8.14c0 .81-.91 1.28-1.57.8l-5.6-4.07c-.57-.41-.57-1.25 0-1.66l5.6-4.07c.66-.48 1.57-.01 1.57.8z"/></svg>
+            </button>
+            <button onclick="togglePlay()" class="pointer-events-auto w-14 h-14 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-2xl shadow-rose-950/80 transition-all hover:scale-110 active:scale-90">
+              <svg id="v3-play-icon" class="w-7 h-7 fill-current ml-0.5" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+            <button onclick="seekDelta(5)" class="pointer-events-auto w-10 h-10 rounded-full bg-black/40 hover:bg-black/70 backdrop-blur-md border border-white/10 text-white flex items-center justify-center transition-all hover:scale-110 active:scale-90" title="+5 сек">
+              <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M5 16.07V7.93c0-.81.91-1.28 1.57-.8l5.6 4.07c.57.41.57 1.25 0 1.66l-5.6 4.07c-.66.48-1.57.01-1.57-.8zm8-8.14v8.14c0 .81.91 1.28 1.57.8l5.6-4.07c.57-.41.57-1.25 0-1.66l-5.6-4.07c-.66-.48-1.57-.01-1.57.8z"/></svg>
+            </button>
+          </div>
+
+          <div class="relative z-10 px-4 pb-3 pointer-events-auto">
+            <div class="flex items-center justify-between text-[11px] font-mono text-zinc-300 font-semibold mb-1">
+              <span id="v3-cur-time">00:05</span>
+              <span id="v3-rem-time">-00:27</span>
+            </div>
+            <div class="relative w-full h-1 group/track hover:h-2 rounded-full bg-white/25 cursor-pointer transition-all" onclick="seekClick(event)">
+              <div id="v3-prog-buffered" class="absolute top-0 bottom-0 left-0 bg-white/30 rounded-full w-[65%]"></div>
+              <div id="v3-prog-played" class="absolute top-0 bottom-0 left-0 bg-rose-500 rounded-full w-[15%]"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Controls Hint -->
+      <div class="mt-4 flex items-center gap-4 text-xs text-zinc-400">
+        <span class="flex items-center gap-1.5"><kbd class="bg-zinc-800 px-2 py-0.5 rounded border border-white/10 font-mono">Пробіл</kbd> Пауза/Плей</span>
+        <span class="flex items-center gap-1.5"><kbd class="bg-zinc-800 px-2 py-0.5 rounded border border-white/10 font-mono">← / →</kbd> ±5 сек</span>
+        <span class="flex items-center gap-1.5"><kbd class="bg-zinc-800 px-2 py-0.5 rounded border border-white/10 font-mono">M</kbd> Без звуку</span>
+      </div>
+    </div>
+
+    <!-- Right: Detailed Comparison & Breakdown -->
+    <div class="w-full lg:w-96 border-t lg:border-t-0 lg:border-l border-white/10 bg-zinc-900/40 p-6 flex flex-col justify-between overflow-y-auto max-h-[85vh]">
+      <div class="space-y-6">
+        <div>
+          <h3 class="text-sm font-bold uppercase tracking-wider text-rose-400 mb-1">Відповідь на фідбек</h3>
+          <h2 id="desc-title" class="text-lg font-bold text-white">✨ Варіант 4: Синтез 1 та 2 (Unified Bottom Bar)</h2>
+          <p id="desc-text" class="text-xs text-zinc-300 mt-2 leading-relaxed">
+            Ідеальне вирішення фідбеку: об'єднує легкість Варіанту 1 (відео на 100% екрана, нічого не перекриває) та ергономіку Варіанту 2 (всі кнопки зібрані разом в одній зручній зоні внизу).
+          </p>
+        </div>
+
+        <div class="space-y-3">
+          <h4 class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Як вирішено зауваження:</h4>
+          <ul id="desc-features" class="space-y-2 text-xs text-zinc-300">
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400 font-bold">✓</span>
+              <span><strong>Кнопки більше не «в сраці»</strong>: Play, ±5 сек перемотка, гучність зі слайдером, таймкод і кнопка розгортання — зібрані в <strong>один компактний нижній рядок</strong> прямо під рукою! Курсору більше не треба гасати по протилежних кутах.</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400 font-bold">✓</span>
+              <span><strong>Низ більше не «займає забагато місця»</strong>: замість громіздкої коробки — тонка смужка з м'яким напівпрозорим градієнтом, яка взагалі не закриває кадр і зникає, коли ви не рухаєте мишку.</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400 font-bold">✓</span>
+              <span><strong>Швидкий звук</strong>: іконка звуку та повзунок прямо біля кнопки Play.</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400 font-bold">✓</span>
+              <span><strong>Drag-to-move</strong>: вікно перетягується за будь-яку точку відео.</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="p-3.5 rounded-xl bg-zinc-950/70 border border-white/10 space-y-2">
+          <h4 class="text-xs font-bold text-rose-400 flex items-center gap-1.5">
+            <span>🎯</span> Порівняйте прямо зараз:
+          </h4>
+          <p class="text-[11px] text-zinc-400 leading-relaxed">
+            Перемикайте між <strong>Варіантом 4</strong> та <strong>Варіантом 1</strong> чи <strong>2</strong> зверху — спробуйте поклікати та відчути різницю в переміщенні мишки!
+          </p>
+        </div>
+      </div>
+
+      <div class="pt-6 border-t border-white/10 text-xs text-zinc-500">
+        RDX Picture-in-Picture Lab • Tauri v2 + React 19
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const video = document.getElementById('pip-video');
+    const playerWindow = document.getElementById('player-window');
+    let currentVariant = 4;
+
+    // Draggable Window Logic
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    let posX = 0, posY = 0;
+
+    playerWindow.addEventListener('mousedown', (e) => {
+      // Don't drag if clicking buttons, inputs or slider
+      if (e.target.closest('button') || e.target.closest('input') || e.target.closest('.group\\/track')) {
+        return;
+      }
+      isDragging = true;
+      startX = e.clientX - posX;
+      startY = e.clientY - posY;
+      playerWindow.style.cursor = 'grabbing';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      posX = e.clientX - startX;
+      posY = e.clientY - startY;
+      playerWindow.style.transform = `translate(${posX}px, ${posY}px)`;
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+      playerWindow.style.cursor = 'grab';
+    });
+
+    // Double Click Seek Left/Right
+    playerWindow.addEventListener('dblclick', (e) => {
+      const rect = playerWindow.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      if (clickX < rect.width / 2) {
+        seekDelta(-5);
+        showRipple('left');
+      } else {
+        seekDelta(5);
+        showRipple('right');
+      }
+    });
+
+    function showRipple(side) {
+      const el = document.getElementById(`ripple-${side}`);
+      if (!el) return;
+      el.classList.remove('opacity-0', 'seek-ripple');
+      void el.offsetWidth; // trigger reflow
+      el.classList.add('seek-ripple');
+      setTimeout(() => el.classList.add('opacity-0'), 500);
+    }
+
+    // Playback Helpers
+    function togglePlay() {
+      if (video.paused) {
+        video.play();
+        updatePlayIcons(true);
+      } else {
+        video.pause();
+        updatePlayIcons(false);
+      }
+    }
+
+    function updatePlayIcons(isPlaying) {
+      const pausePath = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+      const playPath = '<path d="M8 5v14l11-7z"/>';
+
+      ['v1', 'v2', 'v3', 'v4', 'v5'].forEach(p => {
+        const icon = document.getElementById(`${p}-play-icon`);
+        if (icon) icon.innerHTML = isPlaying ? pausePath : playPath;
+      });
+    }
+
+    function toggleMute() {
+      video.muted = !video.muted;
+      const v1Slider = document.getElementById('v1-vol-slider');
+      if (video.muted) {
+        if (v1Slider) v1Slider.value = 0;
+      } else {
+        if (v1Slider) v1Slider.value = video.volume || 0.7;
+      }
+    }
+
+    function setVolume(val) {
+      video.volume = parseFloat(val);
+      video.muted = (val == 0);
+    }
+
+    function seekDelta(sec) {
+      video.currentTime = Math.max(0, Math.min(video.duration || 100, video.currentTime + sec));
+    }
+
+    function seekClick(e) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const pct = (e.clientX - rect.left) / rect.width;
+      if (video.duration) {
+        video.currentTime = pct * video.duration;
+      }
+    }
+
+    function formatTime(sec) {
+      if (!sec || isNaN(sec)) return "00:00";
+      const s = Math.floor(sec);
+      const m = Math.floor(s / 60);
+      const remS = s % 60;
+      return `${m.toString().padStart(2, '0')}:${remS.toString().padStart(2, '0')}`;
+    }
+
+    // Time Update Loop
+    video.addEventListener('timeupdate', () => {
+      const cur = video.currentTime;
+      const dur = video.duration || 32;
+      const rem = dur - cur;
+      const pct = (cur / dur) * 100;
+
+      ['v1', 'v2', 'v3', 'v4', 'v5'].forEach(prefix => {
+        const curEl = document.getElementById(`${prefix}-cur-time`);
+        const remEl = document.getElementById(`${prefix}-rem-time`);
+        const progEl = document.getElementById(`${prefix}-prog-played`);
+        if (curEl) curEl.textContent = formatTime(cur);
+        if (remEl) {
+          if (prefix === 'v4') remEl.textContent = formatTime(dur);
+          else remEl.textContent = `-${formatTime(rem)}`;
+        }
+        if (progEl) progEl.style.width = `${pct}%`;
+      });
+    });
+
+    // Variant Switching
+    function setVariant(n) {
+      currentVariant = n;
+      const allTabs = [1, 2, 3, 4, 5];
+      allTabs.forEach(i => {
+        const tab = document.getElementById(`tab-${i}`);
+        const layer = document.getElementById(`variant-${i}-layer`);
+        if (i === n) {
+          if (tab) tab.className = "px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all bg-rose-600 text-white shadow-md flex items-center gap-1.5";
+          if (layer) layer.classList.remove('hidden');
+        } else {
+          if (tab) tab.className = "px-3 py-1.5 rounded-xl text-xs font-semibold transition-all text-zinc-400 hover:text-white flex items-center gap-1.5";
+          if (layer) layer.classList.add('hidden');
+        }
+      });
+
+      // Update Descriptions
+      const title = document.getElementById('desc-title');
+      const text = document.getElementById('desc-text');
+      const features = document.getElementById('desc-features');
+
+      if (n === 4) {
+        title.textContent = "✨ Варіант 4: Синтез 1+2 (Unified Bottom Bar)";
+        text.textContent = "Ідеальне вирішення фідбеку користувача. Всі функціональні органи керування (Play, перемотка ±5с, звук з повзунком, час, розгортання) зібрані в ОДИН рядок унизу. Курсору більше не треба шукати кнопки по кутах, а відео займає 100% простору без громіздких рамок.";
+        features.innerHTML = `
+          <li class="flex items-start gap-2"><span class="text-emerald-400 font-bold">✓</span><span><strong>Всі кнопки в одній зоні</strong>: Play, ±5с, повзунок звуку та кнопка «Розгорнути» розміщені поруч внизу.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 font-bold">✓</span><span><strong>Не займає зайвого місця</strong>: немає коробки, лише легка плавна тінь, яка зникає автоматично.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 font-bold">✓</span><span><strong>М'язи пам'яті ОС</strong>: хрестик закриття акуратно згори праворуч, де його завжди очікують.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 font-bold">✓</span><span><strong>Перетягування мишкою</strong>: вікно тягнеться за будь-яке місце кадру.</span></li>
+        `;
+      } else if (n === 5) {
+        title.textContent = "💎 Варіант 5: Мікро-капсула (Micro-Dock)";
+        text.textContent = "Ультракомпактна плаваюча скляна капсула (висота всього 38px замість 80px у Варіанті 2). Не закриває обличчя та субтитри, об'єднує всі кнопки в акуратний док.";
+        features.innerHTML = `
+          <li class="flex items-start gap-2"><span class="text-emerald-400 font-bold">✓</span><span><strong>Ультратонка капсула</strong>: залишає 85% площі кадру повністю відкритими.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 font-bold">✓</span><span><strong>Все зібрано всередині</strong>: Play, перемотка, звук, повзунок, скраббер і розгортання.</span></li>
+        `;
+      } else if (n === 1) {
+        title.textContent = "Варіант 1: Telegram Pure";
+        text.textContent = "Класичний Telegram Desktop. Кнопки рознесені по кутах (звук зліва вгорі, закриття справа вгорі, плей по центру, скраббер внизу). Фідбек підтвердив: якщо треба швидко щось натиснути, доводиться водити мишкою по діагоналях.";
+        features.innerHTML = `
+          <li class="flex items-start gap-2"><span class="text-amber-400 font-bold">!</span><span><strong>Зауваження юзера</strong>: «функціональні кнопки десь в сраці знаходяться» (розкидані по чотирьох кутах).</span></li>
+        `;
+      } else if (n === 2) {
+        title.textContent = "Варіант 2: Apple Floating Glass";
+        text.textContent = "Стиль Apple TV із широкою скляною панеллю знизу. Фідбек підтвердив проблему: панель занадто велика й закриває нижню третину маленького вікна.";
+        features.innerHTML = `
+          <li class="flex items-start gap-2"><span class="text-amber-400 font-bold">!</span><span><strong>Зауваження юзера</strong>: «знадто багато місця займає нижня частина» (перекриває субтитри та кадри).</span></li>
+        `;
+      } else if (n === 3) {
+        title.textContent = "Варіант 3: Telegram + Double-Tap Seek";
+        text.textContent = "Гібрид Telegram із подвійним кліком ліворуч/праворуч для перемотки.";
+        features.innerHTML = `
+          <li class="flex items-start gap-2"><span class="text-emerald-400 font-bold">✓</span><span>Подвійний клік на ліву/праву сторону вікна перемотує ±5 секунд.</span></li>
+        `;
+      }
+    }
+
+    // Keyboard Shortcuts
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        togglePlay();
+      } else if (e.code === 'ArrowLeft') {
+        seekDelta(-5);
+        showRipple('left');
+      } else if (e.code === 'ArrowRight') {
+        seekDelta(5);
+        showRipple('right');
+      } else if (e.code === 'KeyM') {
+        toggleMute();
+      }
+    });
+
+    function mockMaximize() {
+      alert("Розгортання вікна RDX назад на весь екран!");
+    }
+    function mockClose() {
+      alert("Закриття міні-плеєра.");
+    }
+
+    const ACCENT_COLORS = {
+      crimson: { c400: '#fb7185', c500: '#f43f5e', c600: '#e11d48', c950: '#4c0519' },
+      amethyst: { c400: '#c084fc', c500: '#a855f7', c600: '#9333ea', c950: '#3b0764' },
+      sapphire: { c400: '#60a5fa', c500: '#3b82f6', c600: '#2563eb', c950: '#172554' },
+      emerald: { c400: '#34d399', c500: '#10b981', c600: '#059669', c950: '#022c22' },
+      amber: { c400: '#fbbf24', c500: '#f59e0b', c600: '#d97706', c950: '#451a03' }
+    };
+
+    function setAccent(name) {
+      const pal = ACCENT_COLORS[name] || ACCENT_COLORS.crimson;
+      document.documentElement.style.setProperty('--accent-400', pal.c400);
+      document.documentElement.style.setProperty('--accent-500', pal.c500);
+      document.documentElement.style.setProperty('--accent-600', pal.c600);
+      document.documentElement.style.setProperty('--accent-950', pal.c950);
+    }
+
+    // Initialize with Variant 4 (Synthesis)
+    setVariant(4);
+  </script>
+</body>
+</html>
