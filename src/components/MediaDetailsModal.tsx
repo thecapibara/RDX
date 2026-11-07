@@ -47,6 +47,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
   const [selectedSeason, setSelectedSeason] = useState<number>(1);
   const [selectedEpisode, setSelectedEpisode] = useState<number>(1);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
+  const [maxKnownSeasons, setMaxKnownSeasons] = useState<number>(1);
 
   // Dropdown states for structured voiceover selector
   const [isTranslatorDropdownOpen, setIsTranslatorDropdownOpen] = useState(false);
@@ -102,6 +103,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
       setSelectedTranslator(null);
       setIsTranslatorDropdownOpen(false);
       setFetchError(null);
+      setMaxKnownSeasons(1);
       return;
     }
 
@@ -116,6 +118,16 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
         ]);
 
         if (!isMounted) return;
+
+        // Check if media.series_info hints at higher season count (e.g. "8 сезон 10 серія" or "S08E10")
+        let hintedMax = det.seasons.length;
+        if (media.series_info) {
+          const m1 = media.series_info.match(/(\d+)\s*сезон/i);
+          const m2 = media.series_info.match(/s(\d+)/i);
+          if (m1) hintedMax = Math.max(hintedMax, parseInt(m1[1], 10) || 1);
+          if (m2) hintedMax = Math.max(hintedMax, parseInt(m2[1], 10) || 1);
+        }
+        setMaxKnownSeasons(hintedMax);
 
         // Determine default translator
         let defaultT: Translator | null = null;
@@ -164,6 +176,9 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
           api.getEpisodes(det.id, defaultT.id, det.url)
             .then((epData) => {
               if (isMounted && epData.episodes && epData.episodes.length > 0) {
+                if (epData.seasons.length > 0) {
+                  setMaxKnownSeasons((prev) => Math.max(prev, epData.seasons.length));
+                }
                 setDetails((prev) =>
                   prev
                     ? {
@@ -209,6 +224,9 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
     setLoadingEpisodes(true);
     try {
       const data = await api.getEpisodes(details.id, translator.id, details.url);
+      if (data.seasons.length > 0) {
+        setMaxKnownSeasons((prev) => Math.max(prev, data.seasons.length));
+      }
       setDetails((prev) => {
         if (!prev) return prev;
         return {
@@ -665,11 +683,11 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                     <h3 className="text-sm font-bold text-zinc-300 uppercase tracking-wider">
                       Сезони
                     </h3>
-                    {details.seasons.length === 1 && (
+                    {maxKnownSeasons > 1 && details.seasons.length < maxKnownSeasons && (
                       <span className="text-xs text-amber-400/90 font-medium flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-xl">
                         <Info className="w-3.5 h-3.5 flex-shrink-0" />
                         <span>
-                          У цій озвучці доступний лише {details.seasons[0].title}. Оберіть іншу озвучку вище для перегляду інших сезонів.
+                          У цій озвучці доступно {details.seasons.length} з {maxKnownSeasons} сезонів. Оберіть іншу озвучку вище для перегляду решти.
                         </span>
                       </span>
                     )}
