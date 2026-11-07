@@ -85,6 +85,11 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
 
       {/* Track with Spotify-style Floating Navigation */}
       <div className="relative">
+        {/* Left Edge Vignette Fade */}
+        {canScrollLeft && (
+          <div className="absolute left-0 top-0 bottom-4 w-16 sm:w-24 lg:w-28 z-20 pointer-events-none bg-gradient-to-r from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/80 to-transparent transition-opacity duration-200" />
+        )}
+
         {/* Left Floating Chevron (Spotify style) */}
         {canScrollLeft && (
           <button
@@ -94,6 +99,11 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
           >
             <ChevronLeft className="w-6 h-6 stroke-[2.5]" />
           </button>
+        )}
+
+        {/* Right Edge Vignette Fade */}
+        {canScrollRight && (
+          <div className="absolute right-0 top-0 bottom-4 w-16 sm:w-24 lg:w-28 z-20 pointer-events-none bg-gradient-to-l from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/80 to-transparent transition-opacity duration-200" />
         )}
 
         {/* Right Floating Chevron (Spotify style) */}

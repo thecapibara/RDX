@@ -105,17 +105,27 @@ export const Swimlane: React.FC<SwimlaneProps> = React.memo(({
         )}
       </div>
 
-      {/* Horizontal Carousel Track with Spotify-style Floating Navigation */}
-      <div className="relative">
+      {/* Horizontal Carousel Track with Spotify/Netflix style Floating Navigation & Edge Vignettes */}
+      <div className="relative group/track">
+        {/* Left Edge Vignette Fade */}
+        {canScrollLeft && (
+          <div className="absolute left-0 top-0 bottom-4 w-16 sm:w-24 lg:w-28 z-20 pointer-events-none bg-gradient-to-r from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/80 to-transparent transition-opacity duration-200" />
+        )}
+
         {/* Left Floating Chevron (Spotify style) */}
         {canScrollLeft && (
           <button
             onClick={() => scroll("left")}
             aria-label="Прокрутити вліво"
-            className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full flex items-center justify-center bg-zinc-950/90 hover:bg-zinc-800 border border-white/20 text-white shadow-2xl backdrop-blur-md transition-all duration-150 hover:scale-110 active:scale-95 cursor-pointer"
+            className="absolute left-2 sm:left-4 top-[calc(50%-8px)] -translate-y-1/2 z-30 w-11 h-11 rounded-full flex items-center justify-center bg-zinc-950/90 hover:bg-zinc-800 border border-white/20 text-white shadow-2xl backdrop-blur-md transition-all duration-150 hover:scale-110 active:scale-95 cursor-pointer"
           >
             <ChevronLeft className="w-6 h-6 stroke-[2.5]" />
           </button>
+        )}
+
+        {/* Right Edge Vignette Fade */}
+        {canScrollRight && (
+          <div className="absolute right-0 top-0 bottom-4 w-16 sm:w-24 lg:w-28 z-20 pointer-events-none bg-gradient-to-l from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/80 to-transparent transition-opacity duration-200" />
         )}
 
         {/* Right Floating Chevron (Spotify style) */}
@@ -123,7 +133,7 @@ export const Swimlane: React.FC<SwimlaneProps> = React.memo(({
           <button
             onClick={() => scroll("right")}
             aria-label="Прокрутити вправо"
-            className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full flex items-center justify-center bg-zinc-950/90 hover:bg-zinc-800 border border-white/20 text-white shadow-2xl backdrop-blur-md transition-all duration-150 hover:scale-110 active:scale-95 cursor-pointer"
+            className="absolute right-2 sm:right-4 top-[calc(50%-8px)] -translate-y-1/2 z-30 w-11 h-11 rounded-full flex items-center justify-center bg-zinc-950/90 hover:bg-zinc-800 border border-white/20 text-white shadow-2xl backdrop-blur-md transition-all duration-150 hover:scale-110 active:scale-95 cursor-pointer"
           >
             <ChevronRight className="w-6 h-6 stroke-[2.5]" />
           </button>
