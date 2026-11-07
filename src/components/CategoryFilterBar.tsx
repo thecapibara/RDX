@@ -5,6 +5,7 @@ import {
   CATEGORY_GENRES,
 } from "../constants/genres";
 import { cn } from "../lib/utils";
+import { playButtonClickSound } from "../services/sound";
 
 interface CategoryFilterBarProps {
   category: string; // "films" | "series" | "cartoons" | "animation"
@@ -65,7 +66,10 @@ export const CategoryFilterBar: React.FC<CategoryFilterBarProps> = ({
           return (
             <button
               key={filter.id}
-              onClick={() => onSortChange(filter.id)}
+              onClick={() => {
+                playButtonClickSound();
+                onSortChange(filter.id);
+              }}
               className={cn(
                 "px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer",
                 isActive
@@ -84,7 +88,10 @@ export const CategoryFilterBar: React.FC<CategoryFilterBarProps> = ({
         <div className="flex flex-wrap items-center gap-2 pt-0.5">
           {/* "Всі жанри" Chip */}
           <button
-            onClick={() => onGenreChange(null)}
+            onClick={() => {
+              playButtonClickSound();
+              onGenreChange(null);
+            }}
             className={cn(
               "px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer",
               activeGenre === null
@@ -101,7 +108,10 @@ export const CategoryFilterBar: React.FC<CategoryFilterBarProps> = ({
             return (
               <button
                 key={g.id}
-                onClick={() => onGenreChange(isActive ? null : g.id)}
+                onClick={() => {
+                  playButtonClickSound();
+                  onGenreChange(isActive ? null : g.id);
+                }}
                 className={cn(
                   "px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                   isActive
@@ -117,7 +127,10 @@ export const CategoryFilterBar: React.FC<CategoryFilterBarProps> = ({
           {/* Full Genre Dropdown Button */}
           <div ref={dropdownRef} className="relative">
             <button
-              onClick={() => setIsGenreDropdownOpen((prev) => !prev)}
+              onClick={() => {
+                playButtonClickSound();
+                setIsGenreDropdownOpen((prev) => !prev);
+              }}
               className={cn(
                 "flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer",
                 activeGenre && !quickGenres.some((g) => g.id === activeGenre)
@@ -168,6 +181,7 @@ export const CategoryFilterBar: React.FC<CategoryFilterBarProps> = ({
                   {/* Reset to all */}
                   <button
                     onClick={() => {
+                      playButtonClickSound();
                       onGenreChange(null);
                       setIsGenreDropdownOpen(false);
                       setGenreSearch("");
@@ -189,6 +203,7 @@ export const CategoryFilterBar: React.FC<CategoryFilterBarProps> = ({
                       <button
                         key={g.id}
                         onClick={() => {
+                          playButtonClickSound();
                           onGenreChange(g.id);
                           setIsGenreDropdownOpen(false);
                           setGenreSearch("");
@@ -213,7 +228,10 @@ export const CategoryFilterBar: React.FC<CategoryFilterBarProps> = ({
           {/* Clear active genre pill if chosen */}
           {activeGenre && (
             <button
-              onClick={() => onGenreChange(null)}
+              onClick={() => {
+                playButtonClickSound();
+                onGenreChange(null);
+              }}
               className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 border border-rose-500/30 transition-colors cursor-pointer"
             >
               <span>{activeGenreLabel}</span>

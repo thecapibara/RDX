@@ -20,6 +20,7 @@ import { MirrorModal } from "./components/MirrorModal";
 import { SearchModal } from "./components/SearchModal";
 import { BookmarksView } from "./components/BookmarksView";
 import { CategoryFilterBar } from "./components/CategoryFilterBar";
+import { playButtonClickSound } from "./services/sound";
 
 export default function App() {
   // Navigation & Settings State
@@ -540,7 +541,10 @@ export default function App() {
               <div className="flex items-center gap-2 self-start sm:self-auto">
                 <button
                   disabled={categoryPage <= 1}
-                  onClick={() => setCategoryPage((p) => Math.max(1, p - 1))}
+                  onClick={() => {
+                    playButtonClickSound();
+                    setCategoryPage((p) => Math.max(1, p - 1));
+                  }}
                   className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-white/10 text-xs font-semibold text-zinc-300 disabled:opacity-40 hover:text-white transition-colors cursor-pointer"
                 >
                   Попередня
@@ -549,7 +553,10 @@ export default function App() {
                   Сторінка {categoryPage}
                 </span>
                 <button
-                  onClick={() => setCategoryPage((p) => p + 1)}
+                  onClick={() => {
+                    playButtonClickSound();
+                    setCategoryPage((p) => p + 1);
+                  }}
                   className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-white/10 text-xs font-semibold text-zinc-300 hover:text-white transition-colors cursor-pointer"
                 >
                   Наступна

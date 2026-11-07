@@ -7,11 +7,13 @@ use std::sync::OnceLock;
 const STARTUP_CHIME_BYTES: &[u8] = include_bytes!("../../public/startup.mp3");
 const HOVERCARD_SOUND_BYTES: &[u8] = include_bytes!("../../public/hovercard.mp3");
 const OPENCARD_SOUND_BYTES: &[u8] = include_bytes!("../../public/opencard.mp3");
+const BUTTONCLICK_SOUND_BYTES: &[u8] = include_bytes!("../../public/buttonclick.mp3");
 
 #[derive(Clone, Copy, Debug)]
 pub enum UiSoundType {
     Hover,
     ModalOpen,
+    ButtonClick,
 }
 
 static UI_AUDIO_TX: OnceLock<Sender<UiSoundType>> = OnceLock::new();
@@ -44,6 +46,13 @@ fn get_or_init_ui_audio_tx() -> &'static Sender<UiSoundType> {
                             sink.detach();
                         }
                     }
+                    UiSoundType::ButtonClick => {
+                        sink.set_volume(0.55);
+                        if let Ok(source) = Decoder::new(Cursor::new(BUTTONCLICK_SOUND_BYTES)) {
+                            sink.append(source);
+                            sink.detach();
+                        }
+                    }
                 }
             }
         });
@@ -56,6 +65,7 @@ pub fn play_ui_sound(sound_type: &str) {
     let sound = match sound_type {
         "hover" => UiSoundType::Hover,
         "modal_open" => UiSoundType::ModalOpen,
+        "button_click" => UiSoundType::ButtonClick,
         _ => return,
     };
     let tx = get_or_init_ui_audio_tx();

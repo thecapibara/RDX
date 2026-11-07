@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
 import type { MediaCard as MediaCardType } from "../types";
 import { MediaCard } from "./MediaCard";
 import { cn } from "../lib/utils";
+import { playButtonClickSound } from "../services/sound";
 
 interface SwimlaneProps {
   title: string;
@@ -96,7 +97,10 @@ export const Swimlane: React.FC<SwimlaneProps> = React.memo(({
 
         {onMoreClick && (
           <button
-            onClick={onMoreClick}
+            onClick={() => {
+              playButtonClickSound();
+              onMoreClick();
+            }}
             className="text-xs font-semibold text-zinc-400 hover:text-white flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
           >
             <span>Більше</span>
@@ -115,7 +119,10 @@ export const Swimlane: React.FC<SwimlaneProps> = React.memo(({
         {/* Left Floating Chevron (Spotify style) */}
         {canScrollLeft && (
           <button
-            onClick={() => scroll("left")}
+            onClick={() => {
+              playButtonClickSound();
+              scroll("left");
+            }}
             aria-label="Прокрутити вліво"
             className="absolute left-2 sm:left-4 top-[calc(50%-8px)] -translate-y-1/2 z-30 w-11 h-11 rounded-full flex items-center justify-center bg-zinc-950/90 hover:bg-zinc-800 border border-white/20 text-white shadow-2xl backdrop-blur-md transition-all duration-150 hover:scale-110 active:scale-95 cursor-pointer"
           >
@@ -131,7 +138,10 @@ export const Swimlane: React.FC<SwimlaneProps> = React.memo(({
         {/* Right Floating Chevron (Spotify style) */}
         {canScrollRight && (
           <button
-            onClick={() => scroll("right")}
+            onClick={() => {
+              playButtonClickSound();
+              scroll("right");
+            }}
             aria-label="Прокрутити вправо"
             className="absolute right-2 sm:right-4 top-[calc(50%-8px)] -translate-y-1/2 z-30 w-11 h-11 rounded-full flex items-center justify-center bg-zinc-950/90 hover:bg-zinc-800 border border-white/20 text-white shadow-2xl backdrop-blur-md transition-all duration-150 hover:scale-110 active:scale-95 cursor-pointer"
           >

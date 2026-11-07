@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, History } from "lucide-react";
 import type { WatchProgress } from "../types";
 import { ContinueWatchingCard } from "./ContinueWatchingCard";
 import { cn } from "../lib/utils";
+import { playButtonClickSound } from "../services/sound";
 
 interface ContinueWatchingSwimlaneProps {
   items: WatchProgress[];
@@ -93,7 +94,10 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
         {/* Left Floating Chevron (Spotify style) */}
         {canScrollLeft && (
           <button
-            onClick={() => scroll("left")}
+            onClick={() => {
+              playButtonClickSound();
+              scroll("left");
+            }}
             aria-label="Прокрутити вліво"
             className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full flex items-center justify-center bg-zinc-950/90 hover:bg-zinc-800 border border-white/20 text-white shadow-2xl backdrop-blur-md transition-all duration-150 hover:scale-110 active:scale-95 cursor-pointer"
           >
@@ -109,7 +113,10 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
         {/* Right Floating Chevron (Spotify style) */}
         {canScrollRight && (
           <button
-            onClick={() => scroll("right")}
+            onClick={() => {
+              playButtonClickSound();
+              scroll("right");
+            }}
             aria-label="Прокрутити вправо"
             className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full flex items-center justify-center bg-zinc-950/90 hover:bg-zinc-800 border border-white/20 text-white shadow-2xl backdrop-blur-md transition-all duration-150 hover:scale-110 active:scale-95 cursor-pointer"
           >

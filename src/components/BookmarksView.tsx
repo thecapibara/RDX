@@ -4,6 +4,7 @@ import type { Bookmark, MediaCard as MediaCardType } from "../types";
 import { api } from "../services/api";
 import { MediaCard } from "./MediaCard";
 import { cn } from "../lib/utils";
+import { playButtonClickSound } from "../services/sound";
 
 interface BookmarksViewProps {
   onSelectMedia: (card: MediaCardType) => void;
@@ -63,7 +64,10 @@ export const BookmarksView: React.FC<BookmarksViewProps> = ({
           {categories.map((cat) => (
             <button
               key={cat.id}
-              onClick={() => setActiveCategory(cat.id)}
+              onClick={() => {
+                playButtonClickSound();
+                setActiveCategory(cat.id);
+              }}
               className={cn(
                 "px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer",
                 activeCategory === cat.id

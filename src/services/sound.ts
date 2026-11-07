@@ -56,3 +56,11 @@ export const playModalOpenSound = () => {
   if (!uiSoundsEnabled) return;
   api.playUiSound("modal_open");
 };
+
+/**
+ * Tactile interface button click sound (navigation tabs, category filters, pagination)
+ */
+export const playButtonClickSound = () => {
+  if (!uiSoundsEnabled) return;
+  api.playUiSound("button_click");
+};

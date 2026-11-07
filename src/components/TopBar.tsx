@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Search, Maximize, Minimize, ChevronDown, Settings } from "lucide-react";
 import type { MirrorStatus } from "../types";
 import { cn } from "../lib/utils";
+import { playButtonClickSound } from "../services/sound";
 
 export type NavTab =
   | "home"
@@ -126,7 +127,10 @@ export const TopBar: React.FC<TopBarProps> = ({
       <div className="flex items-center gap-4 sm:gap-7 lg:gap-8 min-w-0">
         {/* Brand Wordmark */}
         <div
-          onClick={() => onTabChange("home")}
+          onClick={() => {
+            playButtonClickSound();
+            onTabChange("home");
+          }}
           className="flex items-baseline cursor-pointer group flex-shrink-0"
         >
           <span className="text-xl sm:text-2xl font-black tracking-tighter text-white group-hover:text-zinc-200 transition-colors">
@@ -142,7 +146,10 @@ export const TopBar: React.FC<TopBarProps> = ({
             return (
               <button
                 key={tab.id}
-                onClick={() => onTabChange(tab.id)}
+                onClick={() => {
+                  playButtonClickSound();
+                  onTabChange(tab.id);
+                }}
                 className={cn(
                   "relative pb-1 text-xs sm:text-sm lg:text-[15px] tracking-wide transition-colors duration-200 whitespace-nowrap cursor-pointer",
                   isActive
@@ -165,7 +172,10 @@ export const TopBar: React.FC<TopBarProps> = ({
               return (
                 <button
                   key={tab.id}
-                  onClick={() => onTabChange(tab.id)}
+                  onClick={() => {
+                    playButtonClickSound();
+                    onTabChange(tab.id);
+                  }}
                   className={cn(
                     "relative pb-1 text-xs sm:text-sm lg:text-[15px] tracking-wide transition-colors duration-200 whitespace-nowrap cursor-pointer",
                     isActive
@@ -185,7 +195,10 @@ export const TopBar: React.FC<TopBarProps> = ({
           {/* "Ще" Dropdown on Compact / Half-Screen (< 1280px) */}
           <div ref={dropdownRef} className="relative xl:hidden">
             <button
-              onClick={() => setIsMoreOpen((prev) => !prev)}
+              onClick={() => {
+                playButtonClickSound();
+                setIsMoreOpen((prev) => !prev);
+              }}
               className={cn(
                 "relative flex items-center gap-1 pb-1 text-xs sm:text-sm tracking-wide transition-colors duration-200 whitespace-nowrap cursor-pointer",
                 isSecondaryActive
@@ -214,6 +227,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                     <button
                       key={tab.id}
                       onClick={() => {
+                        playButtonClickSound();
                         onTabChange(tab.id);
                         setIsMoreOpen(false);
                       }}
@@ -241,7 +255,10 @@ export const TopBar: React.FC<TopBarProps> = ({
       <div className="flex items-center gap-3 sm:gap-5 flex-shrink-0">
         {/* Minimal Search Button */}
         <button
-          onClick={onOpenSearch}
+          onClick={() => {
+            playButtonClickSound();
+            onOpenSearch();
+          }}
           title="Пошук (Ctrl+K)"
           className="text-zinc-300 hover:text-white transition-colors cursor-pointer p-1"
         >

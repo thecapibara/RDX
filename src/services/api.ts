@@ -571,7 +571,9 @@ export const api = {
     }
   },
 
-  playUiSound: async (soundType: "hover" | "modal_open"): Promise<void> => {
+  playUiSound: async (
+    soundType: "hover" | "modal_open" | "button_click"
+  ): Promise<void> => {
     if (isTauri) {
       return invoke<void>("play_ui_sound", { soundType }).catch(() => {});
     }
