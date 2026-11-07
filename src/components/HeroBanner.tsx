@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Play, Info, Bookmark as BookmarkIcon, Star, ChevronLeft, ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { MediaCard } from "../types";
@@ -38,6 +38,22 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
 
   const [isHovered, setIsHovered] = useState(false);
   const [slideKey, setSlideKey] = useState(0);
+  const [isVisible, setIsVisible] = useState(true);
+  const bannerRef = useRef<HTMLDivElement>(null);
+
+  // Pause heavy animations and timer when user scrolls down away from the hero banner
+  useEffect(() => {
+    const el = bannerRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsVisible(entry.isIntersecting);
+      },
+      { threshold: 0.05 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (currentIndex >= slides.length && slides.length > 0) {
@@ -63,14 +79,14 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
   }, []);
 
   useEffect(() => {
-    if (slides.length <= 1 || isHovered) return;
+    if (slides.length <= 1 || isHovered || !isVisible) return;
 
     const timer = setInterval(() => {
       handleNext();
     }, ROTATION_INTERVAL_MS);
 
     return () => clearInterval(timer);
-  }, [slides.length, isHovered, handleNext, slideKey]);
+  }, [slides.length, isHovered, isVisible, handleNext, slideKey]);
 
   if (slides.length === 0) {
     return null;
@@ -85,31 +101,32 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
 
   return (
     <div
+      ref={bannerRef}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className="relative w-full h-[58vh] min-h-[440px] max-h-[640px] overflow-hidden select-none group"
+      className="relative w-full h-[58vh] min-h-[440px] max-h-[640px] overflow-hidden select-none group [contain:layout_paint]"
     >
       {/* Full-bleed Background Poster with Optimized Top/Center Positioning */}
       <AnimatePresence mode="wait">
         <motion.div
           key={currentMedia.id || currentMedia.url}
-          initial={{ opacity: 0, scale: 1.04 }}
-          animate={{ opacity: 1, scale: 1 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
+          transition={{ duration: 0.35, ease: "easeOut" }}
           className="absolute inset-0"
         >
           <img
             src={currentMedia.poster}
             alt={currentMedia.title}
             decoding="async"
-            className="w-full h-full object-cover object-[center_20%] sm:object-[75%_20%] opacity-45 blur-[8px] scale-108 saturate-115 transform-gpu"
+            className="w-full h-full object-cover object-[center_20%] sm:object-[75%_20%] opacity-35 scale-102 transform-gpu"
           />
 
           {/* Cinematic Overlays: Soft dark gradient on the left for readable text, bottom fade into black */}
-          <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/50 to-transparent transition-colors duration-250" />
-          <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/85 to-transparent w-full md:w-3/4 transition-colors duration-250" />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-[var(--bg-base,#000000)] transition-colors duration-250" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/60 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/90 to-transparent w-full md:w-3/4" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-[var(--bg-base,#000000)]" />
         </motion.div>
       </AnimatePresence>
 

@@ -491,7 +491,7 @@ export default function App() {
                 onPlayDirect={handleDirectPlay}
               />
 
-              {/* Categorized Swimlanes */}
+              {/* Categorized Swimlanes (Off-screen rows deferred via content-visibility: auto) */}
               <Swimlane
                 title="Фільми"
                 subtitle="Кращі кінопрем'єри"
@@ -499,6 +499,7 @@ export default function App() {
                 onSelectCard={handleOpenDetails}
                 onPlayDirect={handleDirectPlay}
                 onMoreClick={handleMoreFilms}
+                className="cv-auto"
               />
 
               <Swimlane
@@ -508,6 +509,7 @@ export default function App() {
                 onSelectCard={handleOpenDetails}
                 onPlayDirect={handleDirectPlay}
                 onMoreClick={handleMoreSeries}
+                className="cv-auto"
               />
 
               <Swimlane
@@ -516,6 +518,7 @@ export default function App() {
                 onSelectCard={handleOpenDetails}
                 onPlayDirect={handleDirectPlay}
                 onMoreClick={handleMoreCartoons}
+                className="cv-auto"
               />
             </div>
           </>
