@@ -306,7 +306,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
     }) || [];
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#08090d] overflow-y-auto overflow-x-hidden select-none">
+    <div className="fixed inset-0 z-50 bg-[var(--bg-base,#000000)] overflow-y-auto overflow-x-hidden select-none transition-colors duration-250">
       {/* Top Floating Back Button */}
       <button
         onClick={handleClose}
@@ -327,9 +327,9 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
             className="w-full h-full object-cover object-[center_20%] sm:object-[75%_20%] opacity-35 sm:opacity-40 scale-110 blur-[12px] sm:blur-[18px] saturate-125 transform-gpu"
           />
           {/* Smooth seamless multi-stop gradients for cinematic vignette */}
-          <div className="absolute inset-0 bg-gradient-to-t from-[#08090d] via-[#08090d]/80 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#08090d] via-[#08090d]/70 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-[#08090d]" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/80 to-transparent transition-colors duration-250" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/70 to-transparent transition-colors duration-250" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-[var(--bg-base,#000000)] transition-colors duration-250" />
         </div>
 
         {/* Fluid Full-Width Details Content Container */}

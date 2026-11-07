@@ -121,7 +121,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   const activeSecondaryLabel = SECONDARY_TABS.find((t) => t.id === activeTab)?.label;
 
   return (
-    <header className="sticky top-0 z-40 w-full px-4 sm:px-6 lg:px-10 py-3.5 bg-[#09090b] border-b border-white/[0.06] flex items-center justify-between gap-4 sm:gap-6 select-none">
+    <header className="sticky top-0 z-40 w-full px-4 sm:px-6 lg:px-10 py-3.5 bg-[var(--bg-base,#000000)]/90 backdrop-blur-md border-b border-white/[0.06] flex items-center justify-between gap-4 sm:gap-6 select-none transition-colors duration-250">
       {/* Left: Brand Wordmark & Responsive Android TV Navigation */}
       <div className="flex items-center gap-4 sm:gap-7 lg:gap-8 min-w-0">
         {/* Brand Wordmark */}

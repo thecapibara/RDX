@@ -78,12 +78,12 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 bg-[#08090d]/95 flex flex-col overflow-y-auto select-none"
+      className="fixed inset-0 z-50 bg-[var(--bg-base,#000000)]/98 flex flex-col overflow-y-auto select-none backdrop-blur-md transition-colors duration-250"
     >
       {/* Top Search Input Bar */}
       <div
         onClick={(e) => e.stopPropagation()}
-        className="sticky top-0 z-20 w-full bg-[#08090d]/90 border-b border-white/10 px-[clamp(1.5rem,5vw,5rem)] py-6 flex items-center justify-between gap-6"
+        className="sticky top-0 z-20 w-full bg-[var(--bg-base,#000000)]/90 border-b border-white/10 px-[clamp(1.5rem,5vw,5rem)] py-6 flex items-center justify-between gap-6 backdrop-blur-md transition-colors duration-250"
       >
         <div className="flex items-center gap-4 flex-1 min-w-0">
           <Search className="w-6 h-6 text-rose-500 flex-shrink-0" />

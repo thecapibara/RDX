@@ -1,13 +1,67 @@
 <!doctype html>
-<html lang="uk" class="dark" style="background-color: #09090b; color: #f4f4f5; scrollbar-gutter: stable;">
+<html lang="uk" class="dark" style="background-color: var(--bg-base, #000000); color: #f4f4f5; scrollbar-gutter: stable;">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title></title>
+    <script>
+      (function() {
+        try {
+          var a = localStorage.getItem("rdx_accent_color") || "crimson";
+          var b = localStorage.getItem("rdx_bg_theme") || "oled";
+          document.documentElement.setAttribute("data-accent", a);
+          document.documentElement.setAttribute("data-bg", b);
+        } catch(e) {}
+      })();
+    </script>
     <style>
+      :root,
+      [data-accent="crimson"] {
+        --accent-400: #fb7185;
+        --accent-500: #f43f5e;
+        --accent-600: #e11d48;
+        --accent-950: #4c0519;
+      }
+      [data-accent="amethyst"] {
+        --accent-400: #c084fc;
+        --accent-500: #a855f7;
+        --accent-600: #9333ea;
+        --accent-950: #3b0764;
+      }
+      [data-accent="sapphire"] {
+        --accent-400: #60a5fa;
+        --accent-500: #3b82f6;
+        --accent-600: #2563eb;
+        --accent-950: #172554;
+      }
+      [data-accent="emerald"] {
+        --accent-400: #34d399;
+        --accent-500: #10b981;
+        --accent-600: #059669;
+        --accent-950: #022c22;
+      }
+      [data-accent="amber"] {
+        --accent-400: #fbbf24;
+        --accent-500: #f59e0b;
+        --accent-600: #d97706;
+        --accent-950: #451a03;
+      }
+
+      :root,
+      [data-bg="oled"] {
+        --bg-base: #000000;
+        --bg-surface: #050507;
+        --bg-elevated: #0f0f13;
+      }
+      [data-bg="obsidian"] {
+        --bg-base: #09090b;
+        --bg-surface: #111217;
+        --bg-elevated: #181920;
+      }
+
       html {
-        background-color: #09090b;
+        background-color: var(--bg-base, #000000);
         color: #f4f4f5;
         overflow-y: scroll;
       }
@@ -21,7 +75,7 @@
       body {
         margin: 0;
         padding: 0;
-        background-color: #09090b;
+        background-color: var(--bg-base, #000000);
         color: #f4f4f5;
         font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
         overflow-x: hidden;
@@ -37,7 +91,7 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        background-color: #09090b;
+        background-color: var(--bg-base, #000000);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
         overflow: hidden;
         user-select: none;
@@ -64,8 +118,8 @@
         position: absolute;
         inset: 14px;
         border-radius: 40px;
-        border: 1.5px solid rgba(225, 29, 72, 0.55);
-        box-shadow: 0 0 50px rgba(225, 29, 72, 0.25);
+        border: 1.5px solid var(--accent-500, #f43f5e);
+        box-shadow: 0 0 50px var(--accent-600, rgba(225, 29, 72, 0.45));
         opacity: 0;
         animation: rdxRingWave 2.2s cubic-bezier(0.16, 1, 0.3, 1) 0.25s infinite;
       }
@@ -73,7 +127,7 @@
         position: absolute;
         inset: 14px;
         border-radius: 40px;
-        border: 1px solid rgba(255, 255, 255, 0.18);
+        border: 1px solid var(--accent-400, #fb7185);
         opacity: 0;
         animation: rdxRingWave 2.2s cubic-bezier(0.16, 1, 0.3, 1) 0.75s infinite;
       }
@@ -85,7 +139,7 @@
         overflow: hidden;
         box-shadow:
           0 28px 70px rgba(0, 0, 0, 0.95),
-          0 0 60px rgba(225, 29, 72, 0.18);
+          0 0 60px var(--accent-600, rgba(225, 29, 72, 0.18));
         animation: rdxHeroLogoIn 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
       }
       .rdx-boot-logo {
@@ -101,7 +155,7 @@
           115deg,
           transparent 35%,
           rgba(255, 255, 255, 0.22) 48%,
-          rgba(225, 29, 72, 0.25) 52%,
+          var(--accent-500, rgba(225, 29, 72, 0.25)) 52%,
           transparent 65%
         );
         transform: translateX(-120%) rotate(12deg);
@@ -131,8 +185,8 @@
       .rdx-char-2 { animation-delay: 0.36s; }
       .rdx-char-3 { animation-delay: 0.50s; }
       .rdx-char-dot {
-        color: #e11d48;
-        text-shadow: 0 0 28px rgba(225, 29, 72, 0.9);
+        color: var(--accent-600, #e11d48);
+        text-shadow: 0 0 28px var(--accent-500, rgba(225, 29, 72, 0.9));
         animation-delay: 0.66s;
       }
       .rdx-TypeCursor {
@@ -141,8 +195,8 @@
         bottom: 6px;
         width: 4px;
         height: 46px;
-        background-color: #e11d48;
-        box-shadow: 0 0 16px #e11d48;
+        background-color: var(--accent-600, #e11d48);
+        box-shadow: 0 0 16px var(--accent-500, #e11d48);
         animation: rdxCursorBlink 0.75s step-end infinite;
       }
       .rdx-progress-bar {
@@ -160,8 +214,8 @@
         bottom: 0;
         left: 0;
         width: 100%;
-        background: linear-gradient(90deg, #9f1239, #e11d48, #fb7185);
-        box-shadow: 0 0 16px #e11d48;
+        background: linear-gradient(90deg, var(--accent-950, #9f1239), var(--accent-600, #e11d48), var(--accent-400, #fb7185));
+        box-shadow: 0 0 16px var(--accent-500, #e11d48);
         transform-origin: left;
         animation: rdxProgressLoad 1.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
       }

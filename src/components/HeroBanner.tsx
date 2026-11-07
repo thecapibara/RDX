@@ -107,9 +107,9 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
           />
 
           {/* Cinematic Overlays: Soft dark gradient on the left for readable text, bottom fade into black */}
-          <div className="absolute inset-0 bg-gradient-to-t from-[#09090b] via-[#09090b]/50 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#09090b] via-[#09090b]/85 to-transparent w-full md:w-3/4" />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-[#09090b]" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/50 to-transparent transition-colors duration-250" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/85 to-transparent w-full md:w-3/4 transition-colors duration-250" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-[var(--bg-base,#000000)] transition-colors duration-250" />
         </motion.div>
       </AnimatePresence>
 

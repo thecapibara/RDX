@@ -413,7 +413,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-white flex flex-col font-sans selection:bg-rose-500/30 selection:text-white">
+    <div className="min-h-screen bg-[var(--bg-base,#000000)] text-white flex flex-col font-sans selection:bg-rose-500/30 selection:text-white transition-colors duration-250">
       {/* Top Android TV Navigation Bar */}
       {!isBackgroundHidden && (
         <TopBar

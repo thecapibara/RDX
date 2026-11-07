@@ -20,6 +20,8 @@ import {
   Sliders,
   Monitor,
   Eye,
+  Palette,
+  Moon,
 } from "lucide-react";
 import type { AppSettings, MirrorStatus } from "../types";
 import { api } from "../services/api";
@@ -28,7 +30,17 @@ import {
   getUiSoundsEnabled,
   setUiSoundsEnabled,
   playModalOpenSound,
+  playHoverSound,
 } from "../services/sound";
+import {
+  getAccentColor,
+  setAccentColor,
+  getBgTheme,
+  setBgTheme,
+  ACCENT_OPTIONS,
+  type AccentColor,
+  type BgTheme,
+} from "../services/theme";
 
 interface MirrorModalProps {
   isOpen: boolean;
@@ -89,6 +101,8 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
       return true;
     }
   });
+  const [accentColor, setAccentColorState] = useState<AccentColor>(() => getAccentColor());
+  const [bgTheme, setBgThemeState] = useState<BgTheme>(() => getBgTheme());
 
   useEffect(() => {
     if (isOpen) {
@@ -332,6 +346,18 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
     } catch {}
   };
 
+  const handleSelectAccent = (color: AccentColor) => {
+    setAccentColorState(color);
+    setAccentColor(color);
+    playHoverSound();
+  };
+
+  const handleSelectBgTheme = (theme: BgTheme) => {
+    setBgThemeState(theme);
+    setBgTheme(theme);
+    playHoverSound();
+  };
+
   const allMirrors = useMemo(() => {
     const raw = Array.from(
       new Set([
@@ -377,10 +403,10 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-4xl bg-[#0c0d12]/95 border border-white/10 rounded-3xl shadow-2xl shadow-black/90 overflow-hidden flex flex-col max-h-[88vh] backdrop-blur-2xl"
+        className="w-full max-w-4xl bg-[var(--bg-surface,#161720)] border border-[var(--border-subtle,rgba(255,255,255,0.1))] rounded-3xl shadow-2xl shadow-black/90 overflow-hidden flex flex-col max-h-[88vh] backdrop-blur-2xl transition-colors duration-250"
       >
         {/* Obsidian Glass Header */}
-        <div className="flex items-center justify-between px-6 py-4.5 border-b border-white/8 bg-zinc-950/70">
+        <div className="flex items-center justify-between px-6 py-4.5 border-b border-[var(--border-subtle,rgba(255,255,255,0.08))] bg-[var(--bg-elevated,#1e1f2b)]/80 transition-colors duration-250">
           <div className="flex items-center gap-3.5">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-rose-600 to-rose-950 border border-rose-500/30 flex items-center justify-center text-white shadow-lg shadow-rose-950/50 flex-shrink-0">
               <span className="font-black text-sm tracking-tighter">RDX</span>
@@ -391,7 +417,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                   Налаштування RDX<span className="text-rose-500 text-lg leading-none">.</span>
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-white/5 border border-white/10 text-zinc-400">
-                  v0.6.0
+                  v0.6.7
                 </span>
               </div>
               <p className="text-xs text-zinc-400">
@@ -411,7 +437,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
         {/* 2-Column TV Layout: Sidebar + Main Content */}
         <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
           {/* Left Navigation Rail */}
-          <div className="w-full md:w-60 border-b md:border-b-0 md:border-r border-white/8 bg-zinc-950/40 p-3 space-y-1.5 flex-shrink-0 flex md:flex-col overflow-x-auto md:overflow-x-visible">
+          <div className="w-full md:w-60 border-b md:border-b-0 md:border-r border-[var(--border-subtle,rgba(255,255,255,0.08))] bg-[var(--bg-base,#101116)]/70 p-3 space-y-1.5 flex-shrink-0 flex md:flex-col overflow-x-auto md:overflow-x-visible transition-colors duration-250">
             {/* Tab 1: Network & Mirrors */}
             <button
               onClick={() => setActiveModalTab("network")}
@@ -860,8 +886,133 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
             {/* ================= TAB 3: APPEARANCE & SOUND (NEW) ================= */}
             {activeModalTab === "appearance" && (
               <div className="space-y-6">
+                {/* Accent Color Palette Selector Card */}
+                <div className="p-4.5 rounded-2xl bg-[var(--bg-elevated,#1e1f2b)]/60 border border-[var(--border-subtle,rgba(255,255,255,0.08))] space-y-3.5 transition-colors duration-250">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0 mt-0.5">
+                        <Palette className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Колірний акцент інтерфейсу</h4>
+                        <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
+                          Персоналізуйте відтінок кнопок, неонового підсвічування та активних елементів
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Horizontal row of circular color swatches */}
+                  <div className="pt-1">
+                    <div className="flex items-center gap-3.5 flex-wrap">
+                      {ACCENT_OPTIONS.map((opt) => {
+                        const isSelected = accentColor === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            onClick={() => handleSelectAccent(opt.id)}
+                            className={cn(
+                              "group relative w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer",
+                              "hover:scale-110 active:scale-95 focus:outline-none",
+                              isSelected
+                                ? "ring-2 ring-white ring-offset-2 ring-offset-[#09090b] shadow-lg scale-105"
+                                : "opacity-80 hover:opacity-100 ring-1 ring-white/20"
+                            )}
+                            style={{
+                              backgroundColor: opt.hex,
+                              boxShadow: isSelected ? `0 0 16px ${opt.hex}80` : undefined,
+                            }}
+                            title={opt.name}
+                          >
+                            {isSelected && (
+                              <Check className="w-4 h-4 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] stroke-[3]" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-3 flex items-center gap-2 text-xs">
+                      <span className="font-semibold text-white">
+                        {ACCENT_OPTIONS.find((o) => o.id === accentColor)?.name}:
+                      </span>
+                      <span className="text-zinc-400 text-[11px]">
+                        {ACCENT_OPTIONS.find((o) => o.id === accentColor)?.tagline}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Background Depth: True OLED vs Graphite */}
+                <div className="p-4.5 rounded-2xl bg-[var(--bg-elevated,#1e1f2b)]/60 border border-[var(--border-subtle,rgba(255,255,255,0.08))] space-y-3.5 transition-colors duration-250">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0 mt-0.5">
+                        <Moon className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Глибина темної теми (Display Black Depth)</h4>
+                        <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
+                          Рівень чорного для максимального контрасту на вашому дисплеї
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    <button
+                      onClick={() => handleSelectBgTheme("oled")}
+                      className={cn(
+                        "flex items-center gap-3 p-3.5 rounded-xl border text-left transition-all cursor-pointer",
+                        bgTheme === "oled"
+                          ? "bg-zinc-800/90 border-rose-500 shadow-[0_0_14px_rgba(225,29,72,0.25)] ring-1 ring-rose-500"
+                          : "bg-black/30 border-white/8 hover:bg-white/5 hover:border-white/15"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-black border border-white/30 flex items-center justify-center flex-shrink-0 shadow-inner">
+                        <div className="w-4 h-4 rounded-full bg-black ring-2 ring-white/50" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                          True OLED Black
+                          <span className="text-[10px] font-medium text-rose-400/90 bg-rose-500/10 px-1.5 py-0.2 rounded border border-rose-500/20">
+                            Дефолт
+                          </span>
+                          {bgTheme === "oled" && <Check className="w-3.5 h-3.5 text-rose-400 stroke-[3] ml-auto" />}
+                        </div>
+                        <div className="text-[11px] text-zinc-400 truncate">
+                          Абсолютний нуль пікселів (#000000)
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => handleSelectBgTheme("obsidian")}
+                      className={cn(
+                        "flex items-center gap-3 p-3.5 rounded-xl border text-left transition-all cursor-pointer",
+                        bgTheme === "obsidian"
+                          ? "bg-zinc-800/90 border-rose-500 shadow-[0_0_14px_rgba(225,29,72,0.25)] ring-1 ring-rose-500"
+                          : "bg-black/30 border-white/8 hover:bg-white/5 hover:border-white/15"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-[#09090b] border border-white/20 flex items-center justify-center flex-shrink-0 shadow-inner">
+                        <div className="w-4 h-4 rounded-full bg-zinc-800 border border-zinc-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                          Obsidian Dark
+                          {bgTheme === "obsidian" && <Check className="w-3.5 h-3.5 text-rose-400 stroke-[3] ml-auto" />}
+                        </div>
+                        <div className="text-[11px] text-zinc-400 truncate">
+                          М'який глибокий цинк (#09090b)
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
                 {/* Startup Sound Chime Card */}
-                <div className="p-4.5 rounded-2xl bg-zinc-900/50 border border-white/8">
+                <div className="p-4.5 rounded-2xl bg-[var(--bg-elevated,#1e1f2b)]/60 border border-[var(--border-subtle,rgba(255,255,255,0.08))] transition-colors duration-250">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0">
@@ -889,7 +1040,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                 </div>
 
                 {/* System UI Feedback Sounds Card */}
-                <div className="p-4.5 rounded-2xl bg-zinc-900/50 border border-white/8">
+                <div className="p-4.5 rounded-2xl bg-[var(--bg-elevated,#1e1f2b)]/60 border border-[var(--border-subtle,rgba(255,255,255,0.08))] transition-colors duration-250">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0">
@@ -917,7 +1068,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                 </div>
 
                 {/* Ambient Glow Card */}
-                <div className="p-4.5 rounded-2xl bg-zinc-900/50 border border-white/8 space-y-3">
+                <div className="p-4.5 rounded-2xl bg-[var(--bg-elevated,#1e1f2b)]/60 border border-[var(--border-subtle,rgba(255,255,255,0.08))] space-y-3 transition-colors duration-250">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
                       <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0 mt-0.5">
@@ -944,7 +1095,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                 </div>
 
                 {/* 60fps Motion Animations */}
-                <div className="p-4.5 rounded-2xl bg-zinc-900/50 border border-white/8 space-y-3">
+                <div className="p-4.5 rounded-2xl bg-[var(--bg-elevated,#1e1f2b)]/60 border border-[var(--border-subtle,rgba(255,255,255,0.08))] space-y-3 transition-colors duration-250">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
                       <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0 mt-0.5">
@@ -981,7 +1132,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                     <h3 className="text-2xl font-black tracking-tight text-white flex items-baseline">
                       RDX<span className="text-rose-500">.</span>
                       <span className="text-xs font-semibold text-zinc-400 ml-2 tracking-normal">
-                        v0.6.0 (Beta)
+                        v0.6.7 (Beta)
                       </span>
                     </h3>
                     <p className="text-xs text-zinc-400 mt-1">
