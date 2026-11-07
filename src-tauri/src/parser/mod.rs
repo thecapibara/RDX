@@ -387,6 +387,7 @@ impl RezkaParser {
             };
 
             let is_active = elem.value().classes().any(|c| c == "active");
+            let is_premium = elem.value().classes().any(|c| c == "b-prem_translator");
 
             let lang_img_sel = Selector::parse("img").unwrap();
             let language = elem
@@ -400,6 +401,7 @@ impl RezkaParser {
 
             if let Some(existing) = translators.iter_mut().find(|t| t.id == id) {
                 existing.is_active = existing.is_active || is_active;
+                existing.is_premium = existing.is_premium || is_premium;
                 if existing.language.is_none() && language.is_some() {
                     existing.language = language;
                 }
@@ -412,6 +414,7 @@ impl RezkaParser {
                     name,
                     language,
                     is_active,
+                    is_premium,
                 });
             }
         }
@@ -476,6 +479,7 @@ impl RezkaParser {
                     name: "Оригінал / Дубляж".to_string(),
                     language: None,
                     is_active: true,
+                    is_premium: false,
                 });
             }
         }
@@ -610,13 +614,21 @@ impl RezkaParser {
         let default_q = json.get("quality").and_then(|v| v.as_str());
         let subtitles = json.get("subtitle").and_then(|v| v.as_str());
         let thumbnails = json.get("thumbnails").and_then(|v| v.as_str());
+        let is_premium = json
+            .get("premium_content")
+            .and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+            .map(|val| val == 1)
+            .unwrap_or(false);
 
-        Ok(StreamDeobfuscator::build_stream_data(
+        let mut stream_data = StreamDeobfuscator::build_stream_data(
             raw_url,
             default_q,
             subtitles,
             thumbnails,
-        ))
+        );
+        stream_data.is_premium = is_premium;
+
+        Ok(stream_data)
     }
 
     /// Fetches series episodes matrix when switching translators
@@ -684,12 +696,20 @@ impl RezkaParser {
             let default_q = json.get("quality").and_then(|v| v.as_str());
             let subtitles = json.get("subtitle").and_then(|v| v.as_str());
             let thumbnails = json.get("thumbnails").and_then(|v| v.as_str());
-            Some(StreamDeobfuscator::build_stream_data(
+            let is_premium = json
+                .get("premium_content")
+                .and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+                .map(|val| val == 1)
+                .unwrap_or(false);
+
+            let mut s = StreamDeobfuscator::build_stream_data(
                 raw_url,
                 default_q,
                 subtitles,
                 thumbnails,
-            ))
+            );
+            s.is_premium = is_premium;
+            Some(s)
         } else {
             None
         };

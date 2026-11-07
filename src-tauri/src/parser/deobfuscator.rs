@@ -152,6 +152,7 @@ impl StreamDeobfuscator {
             default_quality: default_q,
             subtitles,
             thumbnails: thumbnails.map(|s| s.to_string()),
+            is_premium: false,
         }
     }
 }

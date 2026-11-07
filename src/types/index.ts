@@ -75,6 +75,7 @@ export interface Translator {
   name: string;
   language: string | null;
   is_active: boolean;
+  is_premium?: boolean;
 }
 
 export interface SeasonTab {
@@ -104,6 +105,7 @@ export interface StreamData {
   default_quality: string;
   subtitles: SubtitleTrack[];
   thumbnails: string | null;
+  is_premium?: boolean;
 }
 
 export interface MediaDetails {

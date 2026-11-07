@@ -10,6 +10,7 @@ import {
   Search,
   Info,
   Clock,
+  Crown,
 } from "lucide-react";
 import type { Bookmark, MediaCard, MediaDetails, WatchProgress, Translator } from "../types";
 import { api } from "../services/api";
@@ -559,6 +560,12 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                           <span className="truncate max-w-[200px]">
                             {selectedTranslator?.name || "Оберіть озвучення"}
                           </span>
+                          {selectedTranslator?.is_premium && (
+                            <span className="text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1 shrink-0">
+                              <Crown className="w-3 h-3 text-amber-400" />
+                              PREMIUM
+                            </span>
+                          )}
                           <ChevronDown
                             className={cn(
                               "w-3.5 h-3.5 text-zinc-400 transition-transform",
@@ -637,6 +644,12 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                                     <div className="flex items-center gap-2 truncate">
                                       {isUkr && <span>🇺🇦</span>}
                                       <span className="truncate">{t.name}</span>
+                                      {t.is_premium && (
+                                        <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-0.5 shrink-0">
+                                          <Crown className="w-2.5 h-2.5 text-amber-400" />
+                                          PREMIUM
+                                        </span>
+                                      )}
                                     </div>
                                     {isSelected && <Check className="w-4 h-4 flex-shrink-0" />}
                                   </button>
@@ -663,10 +676,28 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                           >
                             <span>🇺🇦</span>
                             <span className="truncate max-w-[130px]">{t.name}</span>
+                            {t.is_premium && (
+                              <Crown className="w-3 h-3 text-amber-400 shrink-0" />
+                            )}
                           </button>
                         );
                       })}
                     </div>
+
+                    {/* Premium Translator Warning Notice */}
+                    {selectedTranslator?.is_premium && (
+                      <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs mt-2">
+                        <Crown className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-semibold text-amber-300">
+                            Озвучення доступне лише для передплатників HDRezka Premium.
+                          </span>
+                          <p className="text-[11px] text-amber-200/80 mt-0.5 leading-relaxed">
+                            Без підписки замість фільму транслюється 1-хвилинне промо-відео сайту із QR-кодом.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
                 </>

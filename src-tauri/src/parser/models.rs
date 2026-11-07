@@ -28,6 +28,8 @@ pub struct Translator {
     pub name: String,
     pub language: Option<String>,
     pub is_active: bool,
+    #[serde(default)]
+    pub is_premium: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,6 +64,8 @@ pub struct StreamData {
     pub default_quality: String,
     pub subtitles: Vec<SubtitleTrack>,
     pub thumbnails: Option<String>,
+    #[serde(default)]
+    pub is_premium: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

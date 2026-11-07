@@ -1769,7 +1769,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         </span>
                       )}
                       <span>•</span>
-                      <span>{currentTranslator?.name}</span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span>{currentTranslator?.name}</span>
+                        {currentTranslator?.is_premium && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-black uppercase tracking-wider">
+                            <Crown className="w-2.5 h-2.5 text-amber-400" />
+                            PREMIUM
+                          </span>
+                        )}
+                      </span>
                       {selectedQuality && (
                         <>
                           <span>•</span>
@@ -1782,6 +1790,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         </>
                       )}
                     </div>
+
+                    {(currentTranslator?.is_premium || streamData?.is_premium) && (
+                      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-950/80 border border-amber-500/40 text-amber-200 text-xs shadow-xl backdrop-blur-md mt-1">
+                        <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>Ця озвучка доступна лише з HDRezka Premium (сайт транслює промо-ролик із QR-кодом)</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -2089,6 +2104,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           <strong className="text-zinc-100 max-w-[80px] sm:max-w-[120px] truncate inline-block align-bottom font-medium">
                             {currentTranslator?.name}
                           </strong>
+                          {currentTranslator?.is_premium && (
+                            <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          )}
                           <ChevronDown className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
                         </button>
 
@@ -2120,6 +2138,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                   <span className="truncate flex items-center gap-1.5">
                                     {isUkr && <span>🇺🇦</span>}
                                     <span>{t.name}</span>
+                                    {t.is_premium && (
+                                      <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-0.5 shrink-0">
+                                        <Crown className="w-2.5 h-2.5 text-amber-400" />
+                                        PREM
+                                      </span>
+                                    )}
                                   </span>
                                   {isSelected && <Check className="w-3.5 h-3.5 flex-shrink-0" />}
                                 </button>
@@ -2613,6 +2637,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       <span className="truncate flex items-center gap-1.5">
                         {isUkr && <span>🇺🇦</span>}
                         <span>{t.name}</span>
+                        {t.is_premium && (
+                          <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-0.5 shrink-0">
+                            <Crown className="w-2.5 h-2.5 text-amber-400" />
+                            PREM
+                          </span>
+                        )}
                       </span>
                       {isSelected && <Check className="w-3.5 h-3.5 flex-shrink-0" />}
                     </button>
