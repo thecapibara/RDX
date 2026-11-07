@@ -35,6 +35,7 @@ export default function App() {
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [continueWatching, setContinueWatching] = useState<WatchProgress[]>([]);
   const [homeItems, setHomeItems] = useState<MediaCardType[]>([]);
+  const [watchingHeroItems, setWatchingHeroItems] = useState<MediaCardType[]>([]);
   const [categoryItems, setCategoryItems] = useState<MediaCardType[]>([]);
   const [categoryPage, setCategoryPage] = useState<number>(1);
   const [activeSort, setActiveSort] = useState<string>("last");
@@ -110,7 +111,10 @@ export default function App() {
     setCatalogError(null);
     try {
       if (activeTab === "home") {
-        let homeList = await api.getHomeCatalog().catch(() => [] as MediaCardType[]);
+        let [homeList, watchingList] = await Promise.all([
+          api.getHomeCatalog().catch(() => [] as MediaCardType[]),
+          api.getHomeCatalog("watching").catch(() => [] as MediaCardType[]),
+        ]);
         if (homeList.length === 0) {
           // Active mirror failed or returned empty: auto-failover via Smart Rotator + DoH
           const rot = await api.smartSelectMirror(false).catch(() => null);
@@ -121,9 +125,15 @@ export default function App() {
             const bestStatus = rot.statuses.find((s) => s.mirror_url === rot.selected_mirror);
             if (bestStatus) setMirrorStatus(bestStatus);
           }
-          homeList = await api.getHomeCatalog();
+          const retryResults = await Promise.all([
+            api.getHomeCatalog().catch(() => [] as MediaCardType[]),
+            api.getHomeCatalog("watching").catch(() => [] as MediaCardType[]),
+          ]);
+          homeList = retryResults[0];
+          watchingList = retryResults[1];
         }
         setHomeItems(homeList);
+        setWatchingHeroItems(watchingList);
       } else if (activeTab !== "bookmarks") {
         const catList = await api.getCategoryCatalog(
           activeTab,
@@ -333,35 +343,29 @@ export default function App() {
     }
   }, []);
 
-  // Memoized swimlane slices so Swimlane React.memo is never invalidated by .filter()
+  // Memoized Hero Banner items from "Зараз дивляться" (Top-10 trending hits)
   const featuredHeroItems = useMemo(() => {
-    if (homeItems.length === 0) return [];
+    const source = watchingHeroItems.length > 0 ? watchingHeroItems : homeItems;
+    if (source.length === 0) return [];
 
-    const valid = homeItems.filter(
+    const valid = source.filter(
       (item) => item.title && item.poster && !item.poster.includes("placeholder")
     );
 
-    // Pick top items with rating >= 6.5 if available, else take top items
-    const topRated = valid.filter((i) => {
-      const r = parseFloat(i.rating || "0");
-      return !isNaN(r) && r >= 6.5;
-    });
-
-    const pool = topRated.length >= 5 ? topRated : valid;
     const selected: MediaCardType[] = [];
     const seen = new Set<string>();
 
-    for (const item of pool) {
+    for (const item of valid) {
       const key = item.id || item.url;
       if (!seen.has(key)) {
         seen.add(key);
         selected.push(item);
       }
-      if (selected.length >= 7) break;
+      if (selected.length >= 10) break;
     }
 
-    return selected.length > 0 ? selected : valid.slice(0, 6);
-  }, [homeItems]);
+    return selected.length > 0 ? selected : valid.slice(0, 10);
+  }, [watchingHeroItems, homeItems]);
 
   const trendingHomeItems = useMemo(() => homeItems.slice(0, 18), [homeItems]);
   const filmsHomeItems = useMemo(
