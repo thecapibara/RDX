@@ -47,13 +47,71 @@ export const ACCENT_OPTIONS: AccentOption[] = [
   },
 ];
 
-const ACCENT_MAP: Record<AccentColor, { c400: string; c500: string; c600: string; c950: string }> = {
-  crimson: { c400: "#fb7185", c500: "#f43f5e", c600: "#e11d48", c950: "#4c0519" },
-  amethyst: { c400: "#c084fc", c500: "#a855f7", c600: "#9333ea", c950: "#3b0764" },
-  sapphire: { c400: "#60a5fa", c500: "#3b82f6", c600: "#2563eb", c950: "#172554" },
-  emerald: { c400: "#34d399", c500: "#10b981", c600: "#059669", c950: "#022c22" },
-  amber: { c400: "#fbbf24", c500: "#f59e0b", c600: "#d97706", c950: "#451a03" },
+export interface AccentPalette {
+  c200: string;
+  c300: string;
+  c400: string;
+  c500: string;
+  c600: string;
+  c700: string;
+  c900: string;
+  c950: string;
+}
+
+export const ACCENT_PALETTES: Record<AccentColor, AccentPalette> = {
+  crimson: {
+    c200: "#fecdd3",
+    c300: "#fda4af",
+    c400: "#fb7185",
+    c500: "#f43f5e",
+    c600: "#e11d48",
+    c700: "#be123c",
+    c900: "#881337",
+    c950: "#4c0519",
+  },
+  amethyst: {
+    c200: "#e9d5ff",
+    c300: "#d8b4fe",
+    c400: "#c084fc",
+    c500: "#a855f7",
+    c600: "#9333ea",
+    c700: "#7e22ce",
+    c900: "#581c87",
+    c950: "#3b0764",
+  },
+  sapphire: {
+    c200: "#bfdbfe",
+    c300: "#93c5fd",
+    c400: "#60a5fa",
+    c500: "#3b82f6",
+    c600: "#2563eb",
+    c700: "#1d4ed8",
+    c900: "#1e3a8a",
+    c950: "#172554",
+  },
+  emerald: {
+    c200: "#a7f3d0",
+    c300: "#6ee7b7",
+    c400: "#34d399",
+    c500: "#10b981",
+    c600: "#059669",
+    c700: "#047857",
+    c900: "#064e3b",
+    c950: "#022c22",
+  },
+  amber: {
+    c200: "#fde68a",
+    c300: "#fcd34d",
+    c400: "#fbbf24",
+    c500: "#f59e0b",
+    c600: "#d97706",
+    c700: "#b45309",
+    c900: "#78350f",
+    c950: "#451a03",
+  },
 };
+
+export const ACCENT_MAP = ACCENT_PALETTES;
 
 const BG_MAP: Record<BgTheme, { base: string; surface: string; elevated: string; card: string; border: string }> = {
   oled: {
@@ -87,10 +145,14 @@ export const setAccentColor = (accent: AccentColor) => {
   try {
     localStorage.setItem("rdx_accent_color", accent);
     document.documentElement.setAttribute("data-accent", accent);
-    const pal = ACCENT_MAP[accent] || ACCENT_MAP.crimson;
+    const pal = ACCENT_PALETTES[accent] || ACCENT_PALETTES.crimson;
+    document.documentElement.style.setProperty("--accent-200", pal.c200);
+    document.documentElement.style.setProperty("--accent-300", pal.c300);
     document.documentElement.style.setProperty("--accent-400", pal.c400);
     document.documentElement.style.setProperty("--accent-500", pal.c500);
     document.documentElement.style.setProperty("--accent-600", pal.c600);
+    document.documentElement.style.setProperty("--accent-700", pal.c700);
+    document.documentElement.style.setProperty("--accent-900", pal.c900);
     document.documentElement.style.setProperty("--accent-950", pal.c950);
   } catch {}
 };

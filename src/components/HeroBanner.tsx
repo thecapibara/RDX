@@ -185,7 +185,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
         <div className="flex items-center gap-3 pt-2 flex-wrap">
           <button
             onClick={() => onPlay(currentMedia)}
-            className="flex items-center gap-2.5 px-6 py-3 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-rose-500 hover:from-red-500 hover:to-rose-400 text-white font-bold text-sm shadow-xl shadow-rose-900/40 hover:shadow-rose-900/60 active:scale-95 transition-all cursor-pointer"
+            className="flex items-center gap-2.5 px-6 py-3 rounded-2xl bg-gradient-to-r from-rose-700 via-rose-600 to-rose-500 hover:from-rose-600 hover:to-rose-400 text-white font-bold text-sm shadow-xl shadow-rose-900/40 hover:shadow-rose-900/60 active:scale-95 transition-all cursor-pointer"
           >
             <Play className="w-5 h-5 fill-current" />
             <span>Дивитися зараз</span>
@@ -252,7 +252,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
                   className={cn(
                     "h-2 rounded-full transition-all duration-300 cursor-pointer block p-0 border-0 outline-none",
                     isActive
-                      ? "w-8 bg-gradient-to-r from-red-600 to-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.7)]"
+                      ? "w-8 bg-gradient-to-r from-rose-600 to-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.7)]"
                       : "w-2 bg-white/25 hover:bg-white/50"
                   )}
                 />
