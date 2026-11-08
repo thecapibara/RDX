@@ -10,6 +10,7 @@ import {
   VolumeX,
   Maximize2,
   Minimize2,
+  Minimize,
   X,
   Settings,
   Subtitles,
@@ -42,6 +43,18 @@ import type {
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
+
+export interface ThumbnailCue {
+  start: number;
+  end: number;
+  url: string;
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+}
 
 export type PlayerMode = "full" | "docked" | "os_pip";
 
@@ -82,6 +95,83 @@ function formatTime(seconds: number): string {
     return `${hrs}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   }
   return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+function parseVttTime(ts: string): number {
+  if (!ts) return 0;
+  const parts = ts.trim().split(":");
+  if (parts.length === 3) {
+    const [h, m, s] = parts;
+    return (parseFloat(h) || 0) * 3600 + (parseFloat(m) || 0) * 60 + (parseFloat(s) || 0);
+  }
+  if (parts.length === 2) {
+    const [m, s] = parts;
+    return (parseFloat(m) || 0) * 60 + (parseFloat(s) || 0);
+  }
+  return 0;
+}
+
+function parseVttCues(vttContent: string, baseUrl: string): ThumbnailCue[] {
+  const cues: ThumbnailCue[] = [];
+  const lines = vttContent.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+
+  let currentStart = -1;
+  let currentEnd = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line || line.startsWith("WEBVTT") || line.startsWith("NOTE")) continue;
+
+    if (line.includes("-->")) {
+      const parts = line.split("-->").map((s) => s.trim().split(" ")[0]);
+      if (parts.length >= 2) {
+        currentStart = parseVttTime(parts[0]);
+        currentEnd = parseVttTime(parts[1]);
+      }
+      continue;
+    }
+
+    if (currentStart >= 0 && currentEnd > currentStart) {
+      let cueUrl = line;
+      let x = 0;
+      let y = 0;
+      let w = 160;
+      let h = 90;
+
+      const hashIndex = cueUrl.indexOf("#xywh=");
+      if (hashIndex !== -1) {
+        const xywhStr = cueUrl.slice(hashIndex + 6);
+        cueUrl = cueUrl.slice(0, hashIndex);
+        const [px, py, pw, ph] = xywhStr.split(",").map((v) => parseInt(v, 10));
+        if (!isNaN(px)) x = px;
+        if (!isNaN(py)) y = py;
+        if (!isNaN(pw)) w = pw;
+        if (!isNaN(ph)) h = ph;
+      }
+
+      let fullUrl = cueUrl;
+      try {
+        if (!cueUrl.startsWith("http://") && !cueUrl.startsWith("https://") && !cueUrl.startsWith("data:")) {
+          fullUrl = new URL(cueUrl, baseUrl).href;
+        }
+      } catch {}
+
+      cues.push({
+        start: currentStart,
+        end: currentEnd,
+        url: fullUrl,
+        x,
+        y,
+        w,
+        h,
+      });
+
+      currentStart = -1;
+      currentEnd = -1;
+    }
+  }
+
+  return cues;
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
@@ -286,8 +376,259 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     open: boolean;
     x: number;
     y: number;
-    page: "main" | "translators" | "episodes" | "quality" | "speed" | "aspect" | "sleep" | "subtitles";
+    page: "main" | "translators" | "episodes" | "quality" | "speed" | "aspect" | "sleep" | "subtitles" | "boost";
   } | null>(null);
+
+  // 1. True Fullscreen State & Sync
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const isFullscreenRef = useRef(false);
+  isFullscreenRef.current = isFullscreen;
+  const lastDblClickTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    const onFsChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+
+    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+      getCurrentWindow()
+        .isFullscreen()
+        .then(setIsFullscreen)
+        .catch(() => {});
+    }
+
+    return () => {
+      document.removeEventListener("fullscreenchange", onFsChange);
+    };
+  }, []);
+
+  const toggleFullscreen = useCallback(
+    async (forceState?: boolean) => {
+      const target = typeof forceState === "boolean" ? forceState : !isFullscreen;
+      if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+        try {
+          await api.setFullscreenMode(target);
+          setIsFullscreen(target);
+        } catch (err) {
+          console.warn("Tauri setFullscreenMode error:", err);
+          setIsFullscreen(target);
+        }
+      } else {
+        if (!target && typeof document !== "undefined" && document.fullscreenElement) {
+          try {
+            await document.exitFullscreen?.();
+          } catch {}
+        }
+        setIsFullscreen(target);
+      }
+      showHud(target ? "⛶ Повний екран" : "❐ У вікні");
+    },
+    [isFullscreen]
+  );
+
+  // 2. Next Episode Autoplay Countdown & Settings
+  const [autoplayNext, setAutoplayNext] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("rdx_autoplay_next") !== "false";
+    } catch {
+      return true;
+    }
+  });
+  const [nextEpDismissed, setNextEpDismissed] = useState(false);
+
+  useEffect(() => {
+    api
+      .getSettings()
+      .then((s) => {
+        if (typeof (s as any).autoplay_next === "boolean") {
+          setAutoplayNext((s as any).autoplay_next);
+          try {
+            localStorage.setItem("rdx_autoplay_next", String((s as any).autoplay_next));
+          } catch {}
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    setNextEpDismissed(false);
+  }, [activeSeason, activeEpisode]);
+
+  const getNextEpisodeTarget = useCallback((): {
+    season: number;
+    episode: number;
+    isNewSeason: boolean;
+  } | null => {
+    if (!isSeries || !activeSeason || !activeEpisode) return null;
+
+    const currentSeasonEps = episodes.filter(
+      (ep) => ep.season_id === String(activeSeason)
+    );
+    const nextInCurSeason = currentSeasonEps.find(
+      (ep) => parseInt(ep.episode_id, 10) === activeEpisode + 1
+    );
+    if (nextInCurSeason) {
+      return {
+        season: activeSeason,
+        episode: activeEpisode + 1,
+        isNewSeason: false,
+      };
+    }
+
+    const nextSeason = activeSeason + 1;
+    const nextSeasonEps = episodes.filter(
+      (ep) => ep.season_id === String(nextSeason)
+    );
+    if (nextSeasonEps.length > 0) {
+      const firstEp = parseInt(nextSeasonEps[0].episode_id, 10) || 1;
+      return {
+        season: nextSeason,
+        episode: firstEp,
+        isNewSeason: true,
+      };
+    }
+
+    return null;
+  }, [isSeries, activeSeason, activeEpisode, episodes]);
+
+  // 3. Per-Episode Progress Map
+  const [episodeProgressMap, setEpisodeProgressMap] = useState<
+    Record<string, { position_sec: number; duration_sec: number }>
+  >({});
+
+  useEffect(() => {
+    try {
+      const local = localStorage.getItem(`rdx_episode_progress_${details.id}`);
+      if (local) {
+        const parsed = JSON.parse(local);
+        if (parsed && typeof parsed === "object") {
+          setEpisodeProgressMap(parsed);
+        }
+      }
+    } catch {}
+
+    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+      const fetchProgress: Promise<any[]> = (api as any).getEpisodeProgress
+        ? (api as any).getEpisodeProgress(details.id)
+        : invoke("get_episode_progress", { mediaId: details.id });
+
+      fetchProgress
+        .then((list) => {
+          if (Array.isArray(list)) {
+            setEpisodeProgressMap((prev) => {
+              const next = { ...prev };
+              for (const p of list) {
+                if (p && p.season != null && p.episode != null) {
+                  next[`${p.season}-${p.episode}`] = {
+                    position_sec: p.position_sec,
+                    duration_sec: p.duration_sec,
+                  };
+                }
+              }
+              try {
+                localStorage.setItem(`rdx_episode_progress_${details.id}`, JSON.stringify(next));
+              } catch {}
+              return next;
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [details.id]);
+
+  // 4. Timeline Scrubbing Thumbnails
+  const [thumbnailCues, setThumbnailCues] = useState<ThumbnailCue[]>([]);
+
+  useEffect(() => {
+    if (!streamData?.thumbnails) {
+      setThumbnailCues([]);
+      return;
+    }
+
+    const thumbUrl = streamData.thumbnails;
+    let isCancelled = false;
+
+    fetch(thumbUrl)
+      .then((r) => r.text())
+      .then((text) => {
+        if (isCancelled) return;
+        const cues = parseVttCues(text, thumbUrl);
+        setThumbnailCues(cues);
+      })
+      .catch((err) => {
+        console.warn("Failed to load timeline thumbnails VTT:", err);
+        if (!isCancelled) setThumbnailCues([]);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [streamData?.thumbnails]);
+
+  // 5. Audio Gain Booster (up to 200%) & Subtitle Customizer
+  const [audioBoost, setAudioBoost] = useState<number>(1);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+
+  const handleSelectAudioBoost = useCallback((boost: number) => {
+    setAudioBoost(boost);
+
+    if (boost > 1 && !audioCtxRef.current && videoRef.current) {
+      try {
+        const AudioCtxClass =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        const ctx = new AudioCtxClass();
+        const source = ctx.createMediaElementSource(videoRef.current);
+        const gain = ctx.createGain();
+        source.connect(gain);
+        gain.connect(ctx.destination);
+
+        audioCtxRef.current = ctx;
+        gainNodeRef.current = gain;
+        sourceNodeRef.current = source;
+      } catch (err) {
+        console.warn("Failed to create Web Audio GainNode:", err);
+      }
+    }
+
+    if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
+      audioCtxRef.current.resume().catch(() => {});
+    }
+
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = boost;
+    }
+
+    showHud(`🔊 Підсилення: ${Math.round(boost * 100)}%`);
+  }, []);
+
+  const [subFontSize, setSubFontSize] = useState<"sm" | "md" | "lg" | "xl">("md");
+  const [subBgOpacity, setSubBgOpacity] = useState<number>(60);
+  const [subOffsetSec, setSubOffsetSec] = useState<number>(0);
+
+  const adjustSubtitleOffset = (deltaSec: number) => {
+    const nextOffset = Math.round((subOffsetSec + deltaSec) * 10) / 10;
+    setSubOffsetSec(nextOffset);
+
+    const tracks = videoRef.current?.textTracks;
+    if (tracks && tracks.length > 0) {
+      for (let i = 0; i < tracks.length; i++) {
+        const cues = tracks[i].cues;
+        if (cues) {
+          for (let j = 0; j < cues.length; j++) {
+            const cue = cues[j];
+            cue.startTime += deltaSec;
+            cue.endTime += deltaSec;
+          }
+        }
+      }
+    }
+
+    showHud(`Субтитри: ${nextOffset >= 0 ? "+" : ""}${nextOffset.toFixed(1)} сек`);
+  };
 
   // Sleep Timer countdown effect (interval created once per timer activation)
   const isSleepTimerActive = sleepTimerSecondsLeft !== null;
@@ -525,6 +866,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     effectiveDur > 0 ? Math.min(100, (getBufferedEnd() / effectiveDur) * 100) : 0;
   const playedPct =
     effectiveDur > 0 ? Math.min(100, (currentTime / effectiveDur) * 100) : 0;
+
+  const nextEpTarget = getNextEpisodeTarget();
+  const remainingSec = effectiveDur > 0 ? Math.max(0, effectiveDur - currentTime) : 0;
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -868,6 +1212,25 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const dur = getEffectiveDuration();
     if (!Number.isFinite(time) || time < 2 || !Number.isFinite(dur) || dur <= 0) return;
 
+    const posSec = Math.floor(time);
+    const durSec = Math.floor(dur);
+
+    if (isSeries && activeSeason && activeEpisode) {
+      setEpisodeProgressMap((prev) => {
+        const next = {
+          ...prev,
+          [`${activeSeason}-${activeEpisode}`]: {
+            position_sec: posSec,
+            duration_sec: durSec,
+          },
+        };
+        try {
+          localStorage.setItem(`rdx_episode_progress_${details.id}`, JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+    }
+
     const progress: WatchProgress = {
       media_id: details.id,
       media_url: details.url,
@@ -879,15 +1242,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       translator_name: currentTranslator?.name || null,
       season: isSeries ? activeSeason || 1 : null,
       episode: isSeries ? activeEpisode || 1 : null,
-      position_sec: Math.floor(time),
-      duration_sec: Math.floor(dur),
+      position_sec: posSec,
+      duration_sec: durSec,
       updated_at: Math.floor(Date.now() / 1000),
     };
 
     api.saveWatchProgress(progress).catch((e) =>
       console.warn("Failed to auto-save progress:", e)
     );
-  }, [details, currentTranslator, isSeries, activeSeason, activeEpisode]);
+  }, [details, currentTranslator, isSeries, activeSeason, activeEpisode, getEffectiveDuration]);
 
   useEffect(() => {
     const interval = setInterval(saveCurrentProgress, 5000);
@@ -964,6 +1327,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Comprehensive player teardown and close (pauses video, unloads sources, clears MPRIS)
   const handleTeardownAndClose = useCallback(() => {
+    // If fullscreen, restore normal window state
+    if (isFullscreen || isFullscreenRef.current || (typeof document !== "undefined" && Boolean(document.fullscreenElement))) {
+      if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+        api.setFullscreenMode(false).catch(() => {});
+      } else if (typeof document !== "undefined" && document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+      setIsFullscreen(false);
+      isFullscreenRef.current = false;
+    }
+
     // If player was in OS PiP mode, restore normal window size so it doesn't get stuck in 520x292
     if (mode === "os_pip" || modeRef.current === "os_pip") {
       api.setMiniPlayerMode(false).catch(() => {});
@@ -995,6 +1369,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       } catch {}
     }
 
+    // Clean up Web Audio GainNode & AudioContext
+    if (audioCtxRef.current) {
+      try {
+        audioCtxRef.current.close().catch(() => {});
+      } catch {}
+      audioCtxRef.current = null;
+      gainNodeRef.current = null;
+      sourceNodeRef.current = null;
+    }
+
     // 3. Destroy HLS instance
     if (hlsRef.current) {
       try {
@@ -1007,11 +1391,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     // 4. Fire parent onClose
     onClose();
-  }, [mode, saveCurrentProgress, onClose]);
+  }, [mode, isFullscreen, saveCurrentProgress, onClose]);
 
   // Teardown Lifecycle on unmount
   useEffect(() => {
     return () => {
+      if (typeof document !== "undefined" && document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+      if (isFullscreenRef.current && typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+        api.setFullscreenMode(false).catch(() => {});
+      }
+
       // If player was in OS PiP mode, restore normal window size
       if (modeRef.current === "os_pip") {
         api.setMiniPlayerMode(false).catch(() => {});
@@ -1033,6 +1424,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           video.removeAttribute("src");
           video.load();
         } catch {}
+      }
+
+      if (audioCtxRef.current) {
+        try {
+          audioCtxRef.current.close().catch(() => {});
+        } catch {}
+        audioCtxRef.current = null;
+        gainNodeRef.current = null;
+        sourceNodeRef.current = null;
       }
 
       if (hlsRef.current) {
@@ -1134,10 +1534,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           break;
         case "f":
         case "F":
+        case "F11":
           e.preventDefault();
           if (mode === "full") {
-            onModeChange("docked");
+            toggleFullscreen();
           } else {
+            if (mode === "os_pip") {
+              handleSetOsPip(false);
+            }
             onModeChange("full");
           }
           break;
@@ -1158,6 +1562,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             setShowTranslatorMenu(false);
             setShowSubtitleMenu(false);
             setShowSpeedMenu(false);
+          } else if (mode === "full" && (isFullscreen || (typeof document !== "undefined" && Boolean(document.fullscreenElement)))) {
+            toggleFullscreen(false);
           } else if (mode === "os_pip") {
             handleSetOsPip(false);
           } else if (mode === "docked") {
@@ -1179,6 +1585,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     mode,
     volume,
     isMuted,
+    isFullscreen,
+    toggleFullscreen,
     showEpisodesDrawer,
     showQualityMenu,
     showTranslatorMenu,
@@ -1194,16 +1602,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   ]);
 
   // Single click vs Double click on video
-  const handleVideoClick = () => {
+  const handleVideoClick = (e: React.MouseEvent) => {
     if (clickTimerRef.current) {
       clearTimeout(clickTimerRef.current);
       clickTimerRef.current = null;
+      handleVideoDoubleClick(e);
       return;
     }
     clickTimerRef.current = setTimeout(() => {
       togglePlay();
       clickTimerRef.current = null;
-    }, 220);
+    }, 230);
   };
 
   const handleVideoDoubleClick = (e: React.MouseEvent) => {
@@ -1211,6 +1620,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       clearTimeout(clickTimerRef.current);
       clickTimerRef.current = null;
     }
+    const now = performance.now();
+    if (now - lastDblClickTimeRef.current < 280) {
+      return;
+    }
+    lastDblClickTimeRef.current = now;
     if (mode === "os_pip" || mode === "docked") {
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
       const clickX = e.clientX - rect.left;
@@ -1224,7 +1638,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       return;
     }
     if (mode === "full") {
-      onModeChange("docked");
+      toggleFullscreen();
     } else {
       if (mode === "os_pip") {
         handleSetOsPip(false);
@@ -1442,10 +1856,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Video playback completion handler
   const handleVideoEnded = () => {
-    if (isSeries) {
+    if (isSeries && autoplayNext && !nextEpDismissed) {
+      const target = getNextEpisodeTarget();
       const hasNext = handleNextEpisode();
       if (hasNext) {
-        showHud("⏭ Наступна серія");
+        if (target?.isNewSeason) {
+          showHud(`⏭ Новий сезон: Сезон ${target.season}, Серія ${target.episode}`);
+        } else {
+          showHud("⏭ Наступна серія");
+        }
         return;
       }
     }
@@ -1561,6 +1980,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   return (
     <motion.div
       ref={containerRef}
+      data-player-mode={mode}
       drag={mode === "docked"}
       dragMomentum={false}
       dragElastic={0.08}
@@ -1607,6 +2027,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           "fixed bottom-6 right-6 w-96 aspect-video rounded-2xl shadow-2xl border border-white/20 group cursor-grab active:cursor-grabbing"
       )}
     >
+      {/* Dynamic Subtitle Styling */}
+      <style>{`
+        video::cue {
+          font-size: ${
+            subFontSize === "sm"
+              ? "16px"
+              : subFontSize === "lg"
+              ? "28px"
+              : subFontSize === "xl"
+              ? "34px"
+              : "22px"
+          } !important;
+          background-color: rgba(0, 0, 0, ${subBgOpacity / 100}) !important;
+        }
+      `}</style>
+
       {/* Persistent Video Stage (Single DOM node across all modes) */}
       <div
         key="video-stage"
@@ -1950,6 +2386,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     const epNum = parseInt(ep.episode_id, 10);
                     const isPlayingEp =
                       activeSeason === drawerSeason && activeEpisode === epNum;
+                    const epProg = episodeProgressMap[`${drawerSeason}-${epNum}`];
+                    const pct =
+                      epProg && epProg.duration_sec > 0
+                        ? Math.min(100, Math.round((epProg.position_sec / epProg.duration_sec) * 100))
+                        : 0;
+                    const isWatched = pct >= 90;
 
                     return (
                       <button
@@ -1961,12 +2403,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           setShowEpisodesDrawer(false);
                         }}
                         className={cn(
-                          "flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs font-medium transition-all cursor-pointer group",
+                          "relative overflow-hidden flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs font-medium transition-all cursor-pointer group",
                           isPlayingEp
                             ? "bg-rose-600 text-white border-rose-500 shadow-lg shadow-rose-950/60"
                             : "bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 border-white/10"
                         )}
                       >
+                        {isWatched && (
+                          <div className="absolute top-1 right-1 flex items-center" title="Переглянуто">
+                            <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
+                          </div>
+                        )}
                         <span className="font-bold text-sm">{ep.episode_id}</span>
                         <span
                           className={cn(
@@ -1976,14 +2423,97 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                               : "text-zinc-400 group-hover:text-zinc-200"
                           )}
                         >
-                          серія
+                          {isWatched ? "переглянуто" : "серія"}
                         </span>
+                        {pct > 0 && (
+                          <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
+                            <div
+                              className={cn("h-full", isWatched ? "bg-emerald-400" : "bg-rose-500")}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        )}
                       </button>
                     );
                   })}
                 </div>
               </div>
             )}
+
+            {/* Next Episode Countdown Overlay Card */}
+            {mode === "full" &&
+              isSeries &&
+              autoplayNext &&
+              !nextEpDismissed &&
+              nextEpTarget !== null &&
+              effectiveDur > 20 &&
+              remainingSec <= 15 &&
+              remainingSec > 0 &&
+              !loadingStream && (
+                <div
+                  data-testid="next-episode-card"
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute bottom-28 right-6 sm:right-10 z-40 w-80 rounded-2xl bg-zinc-950/95 border border-white/15 p-4 shadow-2xl backdrop-blur-xl pointer-events-auto animate-in fade-in slide-in-from-bottom-3 duration-200"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    {nextEpTarget.isNewSeason ? (
+                      <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black uppercase px-2 py-0.5 rounded-md">
+                        🌟 НОВИЙ СЕЗОН
+                      </span>
+                    ) : (
+                      <span className="text-rose-400 text-[11px] font-bold uppercase tracking-wider">
+                        Наступна серія
+                      </span>
+                    )}
+                    <span className="text-xs text-zinc-400 font-mono">
+                      {Math.ceil(remainingSec)} с
+                    </span>
+                  </div>
+
+                  <div className="text-sm font-bold text-white mb-2">
+                    {nextEpTarget.isNewSeason
+                      ? `Перехід на Сезон ${nextEpTarget.season}, Серія ${nextEpTarget.episode}`
+                      : `Сезон ${nextEpTarget.season}, Серія ${nextEpTarget.episode}`}
+                  </div>
+
+                  <div className="text-xs text-zinc-400 mb-3">
+                    Автоперехід через {Math.ceil(remainingSec)} с...
+                  </div>
+
+                  {/* Thin progress bar filling 0% to 100% over 15 seconds */}
+                  <div className="w-full h-1 bg-white/10 rounded-full mb-3.5 overflow-hidden">
+                    <div
+                      className="h-full bg-rose-500 rounded-full transition-all duration-300"
+                      style={{
+                        width: `${Math.min(100, Math.max(0, ((15 - remainingSec) / 15) * 100))}%`,
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        handleNextEpisode();
+                        showHud(
+                          nextEpTarget.isNewSeason
+                            ? `⏭ Новий сезон: С${nextEpTarget.season} Е${nextEpTarget.episode}`
+                            : `⏭ Сезон ${nextEpTarget.season}, Серія ${nextEpTarget.episode}`
+                        );
+                      }}
+                      className="bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer shadow-lg shadow-rose-950/50 transition-all flex-1 justify-center"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <span>Дивитися зараз</span>
+                    </button>
+                    <button
+                      onClick={() => setNextEpDismissed(true)}
+                      className="bg-white/10 hover:bg-white/15 text-zinc-300 text-xs font-semibold px-3 py-2 rounded-xl cursor-pointer transition-all"
+                    >
+                      Скасувати
+                    </button>
+                  </div>
+                </div>
+              )}
 
             {/* OSD CONTROLS OVERLAY */}
             <div
@@ -2103,15 +2633,38 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     onPointerLeave={handleSeekPointerLeave}
                     className="relative w-full h-5 flex items-center cursor-pointer group select-none touch-none"
                   >
-                    {/* Hover Time Tooltip */}
-                    {hoverTime !== null && effectiveDur > 0 && (
-                      <div
-                        className="absolute -top-7 -translate-x-1/2 px-2 py-0.5 rounded-md bg-zinc-900/95 border border-white/20 text-white text-[11px] font-mono shadow-xl pointer-events-none whitespace-nowrap z-30"
-                        style={{ left: `${hoverX}px` }}
-                      >
-                        {formatTime(hoverTime)}
-                      </div>
-                    )}
+                    {/* Hover Time & Sprite Thumbnail Tooltip */}
+                    {hoverTime !== null && effectiveDur > 0 && (() => {
+                      const activeCue = thumbnailCues.find(
+                        (c) => hoverTime >= c.start && hoverTime <= c.end
+                      );
+                      return (
+                        <div
+                          className="absolute -translate-x-1/2 flex flex-col items-center pointer-events-none select-none z-30"
+                          style={{
+                            left: `${hoverX}px`,
+                            bottom: activeCue ? "100%" : "28px",
+                            marginBottom: activeCue ? "8px" : "0px",
+                          }}
+                        >
+                          {activeCue && (
+                            <div
+                              className="border border-white/20 rounded-lg overflow-hidden shadow-2xl bg-black mb-1.5"
+                              style={{
+                                width: `${activeCue.w || 160}px`,
+                                height: `${activeCue.h || 90}px`,
+                                backgroundImage: `url("${activeCue.url}")`,
+                                backgroundPosition: `-${activeCue.x || 0}px -${activeCue.y || 0}px`,
+                                backgroundRepeat: "no-repeat",
+                              }}
+                            />
+                          )}
+                          <div className="px-2 py-0.5 rounded-md bg-zinc-900/95 border border-white/20 text-white text-[11px] font-mono shadow-xl whitespace-nowrap">
+                            {formatTime(hoverTime)}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Rail / Track Background */}
                     <div className="relative w-full h-1.5 group-hover:h-2 rounded-full bg-white/20 transition-all overflow-hidden">
@@ -2506,43 +3059,144 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         </button>
 
                         {showSubtitleMenu && (
-                          <div className="absolute bottom-12 right-0 w-44 bg-zinc-900 border border-white/15 rounded-2xl shadow-2xl p-2 space-y-1 z-50">
-                            <div className="text-[11px] font-bold text-zinc-400 px-2 py-1 uppercase">
+                          <div className="absolute bottom-12 right-0 w-60 max-h-96 overflow-y-auto bg-zinc-900 border border-white/15 rounded-2xl shadow-2xl p-2.5 space-y-2 z-50">
+                            <div className="text-[11px] font-bold text-zinc-400 px-1 uppercase">
                               Субтитри
                             </div>
-                            <button
-                              onClick={() => handleSelectSubtitle("off")}
-                              className={cn(
-                                "w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer",
-                                selectedSubtitle === "off"
-                                  ? "bg-rose-600 text-white"
-                                  : "text-zinc-300 hover:bg-white/10"
-                              )}
-                            >
-                              <span>Вимкнено</span>
-                              {selectedSubtitle === "off" && <Check className="w-3.5 h-3.5" />}
-                            </button>
-                            {streamData.subtitles.map((sub, i) => (
+                            <div className="space-y-1 max-h-40 overflow-y-auto pr-0.5">
                               <button
-                                key={i}
-                                onClick={() => handleSelectSubtitle(sub.url)}
+                                onClick={() => handleSelectSubtitle("off")}
                                 className={cn(
                                   "w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer",
-                                  selectedSubtitle === sub.url
+                                  selectedSubtitle === "off"
                                     ? "bg-rose-600 text-white"
                                     : "text-zinc-300 hover:bg-white/10"
                                 )}
                               >
-                                <span className="truncate">{sub.label}</span>
-                                {selectedSubtitle === sub.url && (
-                                  <Check className="w-3.5 h-3.5" />
-                                )}
+                                <span>Вимкнено</span>
+                                {selectedSubtitle === "off" && <Check className="w-3.5 h-3.5" />}
                               </button>
-                            ))}
+                              {streamData.subtitles.map((sub, i) => (
+                                <button
+                                  key={i}
+                                  onClick={() => handleSelectSubtitle(sub.url)}
+                                  className={cn(
+                                    "w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer",
+                                    selectedSubtitle === sub.url
+                                      ? "bg-rose-600 text-white"
+                                      : "text-zinc-300 hover:bg-white/10"
+                                  )}
+                                >
+                                  <span className="truncate">{sub.label}</span>
+                                  {selectedSubtitle === sub.url && (
+                                    <Check className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Subtitle Customizer controls */}
+                            <div className="border-t border-white/10 pt-2 space-y-2">
+                              {/* Font size */}
+                              <div>
+                                <div className="text-[10px] font-bold text-zinc-400 px-1 mb-1">
+                                  Розмір
+                                </div>
+                                <div className="grid grid-cols-4 gap-1">
+                                  {(["sm", "md", "lg", "xl"] as const).map((size) => (
+                                    <button
+                                      key={size}
+                                      onClick={() => {
+                                        setSubFontSize(size);
+                                        showHud(`Розмір субтитрів: ${size.toUpperCase()}`);
+                                      }}
+                                      className={cn(
+                                        "py-1 rounded text-[11px] font-bold uppercase transition-all cursor-pointer text-center",
+                                        subFontSize === size
+                                          ? "bg-rose-600 text-white"
+                                          : "bg-white/5 hover:bg-white/15 text-zinc-300"
+                                      )}
+                                    >
+                                      {size === "sm" ? "S" : size === "md" ? "M" : size === "lg" ? "L" : "XL"}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Background opacity */}
+                              <div>
+                                <div className="text-[10px] font-bold text-zinc-400 px-1 mb-1">
+                                  Фон
+                                </div>
+                                <div className="grid grid-cols-3 gap-1">
+                                  {[0, 60, 90].map((op) => (
+                                    <button
+                                      key={op}
+                                      onClick={() => {
+                                        setSubBgOpacity(op);
+                                        showHud(`Фон субтитрів: ${op}%`);
+                                      }}
+                                      className={cn(
+                                        "py-1 rounded text-[11px] font-bold transition-all cursor-pointer text-center",
+                                        subBgOpacity === op
+                                          ? "bg-rose-600 text-white"
+                                          : "bg-white/5 hover:bg-white/15 text-zinc-300"
+                                      )}
+                                    >
+                                      {op}%
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Timing offset */}
+                              <div>
+                                <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 px-1 mb-1">
+                                  <span>Затримка</span>
+                                  <span className="font-mono text-zinc-200">
+                                    {subOffsetSec >= 0 ? `+${subOffsetSec.toFixed(1)}` : subOffsetSec.toFixed(1)}с
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-3 gap-1">
+                                  <button
+                                    onClick={() => adjustSubtitleOffset(-0.5)}
+                                    className="py-1 rounded text-[11px] font-bold bg-white/5 hover:bg-white/15 text-zinc-300 cursor-pointer text-center"
+                                  >
+                                    -0.5с
+                                  </button>
+                                  <button
+                                    onClick={() => adjustSubtitleOffset(-subOffsetSec)}
+                                    className="py-1 rounded text-[11px] font-bold bg-white/5 hover:bg-white/15 text-zinc-300 cursor-pointer text-center"
+                                  >
+                                    0с
+                                  </button>
+                                  <button
+                                    onClick={() => adjustSubtitleOffset(0.5)}
+                                    className="py-1 rounded text-[11px] font-bold bg-white/5 hover:bg-white/15 text-zinc-300 cursor-pointer text-center"
+                                  >
+                                    +0.5с
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>
                     )}
+
+                    {/* True Fullscreen Toggle Button */}
+                    <button
+                      onClick={() => toggleFullscreen()}
+                      title={isFullscreen ? "Вийти з повного екрана (F)" : "На весь екран (F)"}
+                      data-testid="fullscreen-btn"
+                      className="h-10 w-10 flex items-center justify-center rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/15 cursor-pointer flex-shrink-0"
+                    >
+                      {isFullscreen ? (
+                        <Minimize className="w-4 h-4" />
+                      ) : (
+                        <Maximize className="w-4 h-4" />
+                      )}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -2735,6 +3389,48 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
                 </div>
               </button>
+
+              {/* Audio Boost Submenu */}
+              <button
+                onClick={() => setContextMenu({ ...contextMenu, page: "boost" })}
+                className="w-full flex items-center justify-between px-3 py-2 text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5 truncate">
+                  <Volume2 className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+                  <span className="truncate">Підсилення звуку</span>
+                </div>
+                <div className="flex items-center gap-1 text-[11px] text-zinc-400 font-medium font-mono">
+                  <span>{Math.round(audioBoost * 100)}%</span>
+                  <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
+                </div>
+              </button>
+
+              {/* Autoplay Next Series toggle */}
+              {isSeries && (
+                <button
+                  onClick={() => {
+                    const nextVal = !autoplayNext;
+                    setAutoplayNext(nextVal);
+                    try {
+                      localStorage.setItem("rdx_autoplay_next", String(nextVal));
+                    } catch {}
+                    api
+                      .getSettings()
+                      .then((s) => api.updateSettings({ ...s, autoplay_next: nextVal } as any))
+                      .catch(() => {});
+                    showHud(nextVal ? "Автоперехід: Увімкнено" : "Автоперехід: Вимкнено");
+                  }}
+                  className="w-full flex items-center justify-between px-3 py-2 text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Repeat className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+                    <span>Автоперехід серій</span>
+                  </div>
+                  <span className={cn("text-xs font-bold font-mono", autoplayNext ? "text-emerald-400" : "text-zinc-500")}>
+                    {autoplayNext ? "Увімк" : "Вимк"}
+                  </span>
+                </button>
+              )}
 
               <div className="h-px bg-white/10 my-1 mx-2" />
 
@@ -2931,6 +3627,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 {drawerSeasonEpisodes.map((ep) => {
                   const epNum = parseInt(ep.episode_id, 10);
                   const isCurrent = activeSeason === drawerSeason && activeEpisode === epNum;
+                  const epProg = episodeProgressMap[`${drawerSeason}-${epNum}`];
+                  const pct =
+                    epProg && epProg.duration_sec > 0
+                      ? Math.min(100, Math.round((epProg.position_sec / epProg.duration_sec) * 100))
+                      : 0;
+                  const isWatched = pct >= 90;
+
                   return (
                     <button
                       key={`${ep.season_id}-${ep.episode_id}`}
@@ -2939,13 +3642,26 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         setContextMenu(null);
                       }}
                       className={cn(
-                        "p-1.5 rounded-lg text-center font-bold text-xs transition-colors cursor-pointer",
+                        "relative overflow-hidden p-1.5 rounded-lg text-center font-bold text-xs transition-colors cursor-pointer",
                         isCurrent
                           ? "bg-rose-600 text-white"
                           : "bg-white/5 hover:bg-white/15 text-zinc-300"
                       )}
                     >
-                      {ep.episode_id}
+                      {isWatched && (
+                        <div className="absolute top-0.5 right-0.5" title="Переглянуто">
+                          <Check className="w-3 h-3 text-emerald-400 stroke-[3]" />
+                        </div>
+                      )}
+                      <span>{ep.episode_id}</span>
+                      {pct > 0 && (
+                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/20">
+                          <div
+                            className={cn("h-full", isWatched ? "bg-emerald-400" : "bg-rose-500")}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      )}
                     </button>
                   );
                 })}
@@ -3135,22 +3851,145 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <span>Вимкнено</span>
                 {selectedSubtitle === "off" && <Check className="w-3.5 h-3.5" />}
               </button>
-              {streamData.subtitles.map((sub, i) => (
-                <button
-                  key={i}
-                  onClick={() => {
-                    handleSelectSubtitle(sub.url);
-                    setContextMenu(null);
-                  }}
-                  className={cn(
-                    "w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer",
-                    selectedSubtitle === sub.url ? "bg-rose-600 text-white" : "text-zinc-300 hover:bg-white/10"
-                  )}
-                >
-                  <span>{sub.label || (sub as any).title || (sub as any).lang || `Субтитри ${i + 1}`}</span>
-                  {selectedSubtitle === sub.url && <Check className="w-3.5 h-3.5" />}
-                </button>
-              ))}
+              <div className="max-h-36 overflow-y-auto space-y-0.5 pr-0.5">
+                {streamData.subtitles.map((sub, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      handleSelectSubtitle(sub.url);
+                      setContextMenu(null);
+                    }}
+                    className={cn(
+                      "w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer",
+                      selectedSubtitle === sub.url ? "bg-rose-600 text-white" : "text-zinc-300 hover:bg-white/10"
+                    )}
+                  >
+                    <span>{sub.label || (sub as any).title || (sub as any).lang || `Субтитри ${i + 1}`}</span>
+                    {selectedSubtitle === sub.url && <Check className="w-3.5 h-3.5" />}
+                  </button>
+                ))}
+              </div>
+
+              {/* Subtitle Customizer controls */}
+              <div className="border-t border-white/10 pt-2 px-1 space-y-2">
+                <div>
+                  <div className="text-[10px] font-bold text-zinc-400 px-1 mb-1">
+                    Розмір тексту
+                  </div>
+                  <div className="grid grid-cols-4 gap-1">
+                    {(["sm", "md", "lg", "xl"] as const).map((size) => (
+                      <button
+                        key={size}
+                        onClick={() => {
+                          setSubFontSize(size);
+                          showHud(`Розмір субтитрів: ${size.toUpperCase()}`);
+                        }}
+                        className={cn(
+                          "py-1 rounded text-[11px] font-bold uppercase transition-all cursor-pointer text-center",
+                          subFontSize === size
+                            ? "bg-rose-600 text-white"
+                            : "bg-white/5 hover:bg-white/15 text-zinc-300"
+                        )}
+                      >
+                        {size === "sm" ? "S" : size === "md" ? "M" : size === "lg" ? "L" : "XL"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-[10px] font-bold text-zinc-400 px-1 mb-1">
+                    Фон
+                  </div>
+                  <div className="grid grid-cols-3 gap-1">
+                    {[0, 60, 90].map((op) => (
+                      <button
+                        key={op}
+                        onClick={() => {
+                          setSubBgOpacity(op);
+                          showHud(`Фон субтитрів: ${op}%`);
+                        }}
+                        className={cn(
+                          "py-1 rounded text-[11px] font-bold transition-all cursor-pointer text-center",
+                          subBgOpacity === op
+                            ? "bg-rose-600 text-white"
+                            : "bg-white/5 hover:bg-white/15 text-zinc-300"
+                        )}
+                      >
+                        {op}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 px-1 mb-1">
+                    <span>Затримка</span>
+                    <span className="font-mono text-zinc-200">
+                      {subOffsetSec >= 0 ? `+${subOffsetSec.toFixed(1)}` : subOffsetSec.toFixed(1)}с
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1">
+                    <button
+                      onClick={() => adjustSubtitleOffset(-0.5)}
+                      className="py-1 rounded text-[11px] font-bold bg-white/5 hover:bg-white/15 text-zinc-300 cursor-pointer text-center"
+                    >
+                      -0.5с
+                    </button>
+                    <button
+                      onClick={() => adjustSubtitleOffset(-subOffsetSec)}
+                      className="py-1 rounded text-[11px] font-bold bg-white/5 hover:bg-white/15 text-zinc-300 cursor-pointer text-center"
+                    >
+                      0с
+                    </button>
+                    <button
+                      onClick={() => adjustSubtitleOffset(0.5)}
+                      className="py-1 rounded text-[11px] font-bold bg-white/5 hover:bg-white/15 text-zinc-300 cursor-pointer text-center"
+                    >
+                      +0.5с
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Submenu: Audio Gain Booster */}
+          {contextMenu.page === "boost" && (
+            <div className="space-y-0.5">
+              <button
+                onClick={() => setContextMenu({ ...contextMenu, page: "main" })}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer font-semibold text-[11px]"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Підсилення звуку</span>
+              </button>
+              <div className="h-px bg-white/10 my-1 mx-2" />
+              {[
+                { val: 1, label: "100% (Стандарт)" },
+                { val: 1.25, label: "125%" },
+                { val: 1.5, label: "150%" },
+                { val: 1.75, label: "175%" },
+                { val: 2, label: "200% (Макс)" },
+              ].map(({ val, label }) => {
+                const isSelected = audioBoost === val;
+                return (
+                  <button
+                    key={val}
+                    onClick={() => {
+                      handleSelectAudioBoost(val);
+                      setContextMenu(null);
+                    }}
+                    className={cn(
+                      "w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer",
+                      isSelected ? "bg-rose-600 text-white" : "text-zinc-300 hover:bg-white/10"
+                    )}
+                  >
+                    <span>{label}</span>
+                    {isSelected && <Check className="w-3.5 h-3.5" />}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
