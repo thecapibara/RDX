@@ -193,6 +193,27 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     details.translators.find((t) => t.is_active) ||
     details.translators[0];
 
+  const effectiveTranslatorId = currentTranslator?.id || activeTranslatorId;
+  const currentStreamTargetKey = `${effectiveTranslatorId || ""}:${currentEpisodeKey}`;
+  const [loadedStreamKey, setLoadedStreamKey] = useState<string>("");
+  const [isStreamFetching, setIsStreamFetching] = useState<boolean>(true);
+  const streamRequestIdRef = useRef<number>(0);
+  const isInitialMountRef = useRef<boolean>(true);
+  const loadedEpisodeKeyRef = useRef<string>("");
+  const modeRef = useRef(mode);
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+  const pipDragStartRef = useRef<{ x: number; y: number; isDown: boolean } | null>(null);
+
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      pipDragStartRef.current = null;
+    };
+    window.addEventListener("mouseup", handleGlobalMouseUp);
+    return () => window.removeEventListener("mouseup", handleGlobalMouseUp);
+  }, []);
+
   // Self-heal seasons & episodes if missing or translator changed
   useEffect(() => {
     if (!isSeries || !currentTranslator?.id) return;
@@ -268,9 +289,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     page: "main" | "translators" | "episodes" | "quality" | "speed" | "aspect" | "sleep" | "subtitles";
   } | null>(null);
 
-  // Sleep Timer countdown effect
+  // Sleep Timer countdown effect (interval created once per timer activation)
+  const isSleepTimerActive = sleepTimerSecondsLeft !== null;
   useEffect(() => {
-    if (sleepTimerSecondsLeft === null) return;
+    if (!isSleepTimerActive) return;
     const interval = setInterval(() => {
       setSleepTimerSecondsLeft((prev) => {
         if (prev === null || prev <= 1) {
@@ -285,7 +307,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [sleepTimerSecondsLeft]);
+  }, [isSleepTimerActive]);
 
   const setSleepTimer = (mins: number | null) => {
     if (mins === null || mins <= 0) {
@@ -559,12 +581,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return () => window.removeEventListener("click", onWindowClick);
   }, [contextMenu?.open]);
 
-  // Fetch authoritative stream for active translator/season/episode (with fallback to initialStreams)
-  const effectiveTranslatorId = currentTranslator?.id || activeTranslatorId;
+  // Fetch authoritative stream for active translator/season/episode with race condition protection
   useEffect(() => {
     let isCancelled = false;
+    const reqId = ++streamRequestIdRef.current;
+
     const fetchStream = async () => {
       setLoadingStream(true);
+      setIsStreamFetching(true);
+      // Reset A-B loop when switching series/audio
+      setLoopA(null);
+      setLoopB(null);
+
       try {
         const data = await api.getStream(
           details.id,
@@ -574,20 +602,47 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           isSeries ? activeSeason || 1 : undefined,
           isSeries ? activeEpisode || 1 : undefined
         );
-        if (!isCancelled) {
-          if (data && data.qualities && data.qualities.length > 0) {
-            setStreamData(data);
-          } else if (initialStreams && initialStreams.qualities.length > 0) {
-            setStreamData(initialStreams);
-          }
+
+        if (isCancelled || reqId !== streamRequestIdRef.current) {
+          return;
+        }
+
+        if (data && data.qualities && data.qualities.length > 0) {
+          setStreamData(data);
+          setLoadedStreamKey(currentStreamTargetKey);
+          loadedEpisodeKeyRef.current = currentEpisodeKey;
+        } else if (
+          isInitialMountRef.current &&
+          initialStreams &&
+          initialStreams.qualities.length > 0
+        ) {
+          // Only fallback to initialStreams on the very first mount if current translator/episode match initial
+          setStreamData(initialStreams);
+          setLoadedStreamKey(currentStreamTargetKey);
+          loadedEpisodeKeyRef.current = currentEpisodeKey;
+        } else {
+          showHud("⚠️ Відеопотік недоступний для цієї серії/озвучки");
         }
       } catch (err) {
-        console.warn("Failed to fetch stream data, falling back to initialStreams:", err);
-        if (!isCancelled && initialStreams && initialStreams.qualities.length > 0) {
+        if (isCancelled || reqId !== streamRequestIdRef.current) return;
+        console.warn("Failed to fetch stream data:", err);
+        if (
+          isInitialMountRef.current &&
+          initialStreams &&
+          initialStreams.qualities.length > 0
+        ) {
           setStreamData(initialStreams);
+          setLoadedStreamKey(currentStreamTargetKey);
+          loadedEpisodeKeyRef.current = currentEpisodeKey;
+        } else {
+          showHud("⚠️ Помилка завантаження відеопотоку");
         }
       } finally {
-        if (!isCancelled) setLoadingStream(false);
+        if (!isCancelled && reqId === streamRequestIdRef.current) {
+          setLoadingStream(false);
+          setIsStreamFetching(false);
+          isInitialMountRef.current = false;
+        }
       }
     };
 
@@ -595,7 +650,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [details.id, details.url, isSeries, effectiveTranslatorId, activeSeason, activeEpisode]);
+  }, [
+    details.id,
+    details.url,
+    isSeries,
+    effectiveTranslatorId,
+    activeSeason,
+    activeEpisode,
+    currentStreamTargetKey,
+    currentEpisodeKey,
+    initialStreams,
+  ]);
 
   // When streamData arrives, pick user's saved quality (or default 720p, avoiding Premium-only 1080p Ultra unless explicitly chosen)
   useEffect(() => {
@@ -623,6 +688,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   useEffect(() => {
     if (!selectedQuality || !videoRef.current) return;
 
+    // Guard against attaching old stream quality while switching episode/translator
+    if (
+      isStreamFetching ||
+      loadedStreamKey !== currentStreamTargetKey ||
+      !streamData?.qualities.some((q) => q === selectedQuality)
+    ) {
+      return;
+    }
+
     const video = videoRef.current;
 
     // Distinguish between quality switch and episode switch
@@ -632,6 +706,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       hlsDurationRef.current = 0;
       setDuration(0);
       setCurrentTime(0);
+      setLoopA(null);
+      setLoopB(null);
     }
 
     const prevTime = isEpisodeChange
@@ -774,7 +850,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         hlsRef.current = null;
       }
     };
-  }, [selectedQuality, currentEpisodeKey]);
+  }, [
+    selectedQuality,
+    currentEpisodeKey,
+    loadedStreamKey,
+    currentStreamTargetKey,
+    isStreamFetching,
+    streamData,
+    initialPositionSec,
+    playbackSpeed,
+  ]);
 
   // Auto-save watch progress every 5 seconds & on unmount
   const saveCurrentProgress = useCallback(() => {
@@ -879,6 +964,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Comprehensive player teardown and close (pauses video, unloads sources, clears MPRIS)
   const handleTeardownAndClose = useCallback(() => {
+    // If player was in OS PiP mode, restore normal window size so it doesn't get stuck in 520x292
+    if (mode === "os_pip" || modeRef.current === "os_pip") {
+      api.setMiniPlayerMode(false).catch(() => {});
+    }
+
     document.title = "";
 
     // 0. Instantly clear webview mediaSession so WebKit drops its MPRIS player
@@ -917,11 +1007,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     // 4. Fire parent onClose
     onClose();
-  }, [saveCurrentProgress, onClose]);
+  }, [mode, saveCurrentProgress, onClose]);
 
   // Teardown Lifecycle on unmount
   useEffect(() => {
     return () => {
+      // If player was in OS PiP mode, restore normal window size
+      if (modeRef.current === "os_pip") {
+        api.setMiniPlayerMode(false).catch(() => {});
+      }
+
       document.title = "";
       if (typeof navigator !== "undefined" && "mediaSession" in navigator && navigator.mediaSession) {
         try {
@@ -978,10 +1073,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // Keyboard navigation & Shortcuts (ArrowLeft/Right = ±5s, ArrowUp/Down = volume)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        document.activeElement?.tagName === "INPUT" ||
-        document.activeElement?.tagName === "TEXTAREA"
-      ) {
+      const activeEl = document.activeElement;
+      const isInputFocused =
+        activeEl?.tagName === "INPUT" ||
+        activeEl?.tagName === "TEXTAREA" ||
+        (activeEl as HTMLElement)?.isContentEditable;
+
+      if (isInputFocused) {
+        return;
+      }
+
+      const isModalOpen = Boolean(document.querySelector('[data-modal-open="true"]'));
+      if (mode === "docked" && isModalOpen) {
         return;
       }
 
@@ -1057,6 +1160,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             setShowSpeedMenu(false);
           } else if (mode === "os_pip") {
             handleSetOsPip(false);
+          } else if (mode === "docked") {
+            const isPlayerFocused = containerRef.current?.contains(document.activeElement);
+            if (isPlayerFocused) {
+              handleTeardownAndClose();
+            }
           } else {
             handleTeardownAndClose();
           }
@@ -1081,6 +1189,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     loopA,
     loopB,
     details.title,
+    handleTeardownAndClose,
+    onModeChange,
   ]);
 
   // Single click vs Double click on video
@@ -1166,7 +1276,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   const handleWheel = (e: React.WheelEvent) => {
-    if (mode === "os_pip" || mode === "docked") {
+    const target = e.target as HTMLElement | null;
+    const isOverMenuOrDrawer = Boolean(
+      target?.closest("[data-scrollable]") ||
+      target?.closest(".overflow-y-auto") ||
+      target?.closest(".overflow-x-auto") ||
+      showEpisodesDrawer ||
+      contextMenu?.open ||
+      showQualityMenu ||
+      showTranslatorMenu ||
+      showSubtitleMenu ||
+      showSpeedMenu
+    );
+
+    if (mode === "os_pip" || mode === "docked" || (mode === "full" && !isOverMenuOrDrawer)) {
       e.stopPropagation();
       const delta = e.deltaY < 0 ? 0.05 : -0.05;
       const newVol = Math.max(0, Math.min(1, Math.round((volume + delta) * 100) / 100));
@@ -1215,17 +1338,30 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     existingTracks.forEach((t) => t.remove());
 
     if (trackUrl !== "off") {
+      const sub = streamData?.subtitles.find((s) => s.url === trackUrl);
+      const subLabel =
+        (sub as any)?.title ||
+        (sub as any)?.lang ||
+        sub?.label ||
+        "Субтитри";
+      const lower = subLabel.toLowerCase();
+      let srclang = "uk";
+      if (lower.includes("англ") || lower.includes("eng")) srclang = "en";
+      else if (lower.includes("укр") || lower.includes("ukr")) srclang = "uk";
+      else if (lower.includes("рос") || lower.includes("rus")) srclang = "ru";
+      else if ((sub as any)?.lang) srclang = (sub as any).lang;
+
       const track = document.createElement("track");
       track.kind = "subtitles";
-      track.label = "Українські";
-      track.srclang = "uk";
+      track.label = subLabel;
+      track.srclang = srclang;
       track.src = trackUrl;
       track.default = true;
       videoRef.current.appendChild(track);
       if (videoRef.current.textTracks[0]) {
         videoRef.current.textTracks[0].mode = "showing";
       }
-      showHud("Субтитри: Українські");
+      showHud(`Субтитри: ${subLabel}`);
     } else {
       showHud("Субтитри вимкнено");
     }
@@ -1278,8 +1414,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   // Next Episode handler
-  const handleNextEpisode = () => {
-    if (!isSeries || !activeSeason || !activeEpisode || !onEpisodeChange) return;
+  const handleNextEpisode = useCallback((): boolean => {
+    if (!isSeries || !activeSeason || !activeEpisode || !onEpisodeChange) return false;
 
     const currentSeasonEps = episodes.filter(
       (ep) => ep.season_id === String(activeSeason)
@@ -1290,6 +1426,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     if (nextEpIndex !== -1) {
       onEpisodeChange(activeSeason, activeEpisode + 1);
+      return true;
     } else {
       const nextSeason = activeSeason + 1;
       const nextSeasonEps = episodes.filter(
@@ -1297,8 +1434,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       );
       if (nextSeasonEps.length > 0) {
         onEpisodeChange(nextSeason, 1);
+        return true;
       }
     }
+    return false;
+  }, [isSeries, activeSeason, activeEpisode, onEpisodeChange, episodes]);
+
+  // Video playback completion handler
+  const handleVideoEnded = () => {
+    if (isSeries) {
+      const hasNext = handleNextEpisode();
+      if (hasNext) {
+        showHud("⏭ Наступна серія");
+        return;
+      }
+    }
+    setIsPlaying(false);
+    syncMprisState(true, false);
   };
 
   // References to latest handlers so listeners are mounted ONCE and never leak or drop events
@@ -1317,6 +1469,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // MPRIS Remote Actions from OS (keyboard media keys, system shade, lockscreen)
   useEffect(() => {
+    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
+      return;
+    }
+
     let unlistenAction: (() => void) | undefined;
     let unlistenSeek: (() => void) | undefined;
     let unlistenPosition: (() => void) | undefined;
@@ -1409,11 +1565,30 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       dragMomentum={false}
       dragElastic={0.08}
       animate={mode !== "docked" ? { x: 0, y: 0 } : undefined}
-      onMouseMove={mode === "full" ? triggerActivity : undefined}
+      onMouseMove={(e) => {
+        if (mode === "full") {
+          triggerActivity();
+        } else if (mode === "os_pip" && pipDragStartRef.current?.isDown) {
+          const dx = Math.abs(e.clientX - pipDragStartRef.current.x);
+          const dy = Math.abs(e.clientY - pipDragStartRef.current.y);
+          if (dx > 4 || dy > 4) {
+            pipDragStartRef.current = null;
+            if (clickTimerRef.current) {
+              clearTimeout(clickTimerRef.current);
+              clickTimerRef.current = null;
+            }
+            api.startDragWindow().catch(() => {});
+          }
+        }
+      }}
+      onMouseUp={() => {
+        if (pipDragStartRef.current) {
+          pipDragStartRef.current = null;
+        }
+      }}
       onClick={mode === "full" ? triggerActivity : undefined}
       onContextMenu={handleContextMenu}
       onWheel={handleWheel}
-      data-tauri-drag-region={mode === "os_pip" ? "" : undefined}
       onMouseDown={(e) => {
         if (
           mode === "os_pip" &&
@@ -1421,7 +1596,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           !(e.target as HTMLElement).closest("button") &&
           !(e.target as HTMLElement).closest("input")
         ) {
-          api.startDragWindow().catch(() => {});
+          pipDragStartRef.current = { x: e.clientX, y: e.clientY, isDown: true };
         }
       }}
       className={cn(
@@ -1495,6 +1670,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             setIsPlaying(false);
             syncMprisState(true, false);
           }}
+          onEnded={handleVideoEnded}
           onClick={handleVideoClick}
           onDoubleClick={handleVideoDoubleClick}
         />
@@ -2533,7 +2709,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <span className="truncate">Субтитри</span>
                   </div>
                   <div className="flex items-center gap-1 text-[11px] text-zinc-400 font-medium">
-                    <span>{selectedSubtitle === "off" ? "Вимкнено" : "Увімкнено"}</span>
+                    <span className="max-w-[110px] truncate">
+                      {selectedSubtitle === "off"
+                        ? "Вимкнено"
+                        : streamData?.subtitles.find((s) => s.url === selectedSubtitle)?.label ||
+                          (streamData?.subtitles.find((s) => s.url === selectedSubtitle) as any)?.title ||
+                          "Увімкнено"}
+                    </span>
                     <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
                   </div>
                 </button>
@@ -2965,7 +3147,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     selectedSubtitle === sub.url ? "bg-rose-600 text-white" : "text-zinc-300 hover:bg-white/10"
                   )}
                 >
-                  <span>{sub.label || `Субтитри ${i + 1}`}</span>
+                  <span>{sub.label || (sub as any).title || (sub as any).lang || `Субтитри ${i + 1}`}</span>
                   {selectedSubtitle === sub.url && <Check className="w-3.5 h-3.5" />}
                 </button>
               ))}
