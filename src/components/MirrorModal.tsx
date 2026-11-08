@@ -105,6 +105,18 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
   const [bgTheme, setBgThemeState] = useState<BgTheme>(() => getBgTheme());
 
   useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
+  useEffect(() => {
     if (isOpen) {
       loadAndProbeAll();
 
@@ -399,6 +411,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
     <div
       onClick={onClose}
       onWheel={(e) => e.stopPropagation()}
+      data-modal-open="true"
       className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-hidden select-none"
     >
       <div
@@ -417,7 +430,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                   Налаштування RDX<span className="text-rose-500 text-lg leading-none">.</span>
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-white/5 border border-white/10 text-zinc-400">
-                  v0.7.0
+                  v0.7.5
                 </span>
               </div>
               <p className="text-xs text-zinc-400">
@@ -584,7 +597,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                     <button
                       onClick={() => handleSmartSelect(false)}
                       disabled={smartRotating || testing}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 active:scale-95 text-white font-bold text-xs transition-all shadow-lg shadow-rose-950/40 cursor-pointer disabled:opacity-50"
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 active:scale-95 text-white font-bold text-xs transition-all shadow-lg shadow-rose-950/40 cursor-pointer disabled:opacity-50"
                     >
                       {smartRotating ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1132,7 +1145,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                     <h3 className="text-2xl font-black tracking-tight text-white flex items-baseline">
                       RDX<span className="text-rose-500">.</span>
                       <span className="text-xs font-semibold text-zinc-400 ml-2 tracking-normal">
-                        v0.7.0 (Beta)
+                        v0.7.5 (Beta)
                       </span>
                     </h3>
                     <p className="text-xs text-zinc-400 mt-1">
