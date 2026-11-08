@@ -24,6 +24,13 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(() => (items ? items.length > 3 : false));
 
+  // Mouse Drag-and-Scroll & Wheel tracking
+  const isMouseDownRef = useRef(false);
+  const startXRef = useRef(0);
+  const scrollLeftRef = useRef(0);
+  const isDraggingRef = useRef(false);
+  const [isDragging, setIsDragging] = useState(false);
+
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -63,6 +70,69 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
     }
   };
 
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    isMouseDownRef.current = true;
+    startXRef.current = e.pageX;
+    scrollLeftRef.current = scrollRef.current?.scrollLeft || 0;
+    isDraggingRef.current = false;
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isMouseDownRef.current || !scrollRef.current) return;
+    const dx = e.pageX - startXRef.current;
+    if (!isDraggingRef.current && Math.abs(dx) > 6) {
+      isDraggingRef.current = true;
+      setIsDragging(true);
+    }
+    if (isDraggingRef.current) {
+      e.preventDefault();
+      scrollRef.current.scrollLeft = scrollLeftRef.current - dx;
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (!isMouseDownRef.current) return;
+    isMouseDownRef.current = false;
+    if (isDraggingRef.current) {
+      setTimeout(() => {
+        isDraggingRef.current = false;
+        setIsDragging(false);
+      }, 50);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (!isMouseDownRef.current) return;
+    isMouseDownRef.current = false;
+    if (isDraggingRef.current) {
+      setTimeout(() => {
+        isDraggingRef.current = false;
+        setIsDragging(false);
+      }, 50);
+    }
+  };
+
+  const handleClickCapture = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isDraggingRef.current) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (!scrollRef.current) return;
+    if ((e.shiftKey && e.deltaY !== 0) || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      scrollRef.current.scrollLeft += e.deltaY || e.deltaX;
+    }
+  };
+
+  const handleChevronWheel = (e: React.WheelEvent) => {
+    if (scrollRef.current && Math.abs(e.deltaY) > 0) {
+      scrollRef.current.scrollLeft += e.deltaY;
+    }
+  };
+
   if (!items || items.length === 0) {
     return null;
   }
@@ -98,6 +168,7 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
               playButtonClickSound();
               scroll("left");
             }}
+            onWheel={handleChevronWheel}
             aria-label="Прокрутити вліво"
             className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full flex items-center justify-center bg-zinc-950/90 hover:bg-zinc-800 border border-white/20 text-white shadow-2xl backdrop-blur-md transition-all duration-150 hover:scale-110 active:scale-95 cursor-pointer"
           >
@@ -117,6 +188,7 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
               playButtonClickSound();
               scroll("right");
             }}
+            onWheel={handleChevronWheel}
             aria-label="Прокрутити вправо"
             className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full flex items-center justify-center bg-zinc-950/90 hover:bg-zinc-800 border border-white/20 text-white shadow-2xl backdrop-blur-md transition-all duration-150 hover:scale-110 active:scale-95 cursor-pointer"
           >
@@ -127,8 +199,21 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
         {/* Horizontal Carousel Track */}
         <div
           ref={scrollRef}
-          className="flex gap-4 overflow-x-auto px-[clamp(1.25rem,4vw,4rem)] pb-4 pt-1 no-scrollbar scroll-smooth"
-          style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+          onWheel={handleWheel}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseLeave}
+          onClickCapture={handleClickCapture}
+          className={cn(
+            "flex gap-4 overflow-x-auto px-[clamp(1.25rem,4vw,4rem)] pb-4 pt-1 no-scrollbar cursor-grab active:cursor-grabbing",
+            isDragging ? "cursor-grabbing select-none" : "scroll-smooth"
+          )}
+          style={{
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
+            scrollBehavior: isDragging ? "auto" : undefined,
+          }}
         >
           <div ref={startSentinelRef} className="w-px h-1 shrink-0 -mr-4 pointer-events-none opacity-0" aria-hidden="true" />
           {items.map((item) => (

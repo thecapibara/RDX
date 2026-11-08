@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Loader2, RefreshCw, AlertCircle } from "lucide-react";
+import { RefreshCw, AlertCircle } from "lucide-react";
 import type {
   AppSettings,
   Bookmark,
@@ -29,7 +29,6 @@ export default function App() {
   const [mirrorStatus, setMirrorStatus] = useState<MirrorStatus | null>(null);
 
   // Catalog State
-  const [isInitialBoot, setIsInitialBoot] = useState(true);
   const [minSplashDone, setMinSplashDone] = useState(false);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -163,7 +162,6 @@ export default function App() {
       );
     } finally {
       setLoadingCatalog(false);
-      setIsInitialBoot(false);
     }
   }, [activeTab, activeGenre, activeSort, categoryPage]);
 
@@ -177,17 +175,20 @@ export default function App() {
     setCategoryPage(1);
     setActiveGenre(null);
     setActiveSort("last");
+    setCategoryItems([]);
   }, []);
 
   // Filter & Sort Change Handlers
   const handleSortChange = useCallback((sort: string) => {
     setActiveSort(sort);
     setCategoryPage(1);
+    setCategoryItems([]);
   }, []);
 
   const handleGenreChange = useCallback((genre: string | null) => {
     setActiveGenre(genre);
     setCategoryPage(1);
+    setCategoryItems([]);
   }, []);
 
   // Open Details Modal
@@ -426,10 +427,10 @@ export default function App() {
   const isBackgroundHidden = isDetailsOpen || Boolean(activePlayerDetails && playerMode === "full");
 
   // Close Video Player
-  const handleClosePlayer = () => {
+  const handleClosePlayer = useCallback(() => {
     setActivePlayerDetails(null);
     refreshContinueWatching();
-  };
+  }, [refreshContinueWatching]);
 
   return (
     <div className="min-h-screen bg-[var(--bg-base,#000000)] text-white flex flex-col font-sans selection:bg-rose-500/30 selection:text-white">
@@ -454,12 +455,6 @@ export default function App() {
             onPlayDirect={handleDirectPlay}
             refreshKey={`${bookmarksRefreshKey}-${isDetailsOpen}`}
           />
-        ) : loadingCatalog ? (
-          !isInitialBoot ? (
-            <div className="flex-1 flex flex-col items-center justify-center py-40 space-y-4">
-              <Loader2 className="w-10 h-10 text-rose-500 animate-spin" />
-            </div>
-          ) : null
         ) : catalogError ? (
           <div className="flex-1 flex flex-col items-center justify-center py-32 px-6 text-center space-y-4">
             <div className="w-16 h-16 rounded-3xl bg-rose-950/40 border border-rose-500/30 flex items-center justify-center text-rose-500">
@@ -484,64 +479,118 @@ export default function App() {
             </div>
           </div>
         ) : activeTab === "home" ? (
-          <>
-            {/* Ambient Hero Banner Carousel */}
-            <HeroBanner
-              items={featuredHeroItems}
-              onPlay={handleDirectPlay}
-              onOpenDetails={handleOpenDetails}
-            />
+          loadingCatalog && trendingHomeItems.length === 0 ? (
+            <>
+              {/* Hero Banner Skeleton */}
+              <div
+                data-testid="hero-skeleton"
+                className="w-full h-[52vh] min-h-[380px] max-h-[560px] bg-zinc-950 relative overflow-hidden flex items-end pb-12 px-[clamp(1.25rem,4vw,4rem)]"
+              >
+                <div className="absolute inset-0 bg-gradient-to-tr from-zinc-950 via-zinc-900/40 to-zinc-950" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-transparent to-transparent" />
+                <div className="relative z-10 w-full max-w-2xl space-y-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-6 w-20 rounded-lg bg-zinc-800/80 animate-pulse" />
+                    <div className="h-6 w-28 rounded-lg bg-zinc-800/60 animate-pulse" />
+                    <div className="h-6 w-16 rounded-lg bg-zinc-800/60 animate-pulse" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-10 w-3/4 rounded-xl bg-zinc-800/90 animate-pulse" />
+                    <div className="h-6 w-1/2 rounded-lg bg-zinc-800/60 animate-pulse" />
+                  </div>
+                  <div className="space-y-1.5 pt-1">
+                    <div className="h-3.5 w-full max-w-lg rounded-md bg-zinc-800/50 animate-pulse" />
+                    <div className="h-3.5 w-4/5 max-w-md rounded-md bg-zinc-800/50 animate-pulse" />
+                  </div>
+                  <div className="flex items-center gap-3 pt-3">
+                    <div className="h-12 w-44 rounded-2xl bg-rose-600/30 border border-rose-500/20 animate-pulse" />
+                    <div className="h-12 w-36 rounded-2xl bg-zinc-800/80 border border-white/5 animate-pulse" />
+                  </div>
+                </div>
+              </div>
 
-            {/* Special "Продовжити перегляд" Swimlane */}
-            {continueWatching.length > 0 && (
-              <ContinueWatchingSwimlane
-                items={continueWatching}
-                onResume={handleResumeContinueWatching}
-                onRemove={handleRemoveContinueWatching}
-              />
-            )}
-
-            {/* Swimlanes for Home Rows */}
-            <div className="space-y-4">
-              <Swimlane
-                title="Популярне та оновлення"
-                badge="Сьогодні"
-                items={trendingHomeItems}
-                onSelectCard={handleOpenDetails}
-                onPlayDirect={handleDirectPlay}
-              />
-
-              {/* Categorized Swimlanes (Off-screen rows deferred via content-visibility: auto) */}
-              <Swimlane
-                title="Фільми"
-                subtitle="Кращі кінопрем'єри"
-                items={filmsHomeItems}
-                onSelectCard={handleOpenDetails}
-                onPlayDirect={handleDirectPlay}
-                onMoreClick={handleMoreFilms}
-                className="cv-auto"
-              />
-
-              <Swimlane
-                title="Серіали"
-                subtitle="Популярні багатосерійні шоу"
-                items={seriesHomeItems}
-                onSelectCard={handleOpenDetails}
-                onPlayDirect={handleDirectPlay}
-                onMoreClick={handleMoreSeries}
-                className="cv-auto"
+              {/* 3 Skeleton Swimlane Rows */}
+              <div className="space-y-4">
+                <Swimlane
+                  title="Завантаження..."
+                  items={[]}
+                  loading={true}
+                  onSelectCard={() => {}}
+                />
+                <Swimlane
+                  title="Завантаження..."
+                  items={[]}
+                  loading={true}
+                  onSelectCard={() => {}}
+                />
+                <Swimlane
+                  title="Завантаження..."
+                  items={[]}
+                  loading={true}
+                  onSelectCard={() => {}}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Ambient Hero Banner Carousel */}
+              <HeroBanner
+                items={featuredHeroItems}
+                onPlay={handleDirectPlay}
+                onOpenDetails={handleOpenDetails}
               />
 
-              <Swimlane
-                title="Мультфільми та Аніме"
-                items={cartoonsHomeItems}
-                onSelectCard={handleOpenDetails}
-                onPlayDirect={handleDirectPlay}
-                onMoreClick={handleMoreCartoons}
-                className="cv-auto"
-              />
-            </div>
-          </>
+              {/* Special "Продовжити перегляд" Swimlane */}
+              {continueWatching.length > 0 && (
+                <ContinueWatchingSwimlane
+                  items={continueWatching}
+                  onResume={handleResumeContinueWatching}
+                  onRemove={handleRemoveContinueWatching}
+                />
+              )}
+
+              {/* Swimlanes for Home Rows */}
+              <div className="space-y-4">
+                <Swimlane
+                  title="Популярне та оновлення"
+                  badge="Сьогодні"
+                  items={trendingHomeItems}
+                  onSelectCard={handleOpenDetails}
+                  onPlayDirect={handleDirectPlay}
+                />
+
+                {/* Categorized Swimlanes (Off-screen rows deferred via content-visibility: auto) */}
+                <Swimlane
+                  title="Фільми"
+                  subtitle="Кращі кінопрем'єри"
+                  items={filmsHomeItems}
+                  onSelectCard={handleOpenDetails}
+                  onPlayDirect={handleDirectPlay}
+                  onMoreClick={handleMoreFilms}
+                  className="cv-auto"
+                />
+
+                <Swimlane
+                  title="Серіали"
+                  subtitle="Популярні багатосерійні шоу"
+                  items={seriesHomeItems}
+                  onSelectCard={handleOpenDetails}
+                  onPlayDirect={handleDirectPlay}
+                  onMoreClick={handleMoreSeries}
+                  className="cv-auto"
+                />
+
+                <Swimlane
+                  title="Мультфільми та Аніме"
+                  items={cartoonsHomeItems}
+                  onSelectCard={handleOpenDetails}
+                  onPlayDirect={handleDirectPlay}
+                  onMoreClick={handleMoreCartoons}
+                  className="cv-auto"
+                />
+              </div>
+            </>
+          )
         ) : (
           /* Category Grid View (Films / Series / Cartoons / Anime / New) */
           <div className="w-full px-[clamp(1.25rem,4vw,4rem)] py-6 space-y-6">
@@ -562,6 +611,7 @@ export default function App() {
                   disabled={categoryPage <= 1}
                   onClick={() => {
                     playButtonClickSound();
+                    setCategoryItems([]);
                     setCategoryPage((p) => Math.max(1, p - 1));
                   }}
                   className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-white/10 text-xs font-semibold text-zinc-300 disabled:opacity-40 hover:text-white transition-colors cursor-pointer"
@@ -574,6 +624,7 @@ export default function App() {
                 <button
                   onClick={() => {
                     playButtonClickSound();
+                    setCategoryItems([]);
                     setCategoryPage((p) => p + 1);
                   }}
                   className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-white/10 text-xs font-semibold text-zinc-300 hover:text-white transition-colors cursor-pointer"
@@ -592,10 +643,18 @@ export default function App() {
               onGenreChange={handleGenreChange}
             />
 
-            {loadingCatalog ? (
-              <div className="py-24 flex flex-col items-center justify-center space-y-3">
-                <Loader2 className="w-8 h-8 text-rose-500 animate-spin" />
-                <p className="text-xs text-zinc-400 font-medium">Завантаження каталогу...</p>
+            {loadingCatalog && categoryItems.length === 0 ? (
+              <div
+                data-testid="category-skeleton-grid"
+                className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5"
+              >
+                {Array.from({ length: 12 }).map((_, idx) => (
+                  <div key={idx} className="space-y-2.5">
+                    <div className="aspect-[2/3] rounded-2xl bg-zinc-900/80 border border-white/5 animate-pulse bg-gradient-to-tr from-zinc-900 via-zinc-800/60 to-zinc-900" />
+                    <div className="h-3.5 w-3/4 rounded-md bg-zinc-800/80 animate-pulse" />
+                    <div className="h-2.5 w-1/2 rounded-md bg-zinc-900/80 animate-pulse" />
+                  </div>
+                ))}
               </div>
             ) : categoryItems.length === 0 ? (
               <div className="py-24 text-center space-y-2">
