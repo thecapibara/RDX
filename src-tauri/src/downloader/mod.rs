@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
@@ -22,9 +23,19 @@ pub fn get_downloads_dir() -> PathBuf {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActiveDownloadProgress {
+    pub id: String,
+    pub downloaded_bytes: u64,
+    pub total_bytes: u64,
+    pub speed_bytes_sec: u64,
+    pub status: String,
+}
+
 pub struct DownloadManager {
     storage: Arc<Storage>,
     active_tokens: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
+    active_progress: Arc<Mutex<HashMap<String, ActiveDownloadProgress>>>,
     client: reqwest::Client,
 }
 
@@ -33,14 +44,20 @@ impl DownloadManager {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .connect_timeout(Duration::from_secs(10))
+            .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
             .build()
             .unwrap_or_default();
 
         Self {
             storage,
             active_tokens: Arc::new(Mutex::new(HashMap::new())),
+            active_progress: Arc::new(Mutex::new(HashMap::new())),
             client,
         }
+    }
+
+    pub fn get_all_active_progress(&self) -> HashMap<String, ActiveDownloadProgress> {
+        self.active_progress.lock().unwrap().clone()
     }
 
     pub async fn start_download(
@@ -66,13 +83,41 @@ impl DownloadManager {
             guard.insert(id.clone(), tx);
         }
 
-        // 3. Spawn background download worker task
+        // 3. Register initial active progress
+        {
+            let mut p_guard = self.active_progress.lock().unwrap();
+            p_guard.insert(
+                id.clone(),
+                ActiveDownloadProgress {
+                    id: id.clone(),
+                    downloaded_bytes: initial_item.downloaded_bytes,
+                    total_bytes: initial_item.total_bytes,
+                    speed_bytes_sec: 0,
+                    status: "downloading".to_string(),
+                },
+            );
+        }
+
+        // Emit initial started event to UI
+        let _ = app.emit(
+            "download://progress",
+            serde_json::json!({
+                "id": &id,
+                "downloaded_bytes": initial_item.downloaded_bytes,
+                "total_bytes": initial_item.total_bytes,
+                "speed_bytes_sec": 0,
+                "status": "downloading",
+            }),
+        );
+
+        // 4. Spawn background download worker task
         let storage = self.storage.clone();
         let tokens = self.active_tokens.clone();
+        let progress = self.active_progress.clone();
         let client = self.client.clone();
 
         tokio::spawn(async move {
-            Self::run_download_task(initial_item, client, storage, tokens, rx, app).await;
+            Self::run_download_task(initial_item, client, storage, tokens, progress, rx, app).await;
         });
 
         Ok(item)
@@ -82,6 +127,14 @@ impl DownloadManager {
         let mut guard = self.active_tokens.lock().unwrap();
         if let Some(tx) = guard.remove(id) {
             let _ = tx.send(true);
+        }
+
+        {
+            let mut p_guard = self.active_progress.lock().unwrap();
+            if let Some(p) = p_guard.get_mut(id) {
+                p.status = "paused".to_string();
+                p.speed_bytes_sec = 0;
+            }
         }
 
         let _ = self.storage.update_download_progress(
@@ -110,6 +163,11 @@ impl DownloadManager {
         // Stop active task
         self.pause_download(id)?;
 
+        {
+            let mut p_guard = self.active_progress.lock().unwrap();
+            p_guard.remove(id);
+        }
+
         // Remove .part file if exists
         if let Ok(Some(item)) = self.storage.get_download_by_id(id) {
             let temp_path = PathBuf::from(&item.temp_path);
@@ -128,6 +186,11 @@ impl DownloadManager {
 
     pub async fn delete_download(&self, id: &str) -> Result<(), String> {
         self.pause_download(id).ok();
+
+        {
+            let mut p_guard = self.active_progress.lock().unwrap();
+            p_guard.remove(id);
+        }
 
         if let Ok(Some(item)) = self.storage.get_download_by_id(id) {
             let file_path = PathBuf::from(&item.file_path);
@@ -152,6 +215,7 @@ impl DownloadManager {
         client: reqwest::Client,
         storage: Arc<Storage>,
         tokens: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
+        progress: Arc<Mutex<HashMap<String, ActiveDownloadProgress>>>,
         abort_rx: watch::Receiver<bool>,
         app: AppHandle,
     ) {
@@ -174,6 +238,14 @@ impl DownloadManager {
 
         let success = loop {
             if *abort_rx.borrow() {
+                {
+                    let mut p_guard = progress.lock().unwrap();
+                    if let Some(p) = p_guard.get_mut(&id) {
+                        p.status = "paused".to_string();
+                        p.speed_bytes_sec = 0;
+                        p.downloaded_bytes = existing_bytes;
+                    }
+                }
                 let _ = storage.update_download_progress(
                     &id,
                     existing_bytes,
@@ -209,6 +281,13 @@ impl DownloadManager {
                             continue;
                         }
                         let msg = format!("HTTP error: {}", status);
+                        {
+                            let mut p_guard = progress.lock().unwrap();
+                            if let Some(p) = p_guard.get_mut(&id) {
+                                p.status = "error".to_string();
+                                p.speed_bytes_sec = 0;
+                            }
+                        }
                         let _ = storage.update_download_progress(
                             &id,
                             existing_bytes,
@@ -239,6 +318,26 @@ impl DownloadManager {
                         content_len
                     };
 
+                    {
+                        let mut p_guard = progress.lock().unwrap();
+                        if let Some(p) = p_guard.get_mut(&id) {
+                            p.total_bytes = total_bytes;
+                            p.downloaded_bytes = existing_bytes;
+                            p.status = "downloading".to_string();
+                        }
+                    }
+
+                    let _ = app.emit(
+                        "download://progress",
+                        serde_json::json!({
+                            "id": &id,
+                            "downloaded_bytes": existing_bytes,
+                            "total_bytes": total_bytes,
+                            "speed_bytes_sec": 0,
+                            "status": "downloading",
+                        }),
+                    );
+
                     let open_res = OpenOptions::new()
                         .create(true)
                         .append(true)
@@ -250,6 +349,13 @@ impl DownloadManager {
                         Ok(f) => f,
                         Err(e) => {
                             let msg = format!("File open error: {e}");
+                            {
+                                let mut p_guard = progress.lock().unwrap();
+                                if let Some(p) = p_guard.get_mut(&id) {
+                                    p.status = "error".to_string();
+                                    p.speed_bytes_sec = 0;
+                                }
+                            }
                             let _ = storage.update_download_progress(
                                 &id,
                                 existing_bytes,
@@ -273,6 +379,14 @@ impl DownloadManager {
                         // Check if paused or cancelled by user
                         if *abort_rx.borrow() {
                             let _ = file.flush().await;
+                            {
+                                let mut p_guard = progress.lock().unwrap();
+                                if let Some(p) = p_guard.get_mut(&id) {
+                                    p.status = "paused".to_string();
+                                    p.speed_bytes_sec = 0;
+                                    p.downloaded_bytes = existing_bytes;
+                                }
+                            }
                             let _ = storage.update_download_progress(
                                 &id,
                                 existing_bytes,
@@ -305,14 +419,24 @@ impl DownloadManager {
                                 existing_bytes += len;
                                 bytes_since_calc += len;
 
-                                // Update speed measurement every 500ms
+                                // Update speed measurement every 400ms
                                 let elapsed = speed_calc_time.elapsed();
-                                if elapsed >= Duration::from_millis(500) {
+                                if elapsed >= Duration::from_millis(400) {
                                     current_speed = (bytes_since_calc as f64
                                         / elapsed.as_secs_f64())
                                         as u64;
                                     speed_calc_time = Instant::now();
                                     bytes_since_calc = 0;
+
+                                    {
+                                        let mut p_guard = progress.lock().unwrap();
+                                        if let Some(p) = p_guard.get_mut(&id) {
+                                            p.downloaded_bytes = existing_bytes;
+                                            p.total_bytes = total_bytes;
+                                            p.speed_bytes_sec = current_speed;
+                                            p.status = "downloading".to_string();
+                                        }
+                                    }
 
                                     let _ = app.emit(
                                         "download://progress",
@@ -326,8 +450,8 @@ impl DownloadManager {
                                     );
                                 }
 
-                                // Persist progress to SQLite every 3 seconds
-                                if last_db_save.elapsed() >= Duration::from_secs(3) {
+                                // Persist progress to SQLite every 2 seconds
+                                if last_db_save.elapsed() >= Duration::from_secs(2) {
                                     last_db_save = Instant::now();
                                     let _ = storage.update_download_progress(
                                         &id,
@@ -358,6 +482,13 @@ impl DownloadManager {
                             tokio::time::sleep(Duration::from_secs(retry_count as u64 * 2)).await;
                             continue;
                         }
+                        {
+                            let mut p_guard = progress.lock().unwrap();
+                            if let Some(p) = p_guard.get_mut(&id) {
+                                p.status = "error".to_string();
+                                p.speed_bytes_sec = 0;
+                            }
+                        }
                         let _ = storage.update_download_progress(
                             &id,
                             existing_bytes,
@@ -378,6 +509,13 @@ impl DownloadManager {
                         continue;
                     }
                     let msg = format!("Connection error: {e}");
+                    {
+                        let mut p_guard = progress.lock().unwrap();
+                        if let Some(p) = p_guard.get_mut(&id) {
+                            p.status = "error".to_string();
+                            p.speed_bytes_sec = 0;
+                        }
+                    }
                     let _ = storage.update_download_progress(
                         &id,
                         existing_bytes,
@@ -397,6 +535,11 @@ impl DownloadManager {
         }
 
         if success {
+            {
+                let mut p_guard = progress.lock().unwrap();
+                p_guard.remove(&id);
+            }
+
             // Rename .part file to final .mp4
             if let Err(e) = tokio::fs::rename(&temp_path, &final_path).await {
                 eprintln!("Failed to rename part file: {e}");

@@ -45,29 +45,40 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
     loadDownloads();
     api.getDownloadsDir().then(setDownloadsDir).catch(() => {});
 
+    // Polling fallback to guarantee continuous 1s UI updates even if event pipe is delayed
+    const pollInterval = setInterval(() => {
+      loadDownloads();
+    }, 1000);
+
     // Listen to real-time progress events from Rust
     let unlistenProgress: (() => void) | null = null;
     let unlistenComplete: (() => void) | null = null;
 
     listen<DownloadProgressEvent>("download://progress", (event) => {
       const payload = event.payload;
-      setDownloads((prev) =>
-        prev.map((item) => {
+      setDownloads((prev) => {
+        const found = prev.some((item) => item.id === payload.id);
+        if (!found) {
+          // If a new download just started and isn't in our array yet, refresh the list immediately!
+          loadDownloads();
+          return prev;
+        }
+        return prev.map((item) => {
           if (item.id === payload.id) {
             return {
               ...item,
               downloaded_bytes: payload.downloaded_bytes,
-              total_bytes: payload.total_bytes,
+              total_bytes: payload.total_bytes > 0 ? payload.total_bytes : item.total_bytes,
               speed_bytes_sec: payload.speed_bytes_sec,
               status: payload.status as any,
             };
           }
           return item;
-        })
-      );
+        });
+      });
     }).then((un) => {
       unlistenProgress = un;
-    });
+    }).catch(() => {});
 
     listen<{ id: string; file_path: string }>("download://complete", (event) => {
       const { id, file_path } = event.payload;
@@ -85,9 +96,10 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
       );
     }).then((un) => {
       unlistenComplete = un;
-    });
+    }).catch(() => {});
 
     return () => {
+      clearInterval(pollInterval);
       unlistenProgress?.();
       unlistenComplete?.();
     };
@@ -104,11 +116,23 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
 
   // Format speed (bytes/sec)
   const formatSpeed = (bytesSec?: number) => {
-    if (!bytesSec || bytesSec <= 0) return "";
+    if (!bytesSec || bytesSec <= 0) return "0 КБ/с";
     const mb = bytesSec / (1024 * 1024);
     if (mb >= 1) return `${mb.toFixed(1)} МБ/с`;
     const kb = bytesSec / 1024;
     return `${kb.toFixed(0)} КБ/с`;
+  };
+
+  // Format estimated remaining time (ETA)
+  const getEtaString = (downloaded: number, total: number, speed?: number) => {
+    if (!speed || speed <= 0 || total <= downloaded) return null;
+    const remainingSecs = Math.round((total - downloaded) / speed);
+    if (remainingSecs < 60) return `~${remainingSecs}с`;
+    const m = Math.floor(remainingSecs / 60);
+    const s = remainingSecs % 60;
+    if (m < 60) return `~${m}хв ${s > 0 ? `${s}с` : ""}`;
+    const h = Math.floor(m / 60);
+    return `~${h}год ${m % 60}хв`;
   };
 
   // Extract all distinct genres from downloads
@@ -454,43 +478,54 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                       <div className="flex items-center justify-between text-[11px]">
                         <span
                           className={cn(
-                            "font-semibold",
+                            "font-semibold flex items-center gap-1.5",
                             isDownloading && "text-amber-400",
                             isPaused && "text-zinc-400",
                             isError && "text-rose-400"
                           )}
                         >
-                          {isDownloading && "Завантаження..."}
+                          {isDownloading && (
+                            <>
+                              <RefreshCw className="w-3 h-3 animate-spin text-rose-500" />
+                              <span>Завантаження...</span>
+                            </>
+                          )}
                           {isPaused && "Призупинено"}
                           {isError && (item.error_message || "Помилка")}
                         </span>
-                        <span className="font-mono text-zinc-400">
+                        <span className="font-mono font-bold text-rose-400 text-xs">
                           {percent}%
                         </span>
                       </div>
 
                       {/* Progress bar */}
-                      <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                      <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden p-0.5">
                         <div
                           className={cn(
-                            "h-full transition-all duration-300",
-                            isDownloading && "bg-rose-500",
+                            "h-full rounded-full transition-all duration-300",
+                            isDownloading && "bg-gradient-to-r from-rose-600 via-rose-500 to-amber-400 shadow-sm shadow-rose-500/50",
                             isPaused && "bg-zinc-500",
                             isError && "bg-red-600"
                           )}
-                          style={{ width: `${percent}%` }}
+                          style={{ width: `${Math.max(3, percent)}%` }}
                         />
                       </div>
 
-                      <div className="flex items-center justify-between text-[10px] text-zinc-500 font-mono">
+                      <div className="flex items-center justify-between text-[10px] text-zinc-400 font-mono">
                         <span>
-                          {formatBytes(item.downloaded_bytes)} /{" "}
-                          {formatBytes(item.total_bytes)}
+                          {formatBytes(item.downloaded_bytes)} / {formatBytes(item.total_bytes)}
                         </span>
-                        {isDownloading && item.speed_bytes_sec ? (
-                          <span className="text-emerald-400 font-bold">
-                            {formatSpeed(item.speed_bytes_sec)}
-                          </span>
+                        {isDownloading ? (
+                          <div className="flex items-center gap-1.5">
+                            {getEtaString(item.downloaded_bytes, item.total_bytes, item.speed_bytes_sec) && (
+                              <span className="text-zinc-500 font-normal">
+                                {getEtaString(item.downloaded_bytes, item.total_bytes, item.speed_bytes_sec)}
+                              </span>
+                            )}
+                            <span className="text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                              ↓ {formatSpeed(item.speed_bytes_sec)}
+                            </span>
+                          </div>
                         ) : null}
                       </div>
                     </div>

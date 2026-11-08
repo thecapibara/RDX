@@ -102,6 +102,8 @@ pub struct DownloadItem {
     pub error_message: Option<String>,
     pub created_at: i64,
     pub completed_at: Option<i64>,
+    #[serde(default)]
+    pub speed_bytes_sec: Option<u64>,
 }
 
 pub struct Storage {
@@ -689,6 +691,7 @@ impl Storage {
                 error_message: row.get(19)?,
                 created_at: row.get(20)?,
                 completed_at: row.get(21)?,
+                speed_bytes_sec: None,
             })
         })?;
 
@@ -740,6 +743,7 @@ impl Storage {
                 error_message: row.get(19)?,
                 created_at: row.get(20)?,
                 completed_at: row.get(21)?,
+                speed_bytes_sec: None,
             })
         })?;
 

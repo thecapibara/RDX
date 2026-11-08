@@ -152,6 +152,7 @@ pub async fn start_download(
         error_message: None,
         created_at: chrono::Utc::now().timestamp_millis(),
         completed_at: None,
+        speed_bytes_sec: Some(0),
     };
 
     state.downloader.start_download(item, app).await
@@ -183,7 +184,19 @@ pub async fn delete_download(state: State<'_, AppState>, id: String) -> Result<(
 
 #[tauri::command]
 pub async fn get_downloads(state: State<'_, AppState>) -> Result<Vec<DownloadItem>, String> {
-    state.storage.get_downloads().map_err(|e| e.to_string())
+    let mut items = state.storage.get_downloads().map_err(|e| e.to_string())?;
+    let active = state.downloader.get_all_active_progress();
+    for item in &mut items {
+        if let Some(prog) = active.get(&item.id) {
+            item.downloaded_bytes = prog.downloaded_bytes;
+            if prog.total_bytes > 0 {
+                item.total_bytes = prog.total_bytes;
+            }
+            item.speed_bytes_sec = Some(prog.speed_bytes_sec);
+            item.status = prog.status.clone();
+        }
+    }
+    Ok(items)
 }
 
 #[tauri::command]
