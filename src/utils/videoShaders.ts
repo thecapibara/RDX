@@ -63,28 +63,49 @@ vec3 applyDeband(vec2 uv, vec2 dxdy, vec3 orig) {
     return orig;
 }
 
-// 2. Official AMD Contrast Adaptive Sharpening (CAS): Adaptive unsharp without halos or glowing rings
+// 2. High-Impact AMD CAS (Contrast Adaptive Sharpening) with 8-tap directional sampling
 vec3 applyCAS(vec2 uv, vec2 dxdy, vec3 center) {
-    // Sample cardinal neighbors
-    vec3 a = texture2D(u_image, uv + vec2( 0.0, -dxdy.y)).rgb;
-    vec3 b = texture2D(u_image, uv + vec2(-dxdy.x,  0.0)).rgb;
-    vec3 c = texture2D(u_image, uv + vec2( dxdy.x,  0.0)).rgb;
-    vec3 d = texture2D(u_image, uv + vec2( 0.0,  dxdy.y)).rgb;
+    vec2 off = dxdy * (1.1 + 0.4 * u_sharpness);
 
-    // Strict local contrast bounds to prevent any overshoot/halos
-    vec3 minRGB = min(min(min(a, b), min(c, d)), center);
-    vec3 maxRGB = max(max(max(a, b), max(c, d)), center);
+    // Cardinal samples
+    vec3 b = texture2D(u_image, uv + vec2( 0.0,   -off.y)).rgb;
+    vec3 d = texture2D(u_image, uv + vec2(-off.x,  0.0)).rgb;
+    vec3 f = texture2D(u_image, uv + vec2( off.x,  0.0)).rgb;
+    vec3 h = texture2D(u_image, uv + vec2( 0.0,    off.y)).rgb;
+
+    // Diagonal samples
+    vec3 a = texture2D(u_image, uv + vec2(-off.x, -off.y)).rgb;
+    vec3 c = texture2D(u_image, uv + vec2( off.x, -off.y)).rgb;
+    vec3 g = texture2D(u_image, uv + vec2(-off.x,  off.y)).rgb;
+    vec3 i = texture2D(u_image, uv + vec2( off.x,  off.y)).rgb;
+
+    // 8-tap weighted local neighborhood
+    vec3 cross = (b + d + f + h) * 0.25;
+    vec3 diag = (a + c + g + i) * 0.25;
+    vec3 blurred = cross * 0.65 + diag * 0.35;
+
+    // High-frequency detail extraction
+    vec3 detail = center - blurred;
+
+    // Strict local bounds to prevent ringing or glowing halos
+    vec3 minRGB = min(min(min(a, b), min(c, d)), min(min(min(f, g), min(h, i)), center));
+    vec3 maxRGB = max(max(max(a, b), max(c, d)), max(max(max(f, g), max(h, i)), center));
 
     float minLuma = luma(minRGB);
     float maxLuma = luma(maxRGB);
+    float contrast = clamp(maxLuma - minLuma, 0.0, 1.0);
 
-    // AMD CAS adaptive weight curve
-    float amp = clamp(min(minLuma, 1.0 - maxLuma) / max(maxLuma, 0.0001), 0.0, 1.0);
-    float w = amp * (-0.12 - 0.08 * clamp(u_sharpness, 0.0, 1.0));
+    // Amplify detail on real textures & edges, gentle on flat areas
+    float strength = (1.6 + 1.2 * u_sharpness) * clamp(contrast * 3.5, 0.3, 1.0);
+    vec3 sharpened = center + detail * strength;
 
-    // Filter output clamped strictly inside local RGB bounds
-    vec3 filtered = (center + w * (a + b + c + d)) / (1.0 + 4.0 * w);
-    return clamp(filtered, minRGB, maxRGB);
+    // Clamp strictly within local bounds (prevents white halos or glowing eyes)
+    sharpened = clamp(sharpened, minRGB - 0.02, maxRGB + 0.02);
+
+    // Subtle 3.5% micro-contrast pop for unmistakable cinematic clarity
+    sharpened = (sharpened - 0.5) * (1.0 + 0.035 * u_sharpness) + 0.5;
+
+    return clamp(sharpened, 0.0, 1.0);
 }
 
 void main() {
