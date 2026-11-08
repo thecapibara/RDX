@@ -31,6 +31,7 @@ import {
   ChevronRight,
   ArrowLeft,
   Crown,
+  Sparkles,
 } from "lucide-react";
 import type {
   MediaDetails,
@@ -42,6 +43,7 @@ import type {
 } from "../types";
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
+import { VideoEnhanceMode, VideoShaderRenderer } from "../utils/videoShaders";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
@@ -376,7 +378,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     open: boolean;
     x: number;
     y: number;
-    page: "main" | "translators" | "episodes" | "quality" | "speed" | "aspect" | "sleep" | "subtitles" | "boost";
+    page: "main" | "translators" | "episodes" | "quality" | "speed" | "aspect" | "sleep" | "subtitles" | "boost" | "enhance";
   } | null>(null);
 
   // 1. True Fullscreen State & Sync
@@ -603,6 +605,56 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
 
     showHud(`🔊 Підсилення: ${Math.round(boost * 100)}%`);
+  }, []);
+
+  // 6. Video Enhancement (WebGL Deband + CAS Sharpening)
+  const [videoEnhanceMode, setVideoEnhanceMode] = useState<VideoEnhanceMode>(() => {
+    try {
+      return (localStorage.getItem("rdx_video_enhance") as VideoEnhanceMode) || "off";
+    } catch {
+      return "off";
+    }
+  });
+  const shaderCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const shaderRendererRef = useRef<VideoShaderRenderer | null>(null);
+
+  const handleSelectEnhanceMode = useCallback((mode: VideoEnhanceMode) => {
+    setVideoEnhanceMode(mode);
+    try {
+      localStorage.setItem("rdx_video_enhance", mode);
+    } catch {}
+
+    const labels: Record<VideoEnhanceMode, string> = {
+      off: "Покращення: Вимкнено",
+      deband: "Покращення: Згладжування (Deband)",
+      cas: "Покращення: Чіткість (CAS)",
+      max: "Покращення: Максимальне (Deband + CAS)",
+    };
+    showHud(`✨ ${labels[mode]}`);
+  }, []);
+
+  useEffect(() => {
+    if (videoEnhanceMode === "off") {
+      shaderRendererRef.current?.stop();
+      return;
+    }
+    if (!shaderCanvasRef.current || !videoRef.current) return;
+
+    if (!shaderRendererRef.current) {
+      shaderRendererRef.current = new VideoShaderRenderer(
+        shaderCanvasRef.current,
+        videoRef.current
+      );
+    }
+    shaderRendererRef.current.setMode(videoEnhanceMode);
+    shaderRendererRef.current.start();
+  }, [videoEnhanceMode]);
+
+  useEffect(() => {
+    return () => {
+      shaderRendererRef.current?.destroy();
+      shaderRendererRef.current = null;
+    };
   }, []);
 
   const [subFontSize, setSubFontSize] = useState<"sm" | "md" | "lg" | "xl">("md");
@@ -2048,6 +2100,19 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         key="video-stage"
         className="relative w-full h-full overflow-hidden bg-black flex items-center justify-center"
       >
+        {/* WebGL Post-Processing Canvas (rendered underneath transparent video) */}
+        {videoEnhanceMode !== "off" && (
+          <canvas
+            ref={shaderCanvasRef}
+            aria-hidden="true"
+            className={cn(
+              "absolute inset-0 w-full h-full pointer-events-none z-0",
+              getVideoObjectFitClass()
+            )}
+            style={getVideoStyle()}
+          />
+        )}
+
         <video
           key="persistent-video"
           ref={videoRef}
@@ -2057,8 +2122,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           controlsList="nodownload nofullscreen noremoteplayback"
           onContextMenu={handleContextMenu}
           className={cn(
-            "w-full h-full cursor-pointer",
-            getVideoObjectFitClass()
+            "w-full h-full cursor-pointer relative z-10 transition-opacity duration-150",
+            getVideoObjectFitClass(),
+            videoEnhanceMode !== "off" && "opacity-0"
           )}
           style={getVideoStyle()}
           onTimeUpdate={() => {
@@ -3405,6 +3471,29 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </div>
               </button>
 
+              {/* Video Enhancement Submenu (WebGL Deband & CAS) */}
+              <button
+                onClick={() => setContextMenu({ ...contextMenu, page: "enhance" })}
+                className="w-full flex items-center justify-between px-3 py-2 text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5 truncate">
+                  <Sparkles className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                  <span className="truncate">Покращення відео</span>
+                </div>
+                <div className="flex items-center gap-1 text-[11px] text-zinc-400 font-medium">
+                  <span>
+                    {videoEnhanceMode === "off"
+                      ? "Вимкнено"
+                      : videoEnhanceMode === "deband"
+                      ? "Deband"
+                      : videoEnhanceMode === "cas"
+                      ? "CAS"
+                      : "Макс (Deband+CAS)"}
+                  </span>
+                  <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
+                </div>
+              </button>
+
               {/* Autoplay Next Series toggle */}
               {isSeries && (
                 <button
@@ -3987,6 +4076,72 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   >
                     <span>{label}</span>
                     {isSelected && <Check className="w-3.5 h-3.5" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Submenu: Video Enhance (WebGL Deband & CAS) */}
+          {contextMenu.page === "enhance" && (
+            <div className="space-y-1">
+              <button
+                onClick={() => setContextMenu({ ...contextMenu, page: "main" })}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer font-semibold text-[11px]"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Покращення відео (WebGL)</span>
+              </button>
+              <div className="h-px bg-white/10 my-1 mx-2" />
+              {[
+                {
+                  mode: "off",
+                  label: "Вимкнено",
+                  desc: "Нативний потік (0% навантаження)",
+                },
+                {
+                  mode: "deband",
+                  label: "Згладжування (Deband)",
+                  desc: "Прибирає сходинки градієнтів та квадрати",
+                },
+                {
+                  mode: "cas",
+                  label: "Чіткість (AMD CAS)",
+                  desc: "Адаптивна різкість деталей без шуму",
+                },
+                {
+                  mode: "max",
+                  label: "Максимальне (Deband + CAS)",
+                  desc: "Гладкі темні сцени + кришталева чіткість",
+                },
+              ].map((item) => {
+                const isSelected = videoEnhanceMode === item.mode;
+                return (
+                  <button
+                    key={item.mode}
+                    onClick={() => {
+                      handleSelectEnhanceMode(item.mode as VideoEnhanceMode);
+                      setContextMenu(null);
+                    }}
+                    className={cn(
+                      "w-full flex items-center justify-between px-3 py-2 rounded-xl text-left cursor-pointer transition-colors",
+                      isSelected
+                        ? "bg-rose-600 text-white"
+                        : "text-zinc-300 hover:bg-white/10"
+                    )}
+                  >
+                    <div>
+                      <div className="text-xs font-semibold">{item.label}</div>
+                      <div
+                        className={cn(
+                          "text-[10px]",
+                          isSelected ? "text-rose-100" : "text-zinc-400"
+                        )}
+                      >
+                        {item.desc}
+                      </div>
+                    </div>
+                    {isSelected && <Check className="w-4 h-4 flex-shrink-0 ml-2" />}
                   </button>
                 );
               })}
