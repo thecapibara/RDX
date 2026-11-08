@@ -11,8 +11,10 @@ import {
   Info,
   Clock,
   Crown,
+  Download,
+  X,
 } from "lucide-react";
-import type { Bookmark, MediaCard, MediaDetails, WatchProgress, Translator, EpisodeProgress } from "../types";
+import type { Bookmark, MediaCard, MediaDetails, WatchProgress, Translator, EpisodeProgress, StreamQuality } from "../types";
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
 import { playModalOpenSound, suppressHoverSound } from "../services/sound";
@@ -50,6 +52,14 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
   const [selectedEpisode, setSelectedEpisode] = useState<number>(1);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
   const [maxKnownSeasons, setMaxKnownSeasons] = useState<number>(1);
+
+  // Download states
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const [downloadMode, setDownloadMode] = useState<"single" | "season">("single");
+  const [downloadQualities, setDownloadQualities] = useState<StreamQuality[]>([]);
+  const [selectedDownloadQuality, setSelectedDownloadQuality] = useState<string>("720p");
+  const [loadingQualities, setLoadingQualities] = useState(false);
+  const [downloadNotification, setDownloadNotification] = useState<string | null>(null);
 
   // Dropdown states for structured voiceover selector
   const [isTranslatorDropdownOpen, setIsTranslatorDropdownOpen] = useState(false);
@@ -321,6 +331,131 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
     );
   };
 
+  const handleOpenDownloadModal = async () => {
+    if (!details) return;
+    setIsDownloadModalOpen(true);
+    setLoadingQualities(true);
+    try {
+      const stream = await api.getStream(
+        details.id,
+        details.url,
+        isSeries,
+        selectedTranslator?.id,
+        isSeries ? selectedSeason : undefined,
+        isSeries ? selectedEpisode : undefined
+      );
+      if (stream && stream.qualities.length > 0) {
+        setDownloadQualities(stream.qualities);
+        const preferred =
+          stream.qualities.find((q) => q.label === "1080p") ||
+          stream.qualities.find((q) => q.label === "720p") ||
+          stream.qualities[0];
+        setSelectedDownloadQuality(preferred.label);
+      }
+    } catch (err) {
+      console.error("Failed to load stream qualities for download:", err);
+    } finally {
+      setLoadingQualities(false);
+    }
+  };
+
+  const handleStartDownload = async () => {
+    if (!details) return;
+    setIsDownloadModalOpen(false);
+
+    const genres = details.info_table?.find((t) => t[0].toLowerCase().includes("жанр"))?.[1] || "";
+    const translatorId = selectedTranslator?.id || "default";
+    const translatorName = selectedTranslator?.name || "Оригінал / За замовчуванням";
+
+    try {
+      if (!isSeries || downloadMode === "single") {
+        const targetQ = downloadQualities.find((q) => q.label === selectedDownloadQuality) || downloadQualities[0];
+        const streamUrl = targetQ?.mp4_url || targetQ?.hls_url;
+        if (!streamUrl) {
+          setDownloadNotification("⚠️ Не вдалося отримати посилання на відео");
+          setTimeout(() => setDownloadNotification(null), 3000);
+          return;
+        }
+
+        await api.startDownload({
+          mediaId: details.id,
+          mediaUrl: details.url,
+          title: details.title,
+          origTitle: details.orig_title || undefined,
+          posterUrl: details.poster,
+          mediaType: isSeries ? "series" : "movie",
+          genres,
+          translatorId,
+          translatorName,
+          season: isSeries ? selectedSeason : undefined,
+          episode: isSeries ? selectedEpisode : undefined,
+          quality: selectedDownloadQuality,
+          streamUrl,
+        });
+
+        setDownloadNotification(
+          isSeries
+            ? `Додано в завантаження: S${selectedSeason}E${selectedEpisode} (${selectedDownloadQuality})`
+            : `Додано в завантаження: ${details.title} (${selectedDownloadQuality})`
+        );
+        setTimeout(() => setDownloadNotification(null), 4000);
+      } else {
+        const episodesToDownload = currentSeasonEpisodes;
+        if (episodesToDownload.length === 0) return;
+
+        setDownloadNotification(`Черга: запуск завантаження ${episodesToDownload.length} серій ${selectedSeason} сезону...`);
+
+        (async () => {
+          let count = 0;
+          for (const ep of episodesToDownload) {
+            try {
+              const epNum = Number(ep.episode_id);
+              const stream = await api.getStream(
+                details.id,
+                details.url,
+                true,
+                selectedTranslator?.id,
+                selectedSeason,
+                epNum
+              );
+              const targetQ =
+                stream.qualities.find((q) => q.label === selectedDownloadQuality) ||
+                stream.qualities.find((q) => q.label === "720p") ||
+                stream.qualities[0];
+              const streamUrl = targetQ?.mp4_url || targetQ?.hls_url;
+              if (streamUrl) {
+                await api.startDownload({
+                  mediaId: details.id,
+                  mediaUrl: details.url,
+                  title: details.title,
+                  origTitle: details.orig_title || undefined,
+                  posterUrl: details.poster,
+                  mediaType: "series",
+                  genres,
+                  translatorId,
+                  translatorName,
+                  season: selectedSeason,
+                  episode: epNum,
+                  quality: targetQ.label,
+                  streamUrl,
+                });
+                count++;
+              }
+            } catch (e) {
+              console.error(`Failed to queue S${selectedSeason}E${ep.episode_id}:`, e);
+            }
+          }
+          setDownloadNotification(`Всі ${count} серій ${selectedSeason} сезону додано до черги завантажень!`);
+          setTimeout(() => setDownloadNotification(null), 4000);
+        })();
+      }
+    } catch (err: any) {
+      console.error("Failed to start download:", err);
+      setDownloadNotification(`Помилка: ${err?.message || "не вдалося завантажити"}`);
+      setTimeout(() => setDownloadNotification(null), 4000);
+    }
+  };
+
   // Ukrainian translators list
   const ukrTranslators =
     details?.translators.filter(
@@ -538,6 +673,17 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                       />
                       <span>{isBookmarked ? "У закладках" : "У закладки"}</span>
                     </button>
+
+                    {hasAvailableStream && (
+                      <button
+                        onClick={handleOpenDownloadModal}
+                        className="flex items-center gap-2 px-6 py-3.5 rounded-2xl font-semibold text-sm border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 transition-all cursor-pointer active:scale-95 shadow-lg shadow-cyan-950/30"
+                        title="Завантажити для перегляду офлайн"
+                      >
+                        <Download className="w-4 h-4 text-cyan-400" />
+                        <span>Завантажити</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Informational banner if title has no streams yet ("В очікуванні") */}
@@ -898,6 +1044,129 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
             )}
           </div>
         </div>
+
+        {/* Offline Download Dialog */}
+        {isDownloadModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <div className="relative w-full max-w-md bg-zinc-900 border border-white/15 rounded-3xl p-6 shadow-2xl space-y-5 text-white">
+              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                    <Download className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm sm:text-base">Завантажити офлайн</h3>
+                    <p className="text-[11px] text-zinc-400 truncate max-w-[240px]">{details?.title}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsDownloadModalOpen(false)}
+                  className="p-1.5 rounded-xl hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Series Scope Option */}
+              {isSeries && (
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Що завантажити:</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setDownloadMode("single")}
+                      className={cn(
+                        "px-3 py-2.5 rounded-xl text-xs font-medium border text-center transition-all cursor-pointer",
+                        downloadMode === "single"
+                          ? "bg-cyan-500/20 border-cyan-500/50 text-cyan-300 font-semibold"
+                          : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
+                      )}
+                    >
+                      Серія S{selectedSeason}E{selectedEpisode}
+                    </button>
+                    <button
+                      onClick={() => setDownloadMode("season")}
+                      className={cn(
+                        "px-3 py-2.5 rounded-xl text-xs font-medium border text-center transition-all cursor-pointer",
+                        downloadMode === "season"
+                          ? "bg-cyan-500/20 border-cyan-500/50 text-cyan-300 font-semibold"
+                          : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
+                      )}
+                    >
+                      Весь {selectedSeason} сезон ({currentSeasonEpisodes.length} серій)
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Quality Selector */}
+              <div className="space-y-2">
+                <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Якість відео:</span>
+                {loadingQualities ? (
+                  <div className="flex items-center gap-2 py-3 text-xs text-zinc-400">
+                    <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
+                    <span>Перевірка доступних якостей...</span>
+                  </div>
+                ) : downloadQualities.length === 0 ? (
+                  <div className="py-2 text-xs text-zinc-400">
+                    За замовчуванням: 1080p / 720p MP4
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2">
+                    {downloadQualities.map((q) => {
+                      const isSelected = selectedDownloadQuality === q.label;
+                      return (
+                        <button
+                          key={q.label}
+                          onClick={() => setSelectedDownloadQuality(q.label)}
+                          className={cn(
+                            "px-3 py-2 rounded-xl text-xs font-medium border text-center transition-all cursor-pointer",
+                            isSelected
+                              ? "bg-cyan-500/25 border-cyan-500/60 text-cyan-300 font-bold"
+                              : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
+                          )}
+                        >
+                          {q.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Voiceover note */}
+              {selectedTranslator && (
+                <div className="text-[11px] text-zinc-400 bg-white/5 px-3 py-2 rounded-xl border border-white/10">
+                  Озвучення: <span className="text-zinc-200 font-semibold">{selectedTranslator.name}</span>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  onClick={() => setIsDownloadModalOpen(false)}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-300 text-xs font-semibold border border-white/10 transition-colors cursor-pointer"
+                >
+                  Скасувати
+                </button>
+                <button
+                  onClick={handleStartDownload}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all shadow-lg shadow-cyan-950/50 cursor-pointer active:scale-95"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Почати</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Floating Download Notification Toast */}
+        {downloadNotification && (
+          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-zinc-900 border border-cyan-500/40 text-cyan-300 text-xs font-semibold shadow-2xl shadow-cyan-950/80">
+            <Download className="w-4 h-4 text-cyan-400 animate-bounce" />
+            <span>{downloadNotification}</span>
+          </div>
+        )}
       </div>
   );
 };

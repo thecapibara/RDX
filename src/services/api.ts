@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AppSettings,
   Bookmark,
+  DownloadItem,
   EpisodeProgress,
   EpisodesData,
   MediaCard,
@@ -659,5 +660,79 @@ export const api = {
     if (isTauri) {
       return invoke<void>("play_ui_sound", { soundType }).catch(() => {});
     }
+  },
+
+  // ==================== Downloads API ====================
+  startDownload: async (params: {
+    mediaId: string;
+    mediaUrl: string;
+    title: string;
+    origTitle?: string | null;
+    posterUrl: string;
+    mediaType: string;
+    genres: string;
+    translatorId: string;
+    translatorName: string;
+    season?: number | null;
+    episode?: number | null;
+    quality: string;
+    streamUrl: string;
+  }): Promise<DownloadItem> => {
+    if (isTauri) {
+      return invoke<DownloadItem>("start_download", {
+        mediaId: params.mediaId,
+        mediaUrl: params.mediaUrl,
+        title: params.title,
+        origTitle: params.origTitle || null,
+        posterUrl: params.posterUrl,
+        mediaType: params.mediaType,
+        genres: params.genres,
+        translatorId: params.translatorId,
+        translatorName: params.translatorName,
+        season: params.season ?? null,
+        episode: params.episode ?? null,
+        quality: params.quality,
+        streamUrl: params.streamUrl,
+      });
+    }
+    throw new Error("Downloads are only supported in desktop mode");
+  },
+
+  pauseDownload: async (id: string): Promise<void> => {
+    if (isTauri) {
+      return invoke<void>("pause_download", { id });
+    }
+  },
+
+  resumeDownload: async (id: string): Promise<void> => {
+    if (isTauri) {
+      return invoke<void>("resume_download", { id });
+    }
+  },
+
+  cancelDownload: async (id: string): Promise<void> => {
+    if (isTauri) {
+      return invoke<void>("cancel_download", { id });
+    }
+  },
+
+  deleteDownload: async (id: string): Promise<void> => {
+    if (isTauri) {
+      return invoke<void>("delete_download", { id });
+    }
+  },
+
+  getDownloads: async (): Promise<DownloadItem[]> => {
+    if (isTauri) {
+      return invoke<DownloadItem[]>("get_downloads");
+    }
+    return [];
+  },
+
+  getDownloadsDir: async (): Promise<string> => {
+    if (isTauri) {
+      return invoke<string>("get_downloads_dir");
+    }
+    return "";
   },
 };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Search, Maximize, Minimize, ChevronDown, Settings } from "lucide-react";
+import { Search, Maximize, Minimize, ChevronDown, Settings, Download } from "lucide-react";
 import type { MirrorStatus } from "../types";
 import { cn } from "../lib/utils";
 import { playButtonClickSound } from "../services/sound";
@@ -8,10 +8,11 @@ export type NavTab =
   | "home"
   | "films"
   | "series"
+  | "downloads"
+  | "bookmarks"
   | "cartoons"
   | "animation"
-  | "new"
-  | "bookmarks";
+  | "new";
 
 interface TopBarProps {
   activeTab: NavTab;
@@ -21,12 +22,14 @@ interface TopBarProps {
   onOpenSettings?: () => void;
   mirrorStatus: MirrorStatus | null;
   activeMirrorUrl: string;
+  activeDownloadsCount?: number;
 }
 
 const PRIMARY_TABS: { id: NavTab; label: string }[] = [
   { id: "home", label: "Головна" },
   { id: "films", label: "Фільми" },
   { id: "series", label: "Серіали" },
+  { id: "downloads", label: "Завантаження" },
   { id: "bookmarks", label: "Закладки" },
 ];
 
@@ -44,6 +47,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenSettings,
   mirrorStatus,
   activeMirrorUrl,
+  activeDownloadsCount = 0,
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [timeString, setTimeString] = useState("");
@@ -263,6 +267,34 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       {/* Right: Actions, Network Status & Clock */}
       <div className="flex items-center gap-3 sm:gap-5 flex-shrink-0">
+        {/* Quick Downloads Button */}
+        <button
+          onClick={() => {
+            playButtonClickSound();
+            onTabChange("downloads");
+          }}
+          title={
+            activeDownloadsCount && activeDownloadsCount > 0
+              ? `Завантаження: ${activeDownloadsCount} активних`
+              : "Завантаження"
+          }
+          className={cn(
+            "relative transition-colors cursor-pointer p-1",
+            activeTab === "downloads"
+              ? "text-rose-500"
+              : activeDownloadsCount && activeDownloadsCount > 0
+              ? "text-amber-400 animate-pulse"
+              : "text-zinc-300 hover:text-white"
+          )}
+        >
+          <Download className="w-5 h-5" />
+          {activeDownloadsCount && activeDownloadsCount > 0 ? (
+            <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-rose-600 text-white text-[9px] font-black flex items-center justify-center font-mono shadow-sm">
+              {activeDownloadsCount}
+            </span>
+          ) : null}
+        </button>
+
         {/* Minimal Search Button */}
         <button
           onClick={() => {

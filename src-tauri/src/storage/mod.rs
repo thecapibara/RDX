@@ -78,6 +78,32 @@ pub struct Bookmark {
     pub added_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DownloadItem {
+    pub id: String,
+    pub media_id: String,
+    pub media_url: String,
+    pub title: String,
+    pub orig_title: Option<String>,
+    pub poster_url: String,
+    pub media_type: String, // "movie", "series", "cartoon", "anime"
+    pub genres: String,
+    pub translator_id: String,
+    pub translator_name: String,
+    pub season: Option<i32>,
+    pub episode: Option<i32>,
+    pub quality: String,
+    pub stream_url: String,
+    pub file_path: String,
+    pub temp_path: String,
+    pub total_bytes: u64,
+    pub downloaded_bytes: u64,
+    pub status: String, // "queued", "downloading", "paused", "completed", "error"
+    pub error_message: Option<String>,
+    pub created_at: i64,
+    pub completed_at: Option<i64>,
+}
+
 pub struct Storage {
     conn: Mutex<Connection>,
 }
@@ -155,9 +181,36 @@ impl Storage {
                 PRIMARY KEY (media_id, season, episode)
             );
 
+            CREATE TABLE IF NOT EXISTS downloads (
+                id TEXT PRIMARY KEY,
+                media_id TEXT NOT NULL,
+                media_url TEXT NOT NULL,
+                title TEXT NOT NULL,
+                orig_title TEXT,
+                poster_url TEXT NOT NULL,
+                media_type TEXT NOT NULL,
+                genres TEXT NOT NULL DEFAULT '',
+                translator_id TEXT NOT NULL,
+                translator_name TEXT NOT NULL,
+                season INTEGER,
+                episode INTEGER,
+                quality TEXT NOT NULL,
+                stream_url TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                temp_path TEXT NOT NULL,
+                total_bytes INTEGER NOT NULL DEFAULT 0,
+                downloaded_bytes INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'queued',
+                error_message TEXT,
+                created_at INTEGER NOT NULL,
+                completed_at INTEGER
+            );
+
             CREATE INDEX IF NOT EXISTS idx_watch_progress_updated_at ON watch_progress (updated_at DESC);
             CREATE INDEX IF NOT EXISTS idx_bookmarks_category ON bookmarks (category);
             CREATE INDEX IF NOT EXISTS idx_episode_progress_media ON episode_progress (media_id);
+            CREATE INDEX IF NOT EXISTS idx_downloads_created_at ON downloads (created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_downloads_media_id ON downloads (media_id);
             "#,
         )?;
 
@@ -548,6 +601,196 @@ impl Storage {
             )
             .ok();
         Ok(cat)
+    }
+
+    // ==================== Downloads Storage ====================
+
+    pub fn add_or_update_download(&self, item: &DownloadItem) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            r#"
+            INSERT INTO downloads (
+                id, media_id, media_url, title, orig_title, poster_url, media_type,
+                genres, translator_id, translator_name, season, episode, quality,
+                stream_url, file_path, temp_path, total_bytes, downloaded_bytes,
+                status, error_message, created_at, completed_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)
+            ON CONFLICT(id) DO UPDATE SET
+                total_bytes = ?17,
+                downloaded_bytes = ?18,
+                status = ?19,
+                error_message = ?20,
+                completed_at = COALESCE(?22, completed_at)
+            "#,
+            params![
+                item.id,
+                item.media_id,
+                item.media_url,
+                item.title,
+                item.orig_title,
+                item.poster_url,
+                item.media_type,
+                item.genres,
+                item.translator_id,
+                item.translator_name,
+                item.season,
+                item.episode,
+                item.quality,
+                item.stream_url,
+                item.file_path,
+                item.temp_path,
+                item.total_bytes as i64,
+                item.downloaded_bytes as i64,
+                item.status,
+                item.error_message,
+                item.created_at,
+                item.completed_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_downloads(&self) -> SqlResult<Vec<DownloadItem>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            r#"
+            SELECT id, media_id, media_url, title, orig_title, poster_url, media_type,
+                   genres, translator_id, translator_name, season, episode, quality,
+                   stream_url, file_path, temp_path, total_bytes, downloaded_bytes,
+                   status, error_message, created_at, completed_at
+            FROM downloads
+            ORDER BY created_at DESC
+            "#,
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            let total_i64: i64 = row.get(16)?;
+            let downloaded_i64: i64 = row.get(17)?;
+            Ok(DownloadItem {
+                id: row.get(0)?,
+                media_id: row.get(1)?,
+                media_url: row.get(2)?,
+                title: row.get(3)?,
+                orig_title: row.get(4)?,
+                poster_url: row.get(5)?,
+                media_type: row.get(6)?,
+                genres: row.get(7)?,
+                translator_id: row.get(8)?,
+                translator_name: row.get(9)?,
+                season: row.get(10)?,
+                episode: row.get(11)?,
+                quality: row.get(12)?,
+                stream_url: row.get(13)?,
+                file_path: row.get(14)?,
+                temp_path: row.get(15)?,
+                total_bytes: total_i64.max(0) as u64,
+                downloaded_bytes: downloaded_i64.max(0) as u64,
+                status: row.get(18)?,
+                error_message: row.get(19)?,
+                created_at: row.get(20)?,
+                completed_at: row.get(21)?,
+            })
+        })?;
+
+        let mut list = Vec::new();
+        for r in rows {
+            if let Ok(item) = r {
+                list.push(item);
+            }
+        }
+        Ok(list)
+    }
+
+    pub fn get_download_by_id(&self, id: &str) -> SqlResult<Option<DownloadItem>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            r#"
+            SELECT id, media_id, media_url, title, orig_title, poster_url, media_type,
+                   genres, translator_id, translator_name, season, episode, quality,
+                   stream_url, file_path, temp_path, total_bytes, downloaded_bytes,
+                   status, error_message, created_at, completed_at
+            FROM downloads
+            WHERE id = ?1
+            "#,
+        )?;
+
+        let mut rows = stmt.query_map(params![id], |row| {
+            let total_i64: i64 = row.get(16)?;
+            let downloaded_i64: i64 = row.get(17)?;
+            Ok(DownloadItem {
+                id: row.get(0)?,
+                media_id: row.get(1)?,
+                media_url: row.get(2)?,
+                title: row.get(3)?,
+                orig_title: row.get(4)?,
+                poster_url: row.get(5)?,
+                media_type: row.get(6)?,
+                genres: row.get(7)?,
+                translator_id: row.get(8)?,
+                translator_name: row.get(9)?,
+                season: row.get(10)?,
+                episode: row.get(11)?,
+                quality: row.get(12)?,
+                stream_url: row.get(13)?,
+                file_path: row.get(14)?,
+                temp_path: row.get(15)?,
+                total_bytes: total_i64.max(0) as u64,
+                downloaded_bytes: downloaded_i64.max(0) as u64,
+                status: row.get(18)?,
+                error_message: row.get(19)?,
+                created_at: row.get(20)?,
+                completed_at: row.get(21)?,
+            })
+        })?;
+
+        if let Some(r) = rows.next() {
+            Ok(r.ok())
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn update_download_progress(
+        &self,
+        id: &str,
+        downloaded: u64,
+        total: u64,
+        status: &str,
+        error_message: Option<&str>,
+    ) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        let completed_at = if status == "completed" {
+            Some(chrono::Utc::now().timestamp_millis())
+        } else {
+            None
+        };
+
+        conn.execute(
+            r#"
+            UPDATE downloads
+            SET downloaded_bytes = ?2,
+                total_bytes = CASE WHEN ?3 > 0 THEN ?3 ELSE total_bytes END,
+                status = ?4,
+                error_message = ?5,
+                completed_at = COALESCE(?6, completed_at)
+            WHERE id = ?1
+            "#,
+            params![
+                id,
+                downloaded as i64,
+                total as i64,
+                status,
+                error_message,
+                completed_at
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_download(&self, id: &str) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM downloads WHERE id = ?1", params![id])?;
+        Ok(())
     }
 }
 

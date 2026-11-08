@@ -3,16 +3,18 @@ use tauri::{AppHandle, LogicalSize, Manager, PhysicalPosition, PhysicalSize, Sta
 use serde::{Deserialize, Serialize};
 
 use crate::client::HttpClient;
+use crate::downloader::{get_downloads_dir as resolve_downloads_dir, DownloadManager};
 use crate::mirror::{MirrorManager, MirrorStatus, SmartRotationResult, PRESET_MIRRORS};
 use crate::parser::{
     EpisodeTab, MediaCard, MediaDetails, RezkaParser, SearchItem, SeasonTab, StreamData,
 };
-use crate::storage::{AppSettings, Bookmark, EpisodeProgress, Storage, WatchProgress};
+use crate::storage::{AppSettings, Bookmark, DownloadItem, EpisodeProgress, Storage, WatchProgress};
 
 pub struct AppState {
     pub storage: Arc<Storage>,
     pub client: Arc<HttpClient>,
     pub mpris: Arc<crate::mpris::MprisState>,
+    pub downloader: Arc<DownloadManager>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,6 +78,116 @@ pub async fn get_bookmarks(state: State<'_, AppState>, category: Option<String>)
 #[tauri::command]
 pub async fn is_bookmarked(state: State<'_, AppState>, media_id: String) -> Result<Option<String>, String> {
     state.storage.is_bookmarked(&media_id).map_err(|e| e.to_string())
+}
+
+// ==================== Downloads Commands ====================
+
+#[tauri::command]
+pub async fn start_download(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    media_id: String,
+    media_url: String,
+    title: String,
+    orig_title: Option<String>,
+    poster_url: String,
+    media_type: String,
+    genres: String,
+    translator_id: String,
+    translator_name: String,
+    season: Option<i32>,
+    episode: Option<i32>,
+    quality: String,
+    stream_url: String,
+) -> Result<DownloadItem, String> {
+    let clean_title = title
+        .replace(|c: char| !c.is_alphanumeric() && c != ' ' && c != '-', "")
+        .trim()
+        .replace(' ', "_");
+    let ep_suffix = if let (Some(s), Some(e)) = (season, episode) {
+        format!("_s{:02}e{:02}", s, e)
+    } else {
+        String::new()
+    };
+    let clean_trans = translator_name
+        .replace(|c: char| !c.is_alphanumeric() && c != '-', "")
+        .trim()
+        .replace(' ', "_");
+
+    let downloads_dir = resolve_downloads_dir();
+    let filename_base = format!("{}_{}{}_{}", clean_title, clean_trans, ep_suffix, quality);
+    let final_path = downloads_dir.join(format!("{}.mp4", filename_base));
+    let temp_path = downloads_dir.join(format!("{}.part", filename_base));
+
+    let id = format!(
+        "{}_{}_{}_{}_{}",
+        media_id,
+        translator_id,
+        quality,
+        season.unwrap_or(0),
+        episode.unwrap_or(0)
+    );
+
+    let item = DownloadItem {
+        id,
+        media_id,
+        media_url,
+        title,
+        orig_title,
+        poster_url,
+        media_type,
+        genres,
+        translator_id,
+        translator_name,
+        season,
+        episode,
+        quality,
+        stream_url,
+        file_path: final_path.to_string_lossy().to_string(),
+        temp_path: temp_path.to_string_lossy().to_string(),
+        total_bytes: 0,
+        downloaded_bytes: 0,
+        status: "downloading".to_string(),
+        error_message: None,
+        created_at: chrono::Utc::now().timestamp_millis(),
+        completed_at: None,
+    };
+
+    state.downloader.start_download(item, app).await
+}
+
+#[tauri::command]
+pub async fn pause_download(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    state.downloader.pause_download(&id)
+}
+
+#[tauri::command]
+pub async fn resume_download(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    state.downloader.resume_download(&id, app).await
+}
+
+#[tauri::command]
+pub async fn cancel_download(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    state.downloader.cancel_download(&id).await
+}
+
+#[tauri::command]
+pub async fn delete_download(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    state.downloader.delete_download(&id).await
+}
+
+#[tauri::command]
+pub async fn get_downloads(state: State<'_, AppState>) -> Result<Vec<DownloadItem>, String> {
+    state.storage.get_downloads().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_downloads_dir() -> Result<String, String> {
+    Ok(resolve_downloads_dir().to_string_lossy().to_string())
 }
 
 // ==================== Mirror Commands ====================

@@ -7,6 +7,9 @@ import type {
   MediaDetails,
   MirrorStatus,
   WatchProgress,
+  DownloadItem,
+  StreamData,
+  Translator,
 } from "./types";
 import { api } from "./services/api";
 import { TopBar, type NavTab } from "./components/TopBar";
@@ -19,8 +22,10 @@ import { VideoPlayer, type PlayerMode } from "./components/VideoPlayer";
 import { MirrorModal } from "./components/MirrorModal";
 import { SearchModal } from "./components/SearchModal";
 import { BookmarksView } from "./components/BookmarksView";
+import { DownloadsView } from "./components/DownloadsView";
 import { CategoryFilterBar } from "./components/CategoryFilterBar";
 import { playButtonClickSound } from "./services/sound";
+import { convertFileSrc } from "@tauri-apps/api/core";
 
 export default function App() {
   // Navigation & Settings State
@@ -57,6 +62,42 @@ export default function App() {
   // Bookmarks check state for current media
   const [isCurrentBookmarked, setIsCurrentBookmarked] = useState(false);
   const [bookmarksRefreshKey, setBookmarksRefreshKey] = useState(0);
+
+  // Active Downloads Count State
+  const [activeDownloadsCount, setActiveDownloadsCount] = useState(0);
+
+  // Listen to download progress & track active downloads count
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    const checkActiveDownloads = async () => {
+      try {
+        const items = await api.getDownloads();
+        const active = items.filter(
+          (i) => i.status === "downloading" || i.status === "queued"
+        ).length;
+        setActiveDownloadsCount(active);
+      } catch {}
+    };
+
+    checkActiveDownloads();
+
+    if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
+      import("@tauri-apps/api/event").then(({ listen }) => {
+        listen("download://progress", () => {
+          checkActiveDownloads();
+        }).then((u) => {
+          unlisten = u;
+        });
+      });
+    }
+
+    const interval = setInterval(checkActiveDownloads, 4000);
+    return () => {
+      clearInterval(interval);
+      if (unlisten) unlisten();
+    };
+  }, []);
 
   // Global shortcut Ctrl+K / Cmd+K to open search anywhere, even when TopBar is hidden
   useEffect(() => {
@@ -146,7 +187,7 @@ export default function App() {
         }
         setHomeItems(homeList);
         setWatchingHeroItems(watchingList);
-      } else if (activeTab !== "bookmarks") {
+      } else if (activeTab !== "bookmarks" && activeTab !== "downloads") {
         const catList = await api.getCategoryCatalog(
           activeTab,
           activeGenre || undefined,
@@ -157,8 +198,15 @@ export default function App() {
       }
     } catch (err) {
       console.error("Failed to load catalog:", err);
+      try {
+        const downloads = await api.getDownloads();
+        if (downloads && downloads.length > 0 && !navigator.onLine) {
+          setActiveTab("downloads");
+          return;
+        }
+      } catch {}
       setCatalogError(
-        "Не вдалося з'єднатися з дзеркалом HDRezka. Будь ласка, перевірте дзеркало в налаштуваннях або відкрийте вікно Captcha Bridge."
+        "Не вдалося з'єднатися з дзеркалом HDRezka. Будь ласка, перевірте з'єднання з мережею або перейдіть до розділу «Завантаження»."
       );
     } finally {
       setLoadingCatalog(false);
@@ -230,10 +278,109 @@ export default function App() {
     setPlayerMode("full");
   }, []);
 
+  // Play downloaded local file in VideoPlayer
+  const handlePlayDownload = useCallback(async (item: DownloadItem) => {
+    try {
+      const allDownloads = await api.getDownloads();
+      const mediaDownloads = allDownloads.filter(
+        (d) => d.media_id === item.media_id && d.status === "completed"
+      );
+
+      // Unique translators from downloaded files
+      const translatorsMap = new Map<string, Translator>();
+      for (const d of mediaDownloads) {
+        const tId = d.translator_id || "default";
+        if (!translatorsMap.has(tId)) {
+          translatorsMap.set(tId, {
+            id: tId,
+            name: d.translator_name || "Оригінал / За замовчуванням",
+            language: "ukr",
+            is_active: false,
+          });
+        }
+      }
+      const translators = Array.from(translatorsMap.values());
+
+      // If series, populate seasons and episodes from local files
+      const isSeries = item.media_type === "series" || item.season != null;
+      const seasonsMap = new Set<number>();
+      const episodesList: any[] = [];
+
+      if (isSeries) {
+        for (const d of mediaDownloads) {
+          const sNum = d.season || 1;
+          const eNum = d.episode || 1;
+          seasonsMap.add(sNum);
+          episodesList.push({
+            id: `${sNum}_${eNum}`,
+            season_id: String(sNum),
+            episode_id: String(eNum),
+            title: `Серія ${eNum}`,
+            sub_title: d.translator_name || "",
+          });
+        }
+      }
+
+      const seasons = Array.from(seasonsMap)
+        .sort((a, b) => a - b)
+        .map((sNum) => ({
+          id: String(sNum),
+          title: `${sNum} сезон`,
+        }));
+
+      const assetUrl = convertFileSrc(item.file_path);
+      const streamData: StreamData = {
+        qualities: [
+          {
+            label: item.quality || "1080p",
+            hls_url: null,
+            mp4_url: assetUrl,
+          },
+        ],
+        subtitles: [],
+        default_quality: item.quality || "1080p",
+        thumbnails: null,
+      };
+
+      const offlineDetails: MediaDetails = {
+        id: item.media_id,
+        url: "",
+        title: item.title,
+        orig_title: item.orig_title || null,
+        poster: item.poster_url,
+        high_res_poster: null,
+        imdb_rating: null,
+        kp_rating: null,
+        description: `Офлайн-файл: ${item.file_path}`,
+        info_table: [
+          ["Формат", "MP4 (Офлайн)"],
+          ["Якість", item.quality],
+          ["Розмір", `${(item.total_bytes / (1024 * 1024)).toFixed(1)} MB`],
+          ["Озвучення", item.translator_name || "За замовчуванням"],
+        ],
+        translators,
+        seasons,
+        episodes: episodesList,
+        initial_streams: streamData,
+        is_offline: true,
+      };
+
+      setActivePlayerDetails(offlineDetails);
+      setActiveTranslatorId(item.translator_id || translators[0]?.id);
+      setActiveSeason(item.season || 1);
+      setActiveEpisode(item.episode || 1);
+      setInitialPositionSec(0);
+      setPlayerMode("full");
+    } catch (err) {
+      console.error("Failed to play offline download:", err);
+    }
+  }, []);
+
   // Handle in-player translator change for series
   const handlePlayerTranslatorChange = async (tId: string) => {
     setActiveTranslatorId(tId);
     if (!activePlayerDetails) return;
+    if (activePlayerDetails.is_offline) return;
 
     if (activePlayerDetails.seasons && activePlayerDetails.seasons.length > 0) {
       try {
@@ -444,6 +591,7 @@ export default function App() {
           onOpenSettings={() => setIsMirrorModalOpen(true)}
           mirrorStatus={mirrorStatus}
           activeMirrorUrl={settings?.active_mirror || "https://rezka-tv.org"}
+          activeDownloadsCount={activeDownloadsCount}
         />
       )}
 
@@ -455,6 +603,8 @@ export default function App() {
             onPlayDirect={handleDirectPlay}
             refreshKey={`${bookmarksRefreshKey}-${isDetailsOpen}`}
           />
+        ) : activeTab === "downloads" ? (
+          <DownloadsView onPlayDownload={handlePlayDownload} />
         ) : catalogError ? (
           <div className="flex-1 flex flex-col items-center justify-center py-32 px-6 text-center space-y-4">
             <div className="w-16 h-16 rounded-3xl bg-rose-950/40 border border-rose-500/30 flex items-center justify-center text-rose-500">
@@ -462,13 +612,19 @@ export default function App() {
             </div>
             <h3 className="text-xl font-bold text-white">Помилка завантаження</h3>
             <p className="text-xs text-zinc-400 max-w-md">{catalogError}</p>
-            <div className="flex items-center gap-3 pt-2">
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
               <button
                 onClick={loadCatalog}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs transition-colors cursor-pointer"
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs transition-colors cursor-pointer shadow-lg shadow-rose-950/50"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>Спробувати знову</span>
+              </button>
+              <button
+                onClick={() => setActiveTab("downloads")}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs transition-colors cursor-pointer shadow-lg shadow-cyan-950/50"
+              >
+                <span>Офлайн-завантаження</span>
               </button>
               <button
                 onClick={() => setIsMirrorModalOpen(true)}

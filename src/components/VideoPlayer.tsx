@@ -47,7 +47,7 @@ import { cn } from "../lib/utils";
 import { VideoEnhanceMode, VideoShaderRenderer } from "../utils/videoShaders";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 
 export interface ThumbnailCue {
   start: number;
@@ -1048,14 +1048,48 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       setLoopB(null);
 
       try {
-        const data = await api.getStream(
-          details.id,
-          details.url,
-          isSeries,
-          effectiveTranslatorId,
-          isSeries ? activeSeason || 1 : undefined,
-          isSeries ? activeEpisode || 1 : undefined
-        );
+        let data: StreamData | null = null;
+        if (details.is_offline) {
+          const allDownloads = await api.getDownloads();
+          const target =
+            allDownloads.find(
+              (d) =>
+                d.media_id === details.id &&
+                d.status === "completed" &&
+                (!effectiveTranslatorId || d.translator_id === effectiveTranslatorId) &&
+                (!isSeries || ((d.season ?? 1) === (activeSeason || 1) && (d.episode ?? 1) === (activeEpisode || 1)))
+            ) ||
+            allDownloads.find(
+              (d) =>
+                d.media_id === details.id &&
+                d.status === "completed" &&
+                (!isSeries || ((d.season ?? 1) === (activeSeason || 1) && (d.episode ?? 1) === (activeEpisode || 1)))
+            );
+
+          if (target) {
+            data = {
+              qualities: [
+                {
+                  label: target.quality || "1080p",
+                  hls_url: null,
+                  mp4_url: convertFileSrc(target.file_path),
+                },
+              ],
+              subtitles: [],
+              default_quality: target.quality || "1080p",
+              thumbnails: null,
+            };
+          }
+        } else {
+          data = await api.getStream(
+            details.id,
+            details.url,
+            isSeries,
+            effectiveTranslatorId,
+            isSeries ? activeSeason || 1 : undefined,
+            isSeries ? activeEpisode || 1 : undefined
+          );
+        }
 
         if (isCancelled || reqId !== streamRequestIdRef.current) {
           return;

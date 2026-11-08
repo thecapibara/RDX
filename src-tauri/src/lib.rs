@@ -1,6 +1,7 @@
 pub mod audio;
 pub mod client;
 pub mod commands;
+pub mod downloader;
 pub mod mirror;
 pub mod mpris;
 pub mod parser;
@@ -34,7 +35,8 @@ pub fn run() {
     );
 
     let mpris = Arc::new(MprisState::new());
-    let state = AppState { storage, client, mpris };
+    let downloader = Arc::new(downloader::DownloadManager::new(storage.clone()));
+    let state = AppState { storage, client, mpris, downloader };
 
     tauri::Builder::default()
         .manage(state)
@@ -80,6 +82,13 @@ pub fn run() {
             commands::get_continue_watching,
             commands::delete_watch_progress,
             commands::get_episode_progress,
+            commands::start_download,
+            commands::pause_download,
+            commands::resume_download,
+            commands::cancel_download,
+            commands::delete_download,
+            commands::get_downloads,
+            commands::get_downloads_dir,
             commands::toggle_bookmark,
             commands::get_bookmarks,
             commands::is_bookmarked,
