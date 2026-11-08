@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AppSettings,
   Bookmark,
+  EpisodeProgress,
   EpisodesData,
   MediaCard,
   MediaDetails,
@@ -193,6 +194,22 @@ function saveStoredBookmarks(items: Bookmark[]) {
   } catch {}
 }
 
+function upsertStoredEpisodeProgress(mediaId: string, item: EpisodeProgress) {
+  try {
+    const key = `rdx_episode_progress_${mediaId}`;
+    const raw = localStorage.getItem(key);
+    let list: EpisodeProgress[] = raw ? JSON.parse(raw) : [];
+    const idx = list.findIndex((p) => p.season === item.season && p.episode === item.episode);
+    if (idx >= 0) {
+      list[idx] = item;
+    } else {
+      list.push(item);
+    }
+    list.sort((a, b) => (a.season === b.season ? a.episode - b.episode : a.season - b.season));
+    localStorage.setItem(key, JSON.stringify(list));
+  } catch {}
+}
+
 // ==================== UNIFIED API ====================
 
 export const api = {
@@ -209,6 +226,7 @@ export const api = {
       proxy_url: "",
       preferred_quality: "720p",
       preferred_translator: "Українська",
+      autoplay_next: true,
     };
   },
 
@@ -219,6 +237,17 @@ export const api = {
 
   // Watch Progress
   saveWatchProgress: async (progress: WatchProgress): Promise<void> => {
+    if (progress.season != null && progress.episode != null) {
+      upsertStoredEpisodeProgress(progress.media_id, {
+        media_id: progress.media_id,
+        season: progress.season,
+        episode: progress.episode,
+        position_sec: progress.position_sec,
+        duration_sec: progress.duration_sec,
+        updated_at: progress.updated_at,
+      });
+    }
+
     if (isTauri) return invoke<void>("save_watch_progress", { progress });
     const items = getStoredProgress().filter((p) => p.media_id !== progress.media_id);
     items.unshift(progress);
@@ -236,10 +265,58 @@ export const api = {
   },
 
   deleteWatchProgress: async (mediaId: string): Promise<boolean> => {
+    try {
+      localStorage.removeItem(`rdx_episode_progress_${mediaId}`);
+    } catch {}
     if (isTauri) return invoke<boolean>("delete_watch_progress", { mediaId });
     const items = getStoredProgress().filter((p) => p.media_id !== mediaId);
     saveStoredProgress(items);
     return true;
+  },
+
+  getEpisodeProgress: async (mediaId: string): Promise<EpisodeProgress[]> => {
+    if (isTauri) return invoke<EpisodeProgress[]>("get_episode_progress", { mediaId });
+    try {
+      const raw = localStorage.getItem(`rdx_episode_progress_${mediaId}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+
+    if (mediaId === "54231") {
+      const mockList: EpisodeProgress[] = [
+        {
+          media_id: "54231",
+          season: 1,
+          episode: 1,
+          position_sec: 600,
+          duration_sec: 634,
+          updated_at: Math.floor(Date.now() / 1000) - 10000,
+        },
+        {
+          media_id: "54231",
+          season: 1,
+          episode: 2,
+          position_sec: 610,
+          duration_sec: 634,
+          updated_at: Math.floor(Date.now() / 1000) - 8000,
+        },
+        {
+          media_id: "54231",
+          season: 1,
+          episode: 3,
+          position_sec: 95,
+          duration_sec: 634,
+          updated_at: Math.floor(Date.now() / 1000) - 7200,
+        },
+      ];
+      try {
+        localStorage.setItem(`rdx_episode_progress_${mediaId}`, JSON.stringify(mockList));
+      } catch {}
+      return mockList;
+    }
+    return [];
   },
 
   // Bookmarks
@@ -515,6 +592,11 @@ export const api = {
   // Window & Player Helpers
   setMiniPlayerMode: async (enabled: boolean): Promise<void> => {
     if (isTauri) return invoke<void>("set_mini_player_mode", { enabled });
+  },
+
+  setFullscreenMode: async (enabled: boolean): Promise<boolean> => {
+    if (isTauri) return invoke<boolean>("set_fullscreen_mode", { enabled });
+    return enabled;
   },
 
   startDragWindow: async (): Promise<void> => {

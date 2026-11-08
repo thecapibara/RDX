@@ -5,6 +5,16 @@ export interface AppSettings {
   preferred_quality: string;
   preferred_translator: string;
   startup_sound?: boolean;
+  autoplay_next?: boolean;
+}
+
+export interface EpisodeProgress {
+  media_id: string;
+  season: number;
+  episode: number;
+  position_sec: number;
+  duration_sec: number;
+  updated_at: number;
 }
 
 export interface WatchProgress {

@@ -7,7 +7,7 @@ use crate::mirror::{MirrorManager, MirrorStatus, SmartRotationResult, PRESET_MIR
 use crate::parser::{
     EpisodeTab, MediaCard, MediaDetails, RezkaParser, SearchItem, SeasonTab, StreamData,
 };
-use crate::storage::{AppSettings, Bookmark, Storage, WatchProgress};
+use crate::storage::{AppSettings, Bookmark, EpisodeProgress, Storage, WatchProgress};
 
 pub struct AppState {
     pub storage: Arc<Storage>,
@@ -53,6 +53,14 @@ pub async fn get_continue_watching(state: State<'_, AppState>, limit: Option<usi
 #[tauri::command]
 pub async fn delete_watch_progress(state: State<'_, AppState>, media_id: String) -> Result<bool, String> {
     state.storage.delete_watch_progress(&media_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_episode_progress(
+    state: State<'_, AppState>,
+    media_id: String,
+) -> Result<Vec<EpisodeProgress>, String> {
+    state.storage.get_episode_progress(&media_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -376,6 +384,38 @@ pub async fn set_mini_player_mode(app_handle: AppHandle, enabled: bool) -> Resul
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn set_fullscreen_mode(app_handle: AppHandle, enabled: bool) -> Result<bool, String> {
+    let window = app_handle
+        .get_webview_window("main")
+        .ok_or_else(|| "Main window not found".to_string())?;
+
+    let _ = window.set_fullscreen(enabled);
+
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var_os("NIRI_SOCKET").is_some() {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            if let (Ok(win_size), Ok(Some(monitor))) = (window.inner_size(), window.current_monitor()) {
+                let mon_size = monitor.size();
+                let is_currently_full = win_size.width >= mon_size.width.saturating_sub(2)
+                    && win_size.height >= mon_size.height.saturating_sub(2);
+                if enabled && !is_currently_full {
+                    let _ = std::process::Command::new("niri")
+                        .args(["msg", "action", "fullscreen-window"])
+                        .status();
+                } else if !enabled && is_currently_full {
+                    let _ = std::process::Command::new("niri")
+                        .args(["msg", "action", "fullscreen-window"])
+                        .status();
+                }
+            }
+        }
+    }
+
+    Ok(enabled)
 }
 
 #[tauri::command]

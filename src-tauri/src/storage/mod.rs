@@ -12,6 +12,8 @@ pub struct AppSettings {
     pub preferred_translator: String,
     #[serde(default = "default_true")]
     pub startup_sound: bool,
+    #[serde(default = "default_true")]
+    pub autoplay_next: bool,
 }
 
 fn default_true() -> bool {
@@ -31,6 +33,7 @@ impl Default for AppSettings {
             preferred_quality: "720p".to_string(),
             preferred_translator: "".to_string(),
             startup_sound: true,
+            autoplay_next: true,
         }
     }
 }
@@ -47,6 +50,16 @@ pub struct WatchProgress {
     pub translator_name: Option<String>,
     pub season: Option<i32>,
     pub episode: Option<i32>,
+    pub position_sec: f64,
+    pub duration_sec: f64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EpisodeProgress {
+    pub media_id: String,
+    pub season: i32,
+    pub episode: i32,
     pub position_sec: f64,
     pub duration_sec: f64,
     pub updated_at: i64,
@@ -132,8 +145,19 @@ impl Storage {
                 added_at INTEGER NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS episode_progress (
+                media_id TEXT NOT NULL,
+                season INTEGER NOT NULL,
+                episode INTEGER NOT NULL,
+                position_sec REAL NOT NULL,
+                duration_sec REAL NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (media_id, season, episode)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_watch_progress_updated_at ON watch_progress (updated_at DESC);
             CREATE INDEX IF NOT EXISTS idx_bookmarks_category ON bookmarks (category);
+            CREATE INDEX IF NOT EXISTS idx_episode_progress_media ON episode_progress (media_id);
             "#,
         )?;
 
@@ -146,6 +170,7 @@ impl Storage {
             ("preferred_quality", defaults.preferred_quality),
             ("preferred_translator", defaults.preferred_translator),
             ("startup_sound", if defaults.startup_sound { "true".to_string() } else { "false".to_string() }),
+            ("autoplay_next", if defaults.autoplay_next { "true".to_string() } else { "false".to_string() }),
         ];
 
         for (key, val) in init_settings {
@@ -184,6 +209,7 @@ impl Storage {
                 "preferred_quality" => defaults.preferred_quality = value,
                 "preferred_translator" => defaults.preferred_translator = value,
                 "startup_sound" => defaults.startup_sound = value != "false",
+                "autoplay_next" => defaults.autoplay_next = value != "false",
                 _ => {}
             }
         }
@@ -196,6 +222,7 @@ impl Storage {
         let custom_mirrors_json = serde_json::to_string(&settings.custom_mirrors)
             .unwrap_or_else(|_| "[]".to_string());
         let sound_str = if settings.startup_sound { "true" } else { "false" };
+        let autoplay_str = if settings.autoplay_next { "true" } else { "false" };
 
         let pairs = [
             ("active_mirror", settings.active_mirror.as_str()),
@@ -204,6 +231,7 @@ impl Storage {
             ("preferred_quality", settings.preferred_quality.as_str()),
             ("preferred_translator", settings.preferred_translator.as_str()),
             ("startup_sound", sound_str),
+            ("autoplay_next", autoplay_str),
         ];
 
         let tx = conn.transaction()?;
@@ -261,6 +289,28 @@ impl Storage {
                 progress.updated_at,
             ],
         )?;
+
+        if let (Some(season), Some(episode)) = (progress.season, progress.episode) {
+            conn.execute(
+                r#"
+                INSERT INTO episode_progress (media_id, season, episode, position_sec, duration_sec, updated_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                ON CONFLICT(media_id, season, episode) DO UPDATE SET
+                    position_sec = excluded.position_sec,
+                    duration_sec = excluded.duration_sec,
+                    updated_at = excluded.updated_at
+                "#,
+                params![
+                    progress.media_id,
+                    season,
+                    episode,
+                    progress.position_sec,
+                    progress.duration_sec,
+                    progress.updated_at,
+                ],
+            )?;
+        }
+
         Ok(())
     }
 
@@ -338,8 +388,38 @@ impl Storage {
 
     pub fn delete_watch_progress(&self, media_id: &str) -> SqlResult<bool> {
         let conn = self.conn.lock().unwrap();
+        let _ = conn.execute("DELETE FROM episode_progress WHERE media_id = ?1", params![media_id]);
         let rows = conn.execute("DELETE FROM watch_progress WHERE media_id = ?1", params![media_id])?;
         Ok(rows > 0)
+    }
+
+    pub fn get_episode_progress(&self, media_id: &str) -> SqlResult<Vec<EpisodeProgress>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT media_id, season, episode, position_sec, duration_sec, updated_at
+            FROM episode_progress
+            WHERE media_id = ?1
+            ORDER BY season ASC, episode ASC
+            "#,
+        )?;
+
+        let rows = stmt.query_map(params![media_id], |row| {
+            Ok(EpisodeProgress {
+                media_id: row.get(0)?,
+                season: row.get(1)?,
+                episode: row.get(2)?,
+                position_sec: row.get(3)?,
+                duration_sec: row.get(4)?,
+                updated_at: row.get(5)?,
+            })
+        })?;
+
+        let mut list = Vec::new();
+        for item in rows {
+            list.push(item?);
+        }
+        Ok(list)
     }
 
     // --- Bookmarks API ---
@@ -553,5 +633,75 @@ mod tests {
         let removed = storage.toggle_bookmark(&bookmark).expect("toggle bookmark again");
         assert!(!removed);
         assert_eq!(storage.is_bookmarked("456").unwrap(), None);
+    }
+
+    #[test]
+    fn test_episode_progress_and_autoplay() {
+        let storage = Storage::in_memory().expect("in memory db");
+        let settings = storage.get_settings().expect("get settings");
+        assert!(settings.autoplay_next);
+
+        let mut updated_settings = settings;
+        updated_settings.autoplay_next = false;
+        storage.update_settings(&updated_settings).expect("update settings");
+        let reloaded = storage.get_settings().expect("reload settings");
+        assert!(!reloaded.autoplay_next);
+
+        let ep1 = WatchProgress {
+            media_id: "series_1".to_string(),
+            media_url: "/series/1.html".to_string(),
+            title: "Series 1".to_string(),
+            orig_title: None,
+            poster_url: "https://example.com/p.jpg".to_string(),
+            media_type: "series".to_string(),
+            translator_id: Some("1".to_string()),
+            translator_name: Some("Dub".to_string()),
+            season: Some(1),
+            episode: Some(1),
+            position_sec: 120.0,
+            duration_sec: 2400.0,
+            updated_at: 1000,
+        };
+
+        let ep2 = WatchProgress {
+            media_id: "series_1".to_string(),
+            media_url: "/series/1.html".to_string(),
+            title: "Series 1".to_string(),
+            orig_title: None,
+            poster_url: "https://example.com/p.jpg".to_string(),
+            media_type: "series".to_string(),
+            translator_id: Some("1".to_string()),
+            translator_name: Some("Dub".to_string()),
+            season: Some(1),
+            episode: Some(2),
+            position_sec: 300.0,
+            duration_sec: 2400.0,
+            updated_at: 2000,
+        };
+
+        storage.save_watch_progress(&ep1).expect("save ep1");
+        storage.save_watch_progress(&ep2).expect("save ep2");
+
+        let progress_list = storage.get_episode_progress("series_1").expect("get ep progress");
+        assert_eq!(progress_list.len(), 2);
+        assert_eq!(progress_list[0].season, 1);
+        assert_eq!(progress_list[0].episode, 1);
+        assert_eq!(progress_list[0].position_sec, 120.0);
+        assert_eq!(progress_list[1].season, 1);
+        assert_eq!(progress_list[1].episode, 2);
+        assert_eq!(progress_list[1].position_sec, 300.0);
+
+        // Update ep1 progress
+        let mut ep1_updated = ep1;
+        ep1_updated.position_sec = 2350.0;
+        storage.save_watch_progress(&ep1_updated).expect("update ep1");
+        let updated_list = storage.get_episode_progress("series_1").expect("get ep progress");
+        assert_eq!(updated_list.len(), 2);
+        assert_eq!(updated_list[0].position_sec, 2350.0);
+
+        // Delete test
+        storage.delete_watch_progress("series_1").expect("delete");
+        let empty_list = storage.get_episode_progress("series_1").expect("get ep progress");
+        assert!(empty_list.is_empty());
     }
 }
