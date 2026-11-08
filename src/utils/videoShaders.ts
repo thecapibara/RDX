@@ -46,75 +46,43 @@ float luma(vec3 color) {
     return dot(color, vec3(0.2126, 0.7152, 0.0722));
 }
 
-// 1. Deband algorithm with pseudo-random spatial dithering
-vec3 applyDeband(vec2 uv, vec2 dxdy, vec3 origColor) {
-    float r = rand(uv);
-    float angle = r * 6.2831853;
-    float radius = 12.0 + r * 6.0;
+// 1. Cinema-grade Deband: Gentle gradient smoothing on flat regions without edge smearing
+vec3 applyDeband(vec2 uv, vec2 dxdy, vec3 orig) {
+    vec3 s1 = texture2D(u_image, uv + vec2( 3.5,  0.0) * dxdy).rgb;
+    vec3 s2 = texture2D(u_image, uv + vec2(-3.5,  0.0) * dxdy).rgb;
+    vec3 s3 = texture2D(u_image, uv + vec2( 0.0,  3.5) * dxdy).rgb;
+    vec3 s4 = texture2D(u_image, uv + vec2( 0.0, -3.5) * dxdy).rgb;
 
-    vec2 dir1 = vec2(cos(angle), sin(angle)) * dxdy * radius;
-    vec2 dir2 = vec2(-sin(angle), cos(angle)) * dxdy * (radius * 0.75);
-    vec2 dir3 = -dir1 * 0.85;
-    vec2 dir4 = -dir2 * 0.85;
+    vec3 avg = (s1 + s2 + s3 + s4) * 0.25;
+    vec3 diff = abs(avg - orig);
 
-    vec3 s1 = texture2D(u_image, uv + dir1).rgb;
-    vec3 s2 = texture2D(u_image, uv + dir2).rgb;
-    vec3 s3 = texture2D(u_image, uv + dir3).rgb;
-    vec3 s4 = texture2D(u_image, uv + dir4).rgb;
-
-    float threshold = u_deband_threshold;
-    vec3 avg = origColor;
-    float totalWeight = 1.0;
-
-    if (max(max(abs(s1.r - origColor.r), abs(s1.g - origColor.g)), abs(s1.b - origColor.b)) < threshold) {
-        avg += s1;
-        totalWeight += 1.0;
+    // Only smooth if difference is below threshold (preserves faces, eyes, and real edges)
+    if (max(max(diff.r, diff.g), diff.b) < u_deband_threshold) {
+        return mix(orig, avg, 0.65);
     }
-    if (max(max(abs(s2.r - origColor.r), abs(s2.g - origColor.g)), abs(s2.b - origColor.b)) < threshold) {
-        avg += s2;
-        totalWeight += 1.0;
-    }
-    if (max(max(abs(s3.r - origColor.r), abs(s3.g - origColor.g)), abs(s3.b - origColor.b)) < threshold) {
-        avg += s3;
-        totalWeight += 1.0;
-    }
-    if (max(max(abs(s4.r - origColor.r), abs(s4.g - origColor.g)), abs(s4.b - origColor.b)) < threshold) {
-        avg += s4;
-        totalWeight += 1.0;
-    }
-
-    vec3 debanded = avg / totalWeight;
-
-    // Subtle dither noise to prevent re-quantization
-    float dither = (rand(uv * 1.5) - 0.5) * (2.0 / 255.0);
-    return clamp(debanded + vec3(dither), 0.0, 1.0);
+    return orig;
 }
 
-// 2. AMD Contrast Adaptive Sharpening (CAS)
+// 2. Official AMD Contrast Adaptive Sharpening (CAS): Adaptive unsharp without halos or glowing rings
 vec3 applyCAS(vec2 uv, vec2 dxdy, vec3 center) {
     // Sample cardinal neighbors
-    vec3 a = texture2D(u_image, uv + vec2(0.0, -dxdy.y)).rgb;
-    vec3 b = texture2D(u_image, uv + vec2(-dxdy.x, 0.0)).rgb;
-    vec3 c = texture2D(u_image, uv + vec2(dxdy.x, 0.0)).rgb;
-    vec3 d = texture2D(u_image, uv + vec2(0.0, dxdy.y)).rgb;
+    vec3 a = texture2D(u_image, uv + vec2( 0.0, -dxdy.y)).rgb;
+    vec3 b = texture2D(u_image, uv + vec2(-dxdy.x,  0.0)).rgb;
+    vec3 c = texture2D(u_image, uv + vec2( dxdy.x,  0.0)).rgb;
+    vec3 d = texture2D(u_image, uv + vec2( 0.0,  dxdy.y)).rgb;
 
-    // Corner samples for robust contrast range
-    vec3 e = texture2D(u_image, uv + vec2(-dxdy.x, -dxdy.y)).rgb;
-    vec3 f = texture2D(u_image, uv + vec2(dxdy.x, -dxdy.y)).rgb;
-    vec3 g = texture2D(u_image, uv + vec2(-dxdy.x, dxdy.y)).rgb;
-    vec3 h = texture2D(u_image, uv + vec2(dxdy.x, dxdy.y)).rgb;
-
-    vec3 minRGB = min(min(min(a, b), min(c, d)), min(center, min(min(e, f), min(g, h))));
-    vec3 maxRGB = max(max(max(a, b), max(c, d)), max(center, max(max(e, f), max(g, h))));
+    // Strict local contrast bounds to prevent any overshoot/halos
+    vec3 minRGB = min(min(min(a, b), min(c, d)), center);
+    vec3 maxRGB = max(max(max(a, b), max(c, d)), center);
 
     float minLuma = luma(minRGB);
     float maxLuma = luma(maxRGB);
 
-    // Adaptive sharpening weight (suppresses ringing in high-contrast edges)
+    // AMD CAS adaptive weight curve
     float amp = clamp(min(minLuma, 1.0 - maxLuma) / max(maxLuma, 0.0001), 0.0, 1.0);
-    float w = -sqrt(amp) * (u_sharpness * 0.45);
+    float w = amp * (-0.12 - 0.08 * clamp(u_sharpness, 0.0, 1.0));
 
-    // Filter output
+    // Filter output clamped strictly inside local RGB bounds
     vec3 filtered = (center + w * (a + b + c + d)) / (1.0 + 4.0 * w);
     return clamp(filtered, minRGB, maxRGB);
 }
@@ -146,8 +114,8 @@ export class VideoShaderRenderer {
   private program: WebGLProgram | null = null;
   private texture: WebGLTexture | null = null;
   private mode: VideoEnhanceMode = "off";
-  private sharpness = 0.95;
-  private debandThreshold = 0.045;
+  private sharpness = 0.85;
+  private debandThreshold = 0.015;
   private startTime = Date.now();
   private animFrameId: number | null = null;
   private isDestroyed = false;
