@@ -54,6 +54,18 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   }, [query]);
 
   useEffect(() => {
+    if (!isOpen) return;
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [isOpen, onClose]);
+
+  useEffect(() => {
     if (isOpen) {
       const prevBodyOverflow = document.body.style.overflow;
       const prevHtmlOverflow = document.documentElement.style.overflow;
@@ -78,6 +90,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   return (
     <div
       onClick={onClose}
+      data-modal-open="true"
       className="fixed inset-0 z-50 bg-[var(--bg-base,#000000)]/98 flex flex-col overflow-y-auto select-none backdrop-blur-md transition-colors duration-250"
     >
       {/* Top Search Input Bar */}

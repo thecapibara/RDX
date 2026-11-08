@@ -113,6 +113,8 @@ export interface MediaDetails {
   url: string;
   title: string;
   orig_title: string | null;
+  year?: string;
+  countries?: string[];
   poster: string;
   high_res_poster: string | null;
   imdb_rating: string | null;

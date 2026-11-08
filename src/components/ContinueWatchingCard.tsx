@@ -1,5 +1,5 @@
-import React from "react";
-import { Play, X } from "lucide-react";
+import React, { useState } from "react";
+import { Play, X, Loader2 } from "lucide-react";
 import type { WatchProgress } from "../types";
 import { playHoverSound } from "../services/sound";
 
@@ -26,6 +26,19 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
   onResume,
   onRemove,
 }) => {
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleResumeClick = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (isLoading) return;
+    setIsLoading(true);
+    try {
+      await onResume(item);
+    } finally {
+      setTimeout(() => setIsLoading(false), 5000);
+    }
+  };
+
   const progressPercent =
     item.duration_sec > 0
       ? Math.min(100, Math.max(0, (item.position_sec / item.duration_sec) * 100))
@@ -42,7 +55,7 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
       className="group relative flex-shrink-0 w-64 cursor-pointer select-none [contain:layout_style]"
     >
       <div
-        onClick={() => onResume(item)}
+        onClick={handleResumeClick}
         className="relative aspect-video w-full overflow-hidden rounded-2xl bg-zinc-900 border border-white/10 shadow-md transition-transform duration-200 ease-out transform-gpu group-hover:scale-[1.03] group-hover:border-rose-500/50"
       >
         <img
@@ -53,6 +66,7 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
           decoding="async"
           className="h-full w-full object-cover pointer-events-none select-none"
           onError={(e) => {
+            e.currentTarget.onerror = null;
             (e.currentTarget as HTMLImageElement).src =
               "data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22320%22%20height%3D%22180%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20fill%3D%22%2318181b%22%20width%3D%22320%22%20height%3D%22180%22%2F%3E%3Ctext%20fill%3D%22%2371717a%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3ERDX%3C%2Ftext%3E%3C%2Fsvg%3E";
           }}
@@ -82,8 +96,15 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
 
         {/* Center Resume Play Button on Hover */}
         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 pointer-events-none">
-          <div className="w-11 h-11 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-lg pointer-events-auto hover:bg-rose-500 hover:scale-110 active:scale-95 transition-transform duration-150">
-            <Play className="w-5 h-5 fill-current ml-0.5" />
+          <div
+            onClick={handleResumeClick}
+            className="w-11 h-11 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-lg pointer-events-auto hover:bg-rose-500 hover:scale-110 active:scale-95 transition-transform duration-150 cursor-pointer"
+          >
+            {isLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <Play className="w-5 h-5 fill-current ml-0.5" />
+            )}
           </div>
         </div>
 
@@ -100,7 +121,7 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
         {/* Progress Bar at the bottom edge */}
         <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-zinc-800/90 overflow-hidden pointer-events-none">
           <div
-            className="h-full bg-gradient-to-r from-red-600 via-rose-500 to-amber-400"
+            className="h-full bg-gradient-to-r from-rose-600 via-rose-500 to-amber-400"
             style={{ width: `${progressPercent}%` }}
           />
         </div>

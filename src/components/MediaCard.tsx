@@ -1,5 +1,5 @@
-import React from "react";
-import { Play, Star } from "lucide-react";
+import React, { useState } from "react";
+import { Play, Star, Loader2 } from "lucide-react";
 import type { MediaCard as MediaCardType } from "../types";
 import { cn } from "../lib/utils";
 import { playHoverSound } from "../services/sound";
@@ -17,6 +17,23 @@ export const MediaCard: React.FC<MediaCardProps> = React.memo(({
   onPlayDirect,
   className,
 }) => {
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handlePlayClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isLoading) return;
+    if (onPlayDirect) {
+      setIsLoading(true);
+      try {
+        await onPlayDirect(card);
+      } finally {
+        setTimeout(() => setIsLoading(false), 5000);
+      }
+    } else {
+      onSelect(card);
+    }
+  };
+
   const entityType = card.entity_type?.toLowerCase() || "";
   let typeLabel = "Фільм";
   let typeBadgeClass = "bg-indigo-600 text-white";
@@ -51,6 +68,7 @@ export const MediaCard: React.FC<MediaCardProps> = React.memo(({
           decoding="async"
           className="h-full w-full object-cover pointer-events-none select-none"
           onError={(e) => {
+            e.currentTarget.onerror = null;
             (e.currentTarget as HTMLImageElement).src =
               "data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22200%22%20height%3D%22300%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20fill%3D%22%2318181b%22%20width%3D%22200%22%20height%3D%22300%22%2F%3E%3Ctext%20fill%3D%22%2371717a%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3ERDX%3C%2Ftext%3E%3C%2Fsvg%3E";
           }}
@@ -80,18 +98,15 @@ export const MediaCard: React.FC<MediaCardProps> = React.memo(({
         {/* Center Hover Action */}
         <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10 pointer-events-none">
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (onPlayDirect) {
-                onPlayDirect(card);
-              } else {
-                onSelect(card);
-              }
-            }}
-            className="w-12 h-12 rounded-full bg-rose-600 text-white flex items-center justify-center pointer-events-auto hover:bg-rose-500 active:scale-95"
+            onClick={handlePlayClick}
+            className="w-12 h-12 rounded-full bg-rose-600 text-white flex items-center justify-center pointer-events-auto hover:bg-rose-500 active:scale-95 cursor-pointer"
             title="Дивитися зараз"
           >
-            <Play className="w-5 h-5 fill-current ml-0.5" />
+            {isLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <Play className="w-5 h-5 fill-current ml-0.5" />
+            )}
           </button>
         </div>
 

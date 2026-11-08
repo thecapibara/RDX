@@ -268,7 +268,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
   // Episodes for current selected season
   const currentSeasonEpisodes =
     details?.episodes.filter(
-      (ep) => ep.season_id === String(selectedSeason)
+      (ep) => Number(ep.season_id) === Number(selectedSeason)
     ) || [];
 
   // Check if media is actually available to stream (or is an upcoming unreleased title "В очікуванні")
@@ -325,7 +325,10 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
     }) || [];
 
   return (
-    <div className="fixed inset-0 z-50 bg-[var(--bg-base,#000000)] overflow-y-auto overflow-x-hidden select-none transition-colors duration-250">
+    <div
+      data-modal-open="true"
+      className="fixed inset-0 z-50 bg-[var(--bg-base,#000000)] overflow-y-auto overflow-x-hidden select-none transition-colors duration-250"
+    >
       {/* Top Floating Back Button */}
       <button
         onClick={handleClose}
@@ -411,7 +414,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
               {loading && !details ? (
                 <div className="space-y-5 pt-1">
                   <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-2.5 px-7 py-3.5 rounded-2xl bg-gradient-to-r from-red-600/70 via-rose-600/70 to-rose-500/70 text-white font-bold text-sm shadow-xl shadow-rose-950/40 select-none">
+                    <div className="flex items-center gap-2.5 px-7 py-3.5 rounded-2xl bg-gradient-to-r from-rose-700/70 via-rose-600/70 to-rose-500/70 text-white font-bold text-sm shadow-xl shadow-rose-950/40 select-none">
                       <Loader2 className="w-4 h-4 animate-spin text-white" />
                       <span>Завантаження плеєра...</span>
                     </div>
@@ -468,7 +471,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                     {hasAvailableStream ? (
                       <button
                         onClick={() => handleStartPlayback()}
-                        className="flex items-center gap-2.5 px-7 py-3.5 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-rose-500 hover:from-red-500 hover:to-rose-400 text-white font-bold text-sm shadow-xl shadow-rose-950/60 active:scale-95 transition-all cursor-pointer"
+                        className="flex items-center gap-2.5 px-7 py-3.5 rounded-2xl bg-gradient-to-r from-rose-700 via-rose-600 to-rose-500 hover:from-rose-600 hover:to-rose-400 text-white font-bold text-sm shadow-xl shadow-rose-950/60 active:scale-95 transition-all cursor-pointer"
                       >
                         <Play className="w-4 h-4 fill-current" />
                         <span>
@@ -494,7 +497,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                           title: details.title,
                           poster_url: details.poster,
                           media_type: isSeries ? "series" : "movie",
-                          year_info: details.orig_title || null,
+                          year_info: details.year ? [details.year, details.countries?.[0]].filter(Boolean).join(", ") : (media?.misc_info || null),
                           rating: details.imdb_rating || details.kp_rating || null,
                           category: "favorites",
                           added_at: Math.floor(Date.now() / 1000),

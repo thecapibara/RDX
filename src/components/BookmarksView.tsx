@@ -9,11 +9,13 @@ import { playButtonClickSound } from "../services/sound";
 interface BookmarksViewProps {
   onSelectMedia: (card: MediaCardType) => void;
   onPlayDirect: (card: MediaCardType) => void;
+  refreshKey?: string | number | boolean;
 }
 
 export const BookmarksView: React.FC<BookmarksViewProps> = ({
   onSelectMedia,
   onPlayDirect,
+  refreshKey,
 }) => {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>("all");
@@ -31,7 +33,7 @@ export const BookmarksView: React.FC<BookmarksViewProps> = ({
 
   useEffect(() => {
     loadBookmarks();
-  }, [activeCategory]);
+  }, [activeCategory, refreshKey]);
 
   const categories = [
     { id: "all", label: "Усі" },

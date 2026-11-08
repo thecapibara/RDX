@@ -57,6 +57,19 @@ export default function App() {
 
   // Bookmarks check state for current media
   const [isCurrentBookmarked, setIsCurrentBookmarked] = useState(false);
+  const [bookmarksRefreshKey, setBookmarksRefreshKey] = useState(0);
+
+  // Global shortcut Ctrl+K / Cmd+K to open search anywhere, even when TopBar is hidden
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // Load initial settings and mirror status
   const initializeApp = useCallback(async () => {
@@ -194,6 +207,7 @@ export default function App() {
     try {
       const added = await api.toggleBookmark(bookmark);
       setIsCurrentBookmarked(added);
+      setBookmarksRefreshKey((k) => k + 1);
     } catch (err) {
       console.error("Failed to toggle bookmark:", err);
     }
@@ -438,6 +452,7 @@ export default function App() {
           <BookmarksView
             onSelectMedia={handleOpenDetails}
             onPlayDirect={handleDirectPlay}
+            refreshKey={`${bookmarksRefreshKey}-${isDetailsOpen}`}
           />
         ) : loadingCatalog ? (
           !isInitialBoot ? (
