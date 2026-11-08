@@ -12,7 +12,7 @@ import {
   Clock,
   Crown,
 } from "lucide-react";
-import type { Bookmark, MediaCard, MediaDetails, WatchProgress, Translator } from "../types";
+import type { Bookmark, MediaCard, MediaDetails, WatchProgress, Translator, EpisodeProgress } from "../types";
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
 import { playModalOpenSound, suppressHoverSound } from "../services/sound";
@@ -44,6 +44,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [details, setDetails] = useState<MediaDetails | null>(null);
   const [savedProgress, setSavedProgress] = useState<WatchProgress | null>(null);
+  const [episodeProgressList, setEpisodeProgressList] = useState<EpisodeProgress[]>([]);
   const [selectedTranslator, setSelectedTranslator] = useState<Translator | null>(null);
   const [selectedSeason, setSelectedSeason] = useState<number>(1);
   const [selectedEpisode, setSelectedEpisode] = useState<number>(1);
@@ -84,6 +85,9 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (document.querySelector('[data-player-mode="full"]')) {
+        return;
+      }
       if (e.key === "Escape") {
         e.preventDefault();
         if (isTranslatorDropdownOpen) {
@@ -101,6 +105,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
     if (!isOpen || !media) {
       setDetails(null);
       setSavedProgress(null);
+      setEpisodeProgressList([]);
       setSelectedTranslator(null);
       setIsTranslatorDropdownOpen(false);
       setFetchError(null);
@@ -113,9 +118,10 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
       setLoading(true);
       setFetchError(null);
       try {
-        const [det, progress] = await Promise.all([
+        const [det, progress, epProgress] = await Promise.all([
           api.getMediaDetails(media.url),
           api.getWatchProgress(media.id).catch(() => null),
+          api.getEpisodeProgress(media.id).catch(() => []),
         ]);
 
         if (!isMounted) return;
@@ -149,6 +155,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
         // Display details immediately (cuts initial load wait in half)
         setDetails(det);
         setSavedProgress(progress);
+        setEpisodeProgressList(epProgress || []);
         setLoading(false);
 
         // Default season & episode
@@ -284,13 +291,26 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
     const playSeason = season ?? selectedSeason;
     const playEp = ep ?? selectedEpisode;
 
-    const isCurrentProgress =
+    const epProg = isSeries
+      ? episodeProgressList.find(
+          (p) => p.season === playSeason && p.episode === playEp
+        )
+      : null;
+
+    let initialPos = 0;
+    if (epProg && epProg.duration_sec > 0) {
+      const pct = (epProg.position_sec / epProg.duration_sec) * 100;
+      if (pct < 90) {
+        initialPos = epProg.position_sec;
+      }
+    } else if (
       savedProgress &&
       (!isSeries ||
         (savedProgress.season === playSeason &&
-          savedProgress.episode === playEp));
-
-    const initialPos = isCurrentProgress ? savedProgress.position_sec : 0;
+          savedProgress.episode === playEp))
+    ) {
+      initialPos = savedProgress.position_sec;
+    }
 
     onPlay(
       details,
@@ -769,29 +789,59 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                   <div className="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-2.5">
                     {currentSeasonEpisodes.map((ep) => {
                       const epNum = parseInt(ep.episode_id, 10);
+                      const epSeasonNum = parseInt(ep.season_id, 10);
                       const isSelected =
-                        selectedSeason === parseInt(ep.season_id, 10) &&
+                        selectedSeason === epSeasonNum &&
                         selectedEpisode === epNum;
 
                       const isSaved =
                         savedProgress &&
-                        savedProgress.season === parseInt(ep.season_id, 10) &&
+                        savedProgress.season === epSeasonNum &&
                         savedProgress.episode === epNum;
+
+                      const epProg = episodeProgressList.find(
+                        (p) => p.season === epSeasonNum && p.episode === epNum
+                      );
+                      const progressPct =
+                        epProg && epProg.duration_sec > 0
+                          ? Math.min(100, Math.round((epProg.position_sec / epProg.duration_sec) * 100))
+                          : 0;
+                      const isWatched = progressPct >= 90;
 
                       return (
                         <button
                           key={`${ep.season_id}-${ep.episode_id}`}
                           onClick={() => {
                             setSelectedEpisode(epNum);
-                            handleStartPlayback(parseInt(ep.season_id, 10), epNum);
+                            handleStartPlayback(epSeasonNum, epNum);
                           }}
+                          data-episode-watched={isWatched ? "true" : undefined}
+                          data-episode-progress={progressPct > 0 ? progressPct : undefined}
                           className={cn(
-                            "relative flex flex-col items-center justify-center p-3.5 rounded-xl border text-xs font-medium transition-all cursor-pointer group",
+                            "relative flex flex-col items-center justify-center p-3.5 rounded-xl border text-xs font-medium transition-all cursor-pointer group overflow-hidden",
                             isSelected
                               ? "bg-rose-600 text-white border-rose-500 shadow-lg shadow-rose-950/60"
+                              : isWatched
+                              ? "bg-emerald-950/15 border-emerald-500/25 hover:bg-emerald-900/20 text-zinc-300"
                               : "bg-zinc-900/80 hover:bg-zinc-800 text-zinc-300 border-white/10"
                           )}
                         >
+                          {isWatched && (
+                            <div
+                              title="Переглянуто"
+                              className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-emerald-500/25 text-emerald-400 border border-emerald-500/40 flex items-center justify-center shadow-sm"
+                            >
+                              <Check className="w-3 h-3" />
+                            </div>
+                          )}
+
+                          {!isWatched && isSaved && (
+                            <div
+                              title="Переглядається зараз"
+                              className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"
+                            />
+                          )}
+
                           <span className="font-bold text-base">
                             {ep.episode_id}
                           </span>
@@ -805,11 +855,17 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                           >
                             серія
                           </span>
-                          {isSaved && (
-                            <div
-                              title="Переглядається зараз"
-                              className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"
-                            />
+
+                          {progressPct > 0 && (
+                            <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10 overflow-hidden rounded-b-xl">
+                              <div
+                                className={cn(
+                                  "h-full transition-all",
+                                  isWatched ? "bg-emerald-500" : "bg-rose-500"
+                                )}
+                                style={{ width: `${progressPct}%` }}
+                              />
+                            </div>
                           )}
                         </button>
                       );
