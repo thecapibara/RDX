@@ -733,11 +733,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
 
     if (videoEnhanceMode === "cas") {
-      style.filter = "url(#rdx-filter-cas) contrast(1.02)";
+      style.filter = "url(#rdx-filter-cas) contrast(1.05) saturate(1.02)";
     } else if (videoEnhanceMode === "deband") {
-      style.filter = "url(#rdx-filter-deband)";
+      style.filter = "url(#rdx-filter-deband) contrast(0.99) brightness(1.01)";
     } else if (videoEnhanceMode === "max") {
-      style.filter = "url(#rdx-filter-max) contrast(1.03)";
+      style.filter = "url(#rdx-filter-max) contrast(1.06) saturate(1.03)";
     }
 
     return style;
@@ -2076,35 +2076,31 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         className="relative w-full h-full overflow-hidden bg-black flex items-center justify-center"
       >
         {/* Hardware GPU SVG Video Filters (Deband & Adaptive CAS Sharpening) */}
-        <svg className="absolute w-0 h-0 pointer-events-none opacity-0" aria-hidden="true">
+        <svg
+          style={{ position: "absolute", width: 0, height: 0, overflow: "hidden", pointerEvents: "none" }}
+          aria-hidden="true"
+        >
           <defs>
-            {/* 1. Deband Filter: spatial dithering via feTurbulence & soft blend */}
-            <filter id="rdx-filter-deband" x="0%" y="0%" width="100%" height="100%">
-              <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="1" result="noise" />
-              <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.04 0" result="dither" />
-              <feBlend mode="overlay" in="SourceGraphic" in2="dither" />
+            {/* 1. Deband Filter: Dual-octave spatial dithering to eliminate 8-bit dark banding */}
+            <filter id="rdx-filter-deband" colorInterpolationFilters="sRGB">
+              <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="2" result="noise" />
+              <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.12 0" result="dither" />
+              <feBlend mode="screen" in="SourceGraphic" in2="dither" />
             </filter>
 
-            {/* 2. CAS Adaptive Sharpening Filter: 3x3 high-contrast unsharp convolution */}
-            <filter id="rdx-filter-cas" x="0%" y="0%" width="100%" height="100%">
-              <feConvolveMatrix
-                order="3"
-                kernelMatrix="0 -0.85 0  -0.85 4.4 -0.85  0 -0.85 0"
-                preserveAlpha="true"
-              />
+            {/* 2. CAS Adaptive Sharpening: Unsharp Mask Convolution for crisp edges & textures */}
+            <filter id="rdx-filter-cas" colorInterpolationFilters="sRGB">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="0.75" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="arithmetic" k1="0" k2="2.2" k3="-1.2" k4="0" />
             </filter>
 
-            {/* 3. Max Enhancement: Deband + Sharpening combined */}
-            <filter id="rdx-filter-max" x="0%" y="0%" width="100%" height="100%">
-              <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="1" result="noise" />
-              <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.03 0" result="dither" />
-              <feBlend mode="overlay" in="SourceGraphic" in2="dither" result="debanded" />
-              <feConvolveMatrix
-                in="debanded"
-                order="3"
-                kernelMatrix="0 -0.75 0  -0.75 4.0 -0.75  0 -0.75 0"
-                preserveAlpha="true"
-              />
+            {/* 3. Max Enhancement: Deband Dither + CAS Sharpening combined */}
+            <filter id="rdx-filter-max" colorInterpolationFilters="sRGB">
+              <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="2" result="noise" />
+              <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.08 0" result="dither" />
+              <feBlend mode="screen" in="SourceGraphic" in2="dither" result="debanded" />
+              <feGaussianBlur in="debanded" stdDeviation="0.75" result="blur" />
+              <feComposite in="debanded" in2="blur" operator="arithmetic" k1="0" k2="2.2" k3="-1.2" k4="0" />
             </filter>
           </defs>
         </svg>
