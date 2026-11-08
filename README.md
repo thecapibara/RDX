@@ -42,12 +42,31 @@
 
 ---
 
+## 📸 Скріншоти / Screenshots
+
+<p align="center">
+  <b>Головний екран (Продовжити перегляд з прогресом серій та смарт-стрічки)</b><br/>
+  <img src="assets/screenshots/home.jpg" width="100%" alt="RDX Home Screen" />
+</p>
+
+<p align="center">
+  <b>Кінотеатральний відеоплеєр (OSD, вибір озвучки, серій та якість)</b><br/>
+  <img src="assets/screenshots/player.jpg" width="100%" alt="RDX Video Player" />
+</p>
+
+<p align="center">
+  <b>Каталог фільмів (Швидкі жанрові фільтри, сортування та пагінація)</b><br/>
+  <img src="assets/screenshots/catalog.jpg" width="100%" alt="RDX Movies Catalog" />
+</p>
+
+---
+
 ## ⌨️ Player Shortcuts
 
 | Shortcut | Action |
 | :--- | :--- |
 | `Space` / `K` / Single Click | Play / Pause |
-| Double Click / `F` | Toggle Full Player ↔ Mini-Player |
+| Double Click / `F` | Toggle Fullscreen (with native Niri / Wayland tiling support) |
 | `←` / `→` | Seek **±5 seconds** |
 | `Shift + ←` / `Shift + →` | Seek **±30 seconds** |
 | `↑` / `↓` | Volume **±5%** |
