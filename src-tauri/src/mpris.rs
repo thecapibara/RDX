@@ -5,6 +5,8 @@ use souvlaki::{
     SeekDirection,
 };
 use tauri::{AppHandle, Emitter};
+#[cfg(target_os = "windows")]
+use tauri::Manager;
 
 #[derive(Default)]
 struct CachedMprisData {
@@ -37,10 +39,19 @@ impl MprisState {
             return;
         }
 
+        #[cfg(target_os = "windows")]
+        let hwnd = app
+            .get_webview_window("main")
+            .and_then(|w| w.hwnd().ok())
+            .map(|h| h.0 as *mut std::ffi::c_void);
+
+        #[cfg(not(target_os = "windows"))]
+        let hwnd = None;
+
         let config = PlatformConfig {
             dbus_name: "rdx",
             display_name: "RDX",
-            hwnd: None,
+            hwnd,
         };
 
         let mut controls = match MediaControls::new(config) {

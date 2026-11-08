@@ -1,5 +1,5 @@
-use std::sync::Arc;
-use tauri::{AppHandle, LogicalSize, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use std::sync::{Arc, Mutex, OnceLock};
+use tauri::{AppHandle, LogicalSize, Manager, PhysicalPosition, PhysicalSize, State, WebviewUrl, WebviewWindowBuilder};
 use serde::{Deserialize, Serialize};
 
 use crate::client::HttpClient;
@@ -298,6 +298,19 @@ pub async fn get_episodes(
 
 // ==================== Window & Player Helper Commands ====================
 
+#[derive(Debug, Clone, Copy)]
+struct SavedWindowState {
+    size: PhysicalSize<u32>,
+    position: PhysicalPosition<i32>,
+    is_maximized: bool,
+}
+
+static SAVED_WINDOW_STATE: OnceLock<Mutex<Option<SavedWindowState>>> = OnceLock::new();
+
+fn get_saved_window_state() -> &'static Mutex<Option<SavedWindowState>> {
+    SAVED_WINDOW_STATE.get_or_init(|| Mutex::new(None))
+}
+
 #[tauri::command]
 pub async fn set_mini_player_mode(app_handle: AppHandle, enabled: bool) -> Result<(), String> {
     let window = app_handle
@@ -305,6 +318,24 @@ pub async fn set_mini_player_mode(app_handle: AppHandle, enabled: bool) -> Resul
         .ok_or_else(|| "Main window not found".to_string())?;
 
     if enabled {
+        let is_max = window.is_maximized().unwrap_or(false);
+        let size = window.inner_size().unwrap_or_else(|_| PhysicalSize::new(1440, 900));
+        let pos = window.outer_position().unwrap_or_else(|_| PhysicalPosition::new(100, 100));
+
+        if let Ok(mut state_guard) = get_saved_window_state().lock() {
+            if state_guard.is_none() {
+                *state_guard = Some(SavedWindowState {
+                    size,
+                    position: pos,
+                    is_maximized: is_max,
+                });
+            }
+        }
+
+        if is_max {
+            let _ = window.unmaximize();
+        }
+
         let _ = window.set_min_size(Some(LogicalSize::new(320.0, 180.0)));
         let _ = window.set_always_on_top(true);
         let _ = window.set_decorations(false);
@@ -312,22 +343,36 @@ pub async fn set_mini_player_mode(app_handle: AppHandle, enabled: bool) -> Resul
 
         #[cfg(target_os = "linux")]
         {
-            let _ = std::process::Command::new("niri").args(["msg", "action", "move-window-to-floating"]).status();
-            let _ = std::process::Command::new("niri").args(["msg", "action", "set-window-width", "520"]).status();
-            let _ = std::process::Command::new("niri").args(["msg", "action", "set-window-height", "292"]).status();
+            if std::env::var_os("NIRI_SOCKET").is_some() {
+                let _ = std::process::Command::new("niri").args(["msg", "action", "move-window-to-floating"]).status();
+                let _ = std::process::Command::new("niri").args(["msg", "action", "set-window-width", "520"]).status();
+                let _ = std::process::Command::new("niri").args(["msg", "action", "set-window-height", "292"]).status();
+            }
         }
     } else {
         #[cfg(target_os = "linux")]
         {
-            let _ = std::process::Command::new("niri").args(["msg", "action", "move-window-to-tiling"]).status();
-            let _ = std::process::Command::new("niri").args(["msg", "action", "reset-window-height"]).status();
+            if std::env::var_os("NIRI_SOCKET").is_some() {
+                let _ = std::process::Command::new("niri").args(["msg", "action", "move-window-to-tiling"]).status();
+                let _ = std::process::Command::new("niri").args(["msg", "action", "reset-window-height"]).status();
+            }
         }
 
         let _ = window.set_always_on_top(false);
         let _ = window.set_decorations(true);
         let _ = window.set_min_size(Some(LogicalSize::new(960.0, 600.0)));
-        let _ = window.set_size(LogicalSize::new(1440.0, 900.0));
-        let _ = window.center();
+
+        let saved = get_saved_window_state().lock().ok().and_then(|mut g| g.take());
+        if let Some(prev) = saved {
+            let _ = window.set_size(prev.size);
+            let _ = window.set_position(prev.position);
+            if prev.is_maximized {
+                let _ = window.maximize();
+            }
+        } else {
+            let _ = window.set_size(LogicalSize::new(1440.0, 900.0));
+            let _ = window.center();
+        }
     }
 
     Ok(())

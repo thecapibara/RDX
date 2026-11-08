@@ -27,7 +27,16 @@ fn get_or_init_ui_audio_tx() -> &'static Sender<UiSoundType> {
                 return;
             };
 
+            let mut last_hover_time = std::time::Instant::now() - std::time::Duration::from_secs(1);
+
             while let Ok(sound_type) = rx.recv() {
+                if let UiSoundType::Hover = sound_type {
+                    if last_hover_time.elapsed() < std::time::Duration::from_millis(35) {
+                        continue;
+                    }
+                    last_hover_time = std::time::Instant::now();
+                }
+
                 let Ok(sink) = Sink::try_new(&stream_handle) else {
                     continue;
                 };

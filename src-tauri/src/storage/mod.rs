@@ -76,6 +76,7 @@ impl Storage {
         }
 
         let conn = Connection::open(path)?;
+        conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;")?;
         let storage = Self {
             conn: Mutex::new(conn),
         };
@@ -85,6 +86,7 @@ impl Storage {
 
     pub fn in_memory() -> SqlResult<Self> {
         let conn = Connection::open_in_memory()?;
+        conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;")?;
         let storage = Self {
             conn: Mutex::new(conn),
         };
@@ -190,7 +192,7 @@ impl Storage {
     }
 
     pub fn update_settings(&self, settings: &AppSettings) -> SqlResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let mut conn = self.conn.lock().unwrap();
         let custom_mirrors_json = serde_json::to_string(&settings.custom_mirrors)
             .unwrap_or_else(|_| "[]".to_string());
         let sound_str = if settings.startup_sound { "true" } else { "false" };
@@ -204,12 +206,16 @@ impl Storage {
             ("startup_sound", sound_str),
         ];
 
-        for (key, val) in pairs {
-            conn.execute(
+        let tx = conn.transaction()?;
+        {
+            let mut stmt = tx.prepare_cached(
                 "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = ?2",
-                params![key, val],
             )?;
+            for (key, val) in pairs {
+                stmt.execute(params![key, val])?;
+            }
         }
+        tx.commit()?;
 
         Ok(())
     }
