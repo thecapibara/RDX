@@ -77,6 +77,13 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
   const [captchaOpening, setCaptchaOpening] = useState(false);
 
   // Appearance & Sound Settings
+  const [autoplayNext, setAutoplayNext] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("rdx_autoplay_next") !== "false";
+    } catch {
+      return true;
+    }
+  });
   const [startupSound, setStartupSound] = useState<boolean>(() => {
     try {
       return localStorage.getItem("rdx_startup_sound") !== "false";
@@ -143,6 +150,11 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
       if (s.startup_sound !== undefined) {
         setStartupSound(s.startup_sound);
       }
+      const isAutoNext = s.autoplay_next !== false;
+      setAutoplayNext(isAutoNext);
+      try {
+        localStorage.setItem("rdx_autoplay_next", String(isAutoNext));
+      } catch {}
 
       const urls = Array.from(
         new Set([
@@ -331,6 +343,18 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
     } catch {}
     if (settings) {
       const updatedSettings: AppSettings = { ...settings, startup_sound: enabled };
+      setSettings(updatedSettings);
+      await api.updateSettings(updatedSettings).catch(console.warn);
+    }
+  };
+
+  const handleToggleAutoplayNext = async (enabled: boolean) => {
+    setAutoplayNext(enabled);
+    try {
+      localStorage.setItem("rdx_autoplay_next", String(enabled));
+    } catch {}
+    if (settings) {
+      const updatedSettings: AppSettings = { ...settings, autoplay_next: enabled };
       setSettings(updatedSettings);
       await api.updateSettings(updatedSettings).catch(console.warn);
     }
@@ -878,6 +902,39 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                   </div>
                 </div>
 
+                {/* Autoplay Next Episode */}
+                <div className="p-4.5 rounded-2xl bg-zinc-900/50 border border-white/8 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0">
+                        <Sparkles className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Автоматичний перехід на наступну серію</h4>
+                        <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
+                          Показувати зворотний відлік за 15 секунд до кінця та автоматично вмикати наступну серію або новий сезон
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Interactive Toggle Switch */}
+                    <label
+                      role="switch"
+                      aria-checked={autoplayNext}
+                      data-testid="autoplay-next-toggle"
+                      className="relative inline-flex items-center cursor-pointer flex-shrink-0"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={autoplayNext}
+                        onChange={(e) => handleToggleAutoplayNext(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+                    </label>
+                  </div>
+                </div>
+
                 {/* Hardware Engine Card */}
                 <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/8 space-y-2">
                   <div className="text-xs font-semibold text-zinc-300 flex items-center gap-2">
@@ -1145,7 +1202,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                     <h3 className="text-2xl font-black tracking-tight text-white flex items-baseline">
                       RDX<span className="text-rose-500">.</span>
                       <span className="text-xs font-semibold text-zinc-400 ml-2 tracking-normal">
-                        v0.7.5 (Beta)
+                        v0.8.0 (Beta)
                       </span>
                     </h3>
                     <p className="text-xs text-zinc-400 mt-1">
