@@ -71,9 +71,40 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'RDX v__VERSION__'
-          generateReleaseNotes: true
           releaseBody: |
             ## RDX v__VERSION__ — Desktop Streaming Client for HDRezka
+
+            Cross-platform native desktop streaming client built with **Rust (Tauri v2)**, **React 19**, **Tailwind CSS v4**, and **HLS.js**.
+
+            ---
+
+            ### 🚀 What's New in v__VERSION__ (EN)
+
+            #### 🎬 Smart Series Playback & Per-Episode Progress
+            - **Next Episode Autoplay & Countdown Card**: Floating glassmorphic card appears 15 seconds before the end of an episode with a live countdown bar, **"Watch Now"**, and **"Cancel"** actions (configurable in *Settings → Playback*, enabled by default).
+            - **New Season Transition Indicator**: Automatically detects when the current episode is the season finale and displays a highlighted **`🌟 NEW SEASON`** badge (`Transition to Season X, Episode 1`).
+            - **Per-Episode Watch History (`episode_progress`)**: Every episode now tracks its own playback progress in SQLite, rendering individual progress bars and emerald **Watched (`✓`)** checkmarks in both the Series Details grid and the in-player Episodes Drawer.
+
+            #### 🖥️ YouTube-Style Fullscreen, Audio Booster & Subtitles
+            - **True Fullscreen ↔ Windowed Mode**: Double-clicking the video surface, pressing `F` / `F11`, or clicking the bottom-right Fullscreen button toggles native OS Fullscreen (with automatic **Niri / Wayland tiling WM** support). Pressing `Escape` while in Fullscreen exits back to the windowed player without closing the stream.
+            - **Audio Gain Booster (up to 200%)**: Built-in Web Audio API `GainNode` amplifier (`100%`, `125%`, `150%`, `175%`, `200%`) in the player settings menu for quiet voiceovers.
+            - **Subtitle Customizer & Timeline Thumbnails**: Customize subtitle font size (`S / M / L / XL`), background opacity (`0% / 60% / 90%`), and timing offset (`±0.5s`), plus live **WebVTT sprite frame previews** when scrubbing the timeline.
+
+            #### ⚡ UI Polish, Skeleton Shimmers & Performance (v0.7.5 – v0.8.0)
+            - **Cinematic Skeleton Shimmers & Smooth Carousel Scrolling**: Shimmer placeholders during catalog loads plus horizontal wheel (`Shift + Wheel`) and mouse grab-and-drag scrolling on all swimlanes.
+            - **Backend & Storage Hardening**: SQLite WAL mode (`PRAGMA journal_mode = WAL`), cached HTML/Regex parsers via `LazyLock`, optimized Anubis PoW solver, Windows SMTC HWND media key attachment, and full window state restoration after Always-on-Top PiP.
+
+            ---
+
+            ### 🇺🇦 Що нового в RDX v__VERSION__ (UA)
+
+            - **Автоперехід на наступну серію та індикатор нового сезону**: За 15 секунд до кінця серії з'являється картка зворотного відліку з кнопками «Дивитися зараз» і «Скасувати» (можна вимкнути в *Налаштування → Відтворення*). При переході між сезонами показується спеціальний бейдж **«🌟 НОВИЙ СЕЗОН»**.
+            - **Історія перегляду кожної серії окремо (`episode_progress`)**: Кожна переглянута або розпочата серія тепер має власну смужку прогресу та зелену галочку `✓` у сітці серій і в шторці плеєра.
+            - **Повний екран як на YouTube (підтримка Niri / Wayland)**: Подвійний клік по відео або клавіша `F` перемикає справжній повноекранний режим вікна, а `Escape` виходить із повного екрана без закриття плеєра.
+            - **Підсилювач звуку до 200% та налаштування субтитрів**: Підсилення тихих озвучок через `Web Audio API GainNode` (`100%–200%`), вибір розміру шрифту, прозорості фону та зсуву часу (`±0.5с`) для субтитрів, а також прев'ю кадрів на таймлайні.
+            - **Skeleton Shimmer та оптимізація ядра**: Плавні скелетони при завантаженні каталогу, скрол каруселей мишею (`Grab & Drag` / `Shift + Коліщатко`), режим SQLite WAL та кешування парсера через `LazyLock`.
+
+            ---
 
             ### 📦 Download & Installation Guide
 
@@ -85,8 +116,6 @@ jobs:
             | **Linux (Debian/Ubuntu)** | `RDX___VERSION___amd64.deb` | Standard package for Ubuntu / Debian / Linux Mint |
             | **Linux (RPM)** | `RDX-__VERSION__-1.x86_64.rpm` | Package for Fedora / openSUSE / RHEL |
             | **macOS** | `RDX___VERSION___aarch64.dmg` | Disk Image for Apple Silicon Mac (M1/M2/M3/M4) |
-
-            ---
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
