@@ -32,6 +32,7 @@ import {
   ArrowLeft,
   Crown,
   Sparkles,
+  Moon,
 } from "lucide-react";
 import type {
   MediaDetails,
@@ -568,36 +569,73 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, [streamData?.thumbnails]);
 
-  // 5. Audio Gain Booster (up to 200%) & Subtitle Customizer
+  // 5. Audio Gain Booster (up to 200%) & Night Mode (Dialogue Compression)
   const [audioBoost, setAudioBoost] = useState<number>(1);
+  const [nightMode, setNightMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("rdx_night_mode") === "true";
+    } catch {
+      return false;
+    }
+  });
   const audioCtxRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
+  const compressorRef = useRef<DynamicsCompressorNode | null>(null);
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
 
-  const handleSelectAudioBoost = useCallback((boost: number) => {
-    setAudioBoost(boost);
-
-    if (boost > 1 && !audioCtxRef.current && videoRef.current) {
+  const ensureAudioGraph = useCallback(() => {
+    if (!audioCtxRef.current && videoRef.current) {
       try {
         const AudioCtxClass =
           window.AudioContext ||
           (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         const ctx = new AudioCtxClass();
         const source = ctx.createMediaElementSource(videoRef.current);
+        const compressor = ctx.createDynamicsCompressor();
         const gain = ctx.createGain();
-        source.connect(gain);
+
+        // Audio pipeline: source -> compressor -> gain -> destination
+        source.connect(compressor);
+        compressor.connect(gain);
         gain.connect(ctx.destination);
 
         audioCtxRef.current = ctx;
+        compressorRef.current = compressor;
         gainNodeRef.current = gain;
         sourceNodeRef.current = source;
       } catch (err) {
-        console.warn("Failed to create Web Audio GainNode:", err);
+        console.warn("Failed to create Web Audio graph:", err);
       }
     }
 
     if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
       audioCtxRef.current.resume().catch(() => {});
+    }
+  }, []);
+
+  const applyCompressorParams = useCallback((enabled: boolean) => {
+    if (!compressorRef.current || !audioCtxRef.current) return;
+    const t = audioCtxRef.current.currentTime;
+    if (enabled) {
+      // Night Mode ON: compress loud transients (explosions, gunshots), boost quiet dialogue
+      compressorRef.current.threshold.setValueAtTime(-24, t);
+      compressorRef.current.knee.setValueAtTime(30, t);
+      compressorRef.current.ratio.setValueAtTime(12, t);
+      compressorRef.current.attack.setValueAtTime(0.003, t);
+      compressorRef.current.release.setValueAtTime(0.25, t);
+    } else {
+      // Night Mode OFF: linear passthrough
+      compressorRef.current.threshold.setValueAtTime(0, t);
+      compressorRef.current.knee.setValueAtTime(0, t);
+      compressorRef.current.ratio.setValueAtTime(1, t);
+    }
+  }, []);
+
+  const handleSelectAudioBoost = useCallback((boost: number) => {
+    setAudioBoost(boost);
+    if (boost > 1) {
+      ensureAudioGraph();
+      applyCompressorParams(nightMode);
     }
 
     if (gainNodeRef.current) {
@@ -605,7 +643,27 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
 
     showHud(`🔊 Підсилення: ${Math.round(boost * 100)}%`);
-  }, []);
+  }, [ensureAudioGraph, applyCompressorParams, nightMode]);
+
+  const handleToggleNightMode = useCallback((forced?: boolean) => {
+    const next = typeof forced === "boolean" ? forced : !nightMode;
+    setNightMode(next);
+    try {
+      localStorage.setItem("rdx_night_mode", String(next));
+    } catch {}
+
+    ensureAudioGraph();
+    applyCompressorParams(next);
+    showHud(next ? "🌙 Нічний режим: Увімкнено (вирівнювання діалогів)" : "🌙 Нічний режим: Вимкнено");
+  }, [nightMode, ensureAudioGraph, applyCompressorParams]);
+
+  // Synchronize night mode on stream startup if previously enabled
+  useEffect(() => {
+    if (nightMode) {
+      ensureAudioGraph();
+      applyCompressorParams(true);
+    }
+  }, [nightMode, ensureAudioGraph, applyCompressorParams]);
 
   // 6. Video Enhancement (WebGL Deband + CAS Sharpening)
   const [videoEnhanceMode, setVideoEnhanceMode] = useState<VideoEnhanceMode>(() => {
@@ -1484,6 +1542,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         } catch {}
         audioCtxRef.current = null;
         gainNodeRef.current = null;
+        compressorRef.current = null;
         sourceNodeRef.current = null;
       }
 
@@ -3469,6 +3528,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <span>{Math.round(audioBoost * 100)}%</span>
                   <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
                 </div>
+              </button>
+
+              {/* Night Mode Toggle (Dialogue Compression) */}
+              <button
+                onClick={() => {
+                  handleToggleNightMode();
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center justify-between px-3 py-2 text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5 truncate">
+                  <Moon className={cn("w-4 h-4 flex-shrink-0", nightMode ? "text-indigo-400" : "text-zinc-400")} />
+                  <span className="truncate">Нічний режим (Діалоги)</span>
+                </div>
+                <span className={cn("text-xs font-bold font-mono", nightMode ? "text-indigo-400" : "text-zinc-500")}>
+                  {nightMode ? "Увімк" : "Вимк"}
+                </span>
               </button>
 
               {/* Video Enhancement Submenu (WebGL Deband & CAS) */}
