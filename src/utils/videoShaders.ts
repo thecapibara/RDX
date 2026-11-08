@@ -50,7 +50,7 @@ float luma(vec3 color) {
 vec3 applyDeband(vec2 uv, vec2 dxdy, vec3 origColor) {
     float r = rand(uv);
     float angle = r * 6.2831853;
-    float radius = 10.0 + r * 5.0;
+    float radius = 12.0 + r * 6.0;
 
     vec2 dir1 = vec2(cos(angle), sin(angle)) * dxdy * radius;
     vec2 dir2 = vec2(-sin(angle), cos(angle)) * dxdy * (radius * 0.75);
@@ -85,8 +85,8 @@ vec3 applyDeband(vec2 uv, vec2 dxdy, vec3 origColor) {
 
     vec3 debanded = avg / totalWeight;
 
-    // Subtle 1/255 dither noise to prevent re-quantization
-    float dither = (rand(uv * 1.5) - 0.5) * (1.5 / 255.0);
+    // Subtle dither noise to prevent re-quantization
+    float dither = (rand(uv * 1.5) - 0.5) * (2.0 / 255.0);
     return clamp(debanded + vec3(dither), 0.0, 1.0);
 }
 
@@ -112,7 +112,7 @@ vec3 applyCAS(vec2 uv, vec2 dxdy, vec3 center) {
 
     // Adaptive sharpening weight (suppresses ringing in high-contrast edges)
     float amp = clamp(min(minLuma, 1.0 - maxLuma) / max(maxLuma, 0.0001), 0.0, 1.0);
-    float w = -sqrt(amp) * (u_sharpness * 0.35);
+    float w = -sqrt(amp) * (u_sharpness * 0.45);
 
     // Filter output
     vec3 filtered = (center + w * (a + b + c + d)) / (1.0 + 4.0 * w);
@@ -146,15 +146,15 @@ export class VideoShaderRenderer {
   private program: WebGLProgram | null = null;
   private texture: WebGLTexture | null = null;
   private mode: VideoEnhanceMode = "off";
-  private sharpness = 0.85;
-  private debandThreshold = 0.035;
+  private sharpness = 0.95;
+  private debandThreshold = 0.045;
   private startTime = Date.now();
   private animFrameId: number | null = null;
-  private videoCallbackId: number | null = null;
   private isDestroyed = false;
   private isRunning = false;
   private allocatedWidth = 0;
   private allocatedHeight = 0;
+  private lastRenderedTime = -1;
   private onFrameSuccess?: () => void;
   private onFrameError?: () => void;
 
@@ -310,39 +310,29 @@ export class VideoShaderRenderer {
   }
 
   public start() {
-    if (this.isRunning || this.mode === "off" || this.isDestroyed) {
+    if (this.animFrameId !== null || this.mode === "off" || this.isDestroyed) {
       return;
     }
     this.isRunning = true;
-    this.scheduleNextFrame();
+    this.renderLoop();
   }
 
   public stop() {
     this.isRunning = false;
-    if (this.videoCallbackId !== null && "cancelVideoFrameCallback" in this.video) {
-      (this.video as any).cancelVideoFrameCallback(this.videoCallbackId);
-      this.videoCallbackId = null;
-    }
     if (this.animFrameId !== null) {
       cancelAnimationFrame(this.animFrameId);
       this.animFrameId = null;
     }
   }
 
-  private scheduleNextFrame = () => {
-    if (!this.isRunning || this.isDestroyed || this.mode === "off") return;
-
-    if ("requestVideoFrameCallback" in this.video) {
-      this.videoCallbackId = (this.video as any).requestVideoFrameCallback(() => {
-        this.renderFrame();
-        this.scheduleNextFrame();
-      });
-    } else {
-      this.animFrameId = requestAnimationFrame(() => {
-        this.renderFrame();
-        this.scheduleNextFrame();
-      });
+  private renderLoop = () => {
+    if (!this.isRunning || this.isDestroyed || this.mode === "off") {
+      this.animFrameId = null;
+      return;
     }
+
+    this.renderFrame();
+    this.animFrameId = requestAnimationFrame(this.renderLoop);
   };
 
   private ensureTextureAllocation(width: number, height: number): boolean {
@@ -389,21 +379,25 @@ export class VideoShaderRenderer {
 
     gl.useProgram(this.program);
 
-    // Update texture pixels IN-PLACE without allocating new memory!
-    gl.bindTexture(gl.TEXTURE_2D, this.texture);
-    try {
-      gl.texSubImage2D(
-        gl.TEXTURE_2D,
-        0,
-        0,
-        0,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        this.video
-      );
-    } catch {
-      if (this.onFrameError) this.onFrameError();
-      return;
+    // Update texture pixels IN-PLACE without allocating new memory
+    const curTime = this.video.currentTime;
+    if (!this.video.paused || this.lastRenderedTime !== curTime) {
+      gl.bindTexture(gl.TEXTURE_2D, this.texture);
+      try {
+        gl.texSubImage2D(
+          gl.TEXTURE_2D,
+          0,
+          0,
+          0,
+          gl.RGBA,
+          gl.UNSIGNED_BYTE,
+          this.video
+        );
+        this.lastRenderedTime = curTime;
+      } catch {
+        if (this.onFrameError) this.onFrameError();
+        return;
+      }
     }
 
     // Set uniforms

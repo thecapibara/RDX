@@ -43,7 +43,7 @@ import type {
 } from "../types";
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
-import { VideoEnhanceMode } from "../utils/videoShaders";
+import { VideoEnhanceMode, VideoShaderRenderer } from "../utils/videoShaders";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
@@ -583,6 +583,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       return "off";
     }
   });
+  const [shaderReady, setShaderReady] = useState(false);
+  const shaderCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const shaderRendererRef = useRef<VideoShaderRenderer | null>(null);
 
   const handleSelectEnhanceMode = useCallback((mode: VideoEnhanceMode) => {
     setVideoEnhanceMode(mode);
@@ -597,6 +600,37 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       max: "Покращення: Максимальне (Deband + CAS)",
     };
     showHud(`✨ ${labels[mode]}`);
+  }, []);
+
+  useEffect(() => {
+    if (videoEnhanceMode === "off") {
+      shaderRendererRef.current?.stop();
+      setShaderReady(false);
+      return;
+    }
+
+    if (!shaderCanvasRef.current || !videoRef.current) return;
+
+    if (!shaderRendererRef.current) {
+      shaderRendererRef.current = new VideoShaderRenderer(
+        shaderCanvasRef.current,
+        videoRef.current,
+        {
+          onFrameSuccess: () => setShaderReady(true),
+          onFrameError: () => setShaderReady(false),
+        }
+      );
+    }
+
+    shaderRendererRef.current.setMode(videoEnhanceMode);
+    shaderRendererRef.current.start();
+  }, [videoEnhanceMode, streamData]);
+
+  useEffect(() => {
+    return () => {
+      shaderRendererRef.current?.destroy();
+      shaderRendererRef.current = null;
+    };
   }, []);
 
   const [subFontSize, setSubFontSize] = useState<"sm" | "md" | "lg" | "xl">("md");
@@ -731,15 +765,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       style.height = "100%";
       style.maxWidth = "100%";
     }
-
-    if (videoEnhanceMode === "cas") {
-      style.filter = "url(#rdx-filter-cas) contrast(1.05) saturate(1.02)";
-    } else if (videoEnhanceMode === "deband") {
-      style.filter = "url(#rdx-filter-deband) contrast(0.99) brightness(1.01)";
-    } else if (videoEnhanceMode === "max") {
-      style.filter = "url(#rdx-filter-max) contrast(1.06) saturate(1.03)";
-    }
-
     return style;
   };
 
@@ -2075,36 +2100,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         key="video-stage"
         className="relative w-full h-full overflow-hidden bg-black flex items-center justify-center"
       >
-        {/* Hardware GPU SVG Video Filters (Deband & Adaptive CAS Sharpening) */}
-        <svg
-          style={{ position: "absolute", width: 0, height: 0, overflow: "hidden", pointerEvents: "none" }}
-          aria-hidden="true"
-        >
-          <defs>
-            {/* 1. Deband Filter: Dual-octave spatial dithering to eliminate 8-bit dark banding */}
-            <filter id="rdx-filter-deband" colorInterpolationFilters="sRGB">
-              <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="2" result="noise" />
-              <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.12 0" result="dither" />
-              <feBlend mode="screen" in="SourceGraphic" in2="dither" />
-            </filter>
-
-            {/* 2. CAS Adaptive Sharpening: Unsharp Mask Convolution for crisp edges & textures */}
-            <filter id="rdx-filter-cas" colorInterpolationFilters="sRGB">
-              <feGaussianBlur in="SourceGraphic" stdDeviation="0.75" result="blur" />
-              <feComposite in="SourceGraphic" in2="blur" operator="arithmetic" k1="0" k2="2.2" k3="-1.2" k4="0" />
-            </filter>
-
-            {/* 3. Max Enhancement: Deband Dither + CAS Sharpening combined */}
-            <filter id="rdx-filter-max" colorInterpolationFilters="sRGB">
-              <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="2" result="noise" />
-              <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.08 0" result="dither" />
-              <feBlend mode="screen" in="SourceGraphic" in2="dither" result="debanded" />
-              <feGaussianBlur in="debanded" stdDeviation="0.75" result="blur" />
-              <feComposite in="debanded" in2="blur" operator="arithmetic" k1="0" k2="2.2" k3="-1.2" k4="0" />
-            </filter>
-          </defs>
-        </svg>
-
         <video
           key={`video-${details.id}-${effectiveTranslatorId || ""}-${activeSeason ?? 0}-${activeEpisode ?? 0}`}
           ref={videoRef}
@@ -2166,6 +2161,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onEnded={handleVideoEnded}
           onClick={handleVideoClick}
           onDoubleClick={handleVideoDoubleClick}
+        />
+
+        {/* Real-time WebGL Deband + AMD CAS Canvas (Layered at z-10) */}
+        <canvas
+          ref={shaderCanvasRef}
+          aria-hidden="true"
+          className={cn(
+            "absolute inset-0 w-full h-full pointer-events-none z-10 transition-opacity duration-150",
+            getVideoObjectFitClass(),
+            videoEnhanceMode !== "off" && shaderReady ? "opacity-100" : "opacity-0"
+          )}
+          style={getVideoStyle()}
         />
 
         {/* ================= DOUBLE-TAP SEEK RIPPLE INDICATORS ================= */}
