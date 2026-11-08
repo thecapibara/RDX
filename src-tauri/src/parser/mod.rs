@@ -5,10 +5,44 @@ use chrono::Utc;
 use regex::Regex;
 use scraper::{Html, Selector};
 use serde_json::Value;
+use std::sync::LazyLock;
 
 use crate::client::HttpClient;
 use crate::parser::deobfuscator::StreamDeobfuscator;
 pub use crate::parser::models::*;
+
+// Catalog Selectors
+static ITEM_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".b-content__inline_item").unwrap());
+static LINK_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".b-content__inline_item-link > a").unwrap());
+static MISC_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".b-content__inline_item-link .misc").unwrap());
+static COVER_IMG_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".b-content__inline_item-cover img").unwrap());
+static CAT_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".b-content__inline_item-cover .cat .entity").unwrap());
+static INFO_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".b-content__inline_item-cover .info").unwrap());
+static RATING_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".rating i, .hd-tooltip").unwrap());
+
+// Autocomplete Selectors & Regex
+static AUTO_ITEM_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".b-search__section_list li a").unwrap());
+static AUTO_ENTY_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".enty").unwrap());
+static AUTO_RATING_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".rating, .rating-green-string").unwrap());
+static PAREN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\((.*?)\)").unwrap());
+
+// Details Selectors & Regex
+static TITLE_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse("div.b-post__title > h1, .b-post__title").unwrap());
+static ORIG_TITLE_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse("div.b-post__origtitle").unwrap());
+static POSTER_IMG_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse("div.b-sidecover img").unwrap());
+static POSTER_LINK_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse("div.b-sidecover a").unwrap());
+static IMDB_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".b-post__info_rates.imdb .bold").unwrap());
+static KP_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".b-post__info_rates.kp .bold").unwrap());
+static DESC_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse("div.b-post__description_text").unwrap());
+static TABLE_TR_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse("table.b-post__info tr").unwrap());
+static TD_L_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse("td.l").unwrap());
+static TD_R_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse("td:nth-child(2)").unwrap());
+static TRANS_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse("#translators-list [data-translator_id]").unwrap());
+static IMG_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse("img").unwrap());
+static SEASON_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".b-simple_season__item").unwrap());
+static EPISODE_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".b-simple_episode__item").unwrap());
+static INIT_CDN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"sof\.tv\.initCDN(?:Movies|Series)Events\(\s*(\d+)\s*,\s*(\d+)").unwrap());
+static ID_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"/(\d+)-[^/]+\.html").unwrap());
 
 pub struct RezkaParser;
 
@@ -41,17 +75,9 @@ impl RezkaParser {
     /// Parses catalog items list from HTML (Home, Category, Search pages)
     pub fn parse_catalog_html(html: &str, base_url: &str) -> Vec<MediaCard> {
         let document = Html::parse_document(html);
-        let item_sel = Selector::parse(".b-content__inline_item").unwrap();
-        let link_sel = Selector::parse(".b-content__inline_item-link > a").unwrap();
-        let misc_sel = Selector::parse(".b-content__inline_item-link .misc").unwrap();
-        let cover_img_sel = Selector::parse(".b-content__inline_item-cover img").unwrap();
-        let cat_sel = Selector::parse(".b-content__inline_item-cover .cat .entity").unwrap();
-        let info_sel = Selector::parse(".b-content__inline_item-cover .info").unwrap();
-        let rating_sel = Selector::parse(".rating i, .hd-tooltip").unwrap();
-
         let mut cards = Vec::new();
 
-        for element in document.select(&item_sel) {
+        for element in document.select(&ITEM_SEL) {
             let id = element
                 .value()
                 .attr("data-id")
@@ -60,7 +86,7 @@ impl RezkaParser {
 
             let data_url = element.value().attr("data-url");
 
-            let (title, url) = if let Some(link_elem) = element.select(&link_sel).next() {
+            let (title, url) = if let Some(link_elem) = element.select(&LINK_SEL).next() {
                 let t = link_elem.text().collect::<Vec<_>>().join(" ").trim().to_string();
                 let u = data_url
                     .or_else(|| link_elem.value().attr("href"))
@@ -75,32 +101,32 @@ impl RezkaParser {
             }
 
             let poster = element
-                .select(&cover_img_sel)
+                .select(&COVER_IMG_SEL)
                 .next()
                 .and_then(|img| img.value().attr("src").or_else(|| img.value().attr("data-src")))
                 .map(|s| Self::normalize_link(s, base_url))
                 .unwrap_or_default();
 
             let entity_type = element
-                .select(&cat_sel)
+                .select(&CAT_SEL)
                 .next()
                 .map(|e| e.text().collect::<Vec<_>>().join(" ").trim().to_string())
                 .unwrap_or_else(|| "Фильм".to_string());
 
             let series_info = element
-                .select(&info_sel)
+                .select(&INFO_SEL)
                 .next()
                 .map(|e| e.text().collect::<Vec<_>>().join(" ").trim().to_string())
                 .filter(|s| !s.is_empty());
 
             let misc_info = element
-                .select(&misc_sel)
+                .select(&MISC_SEL)
                 .next()
                 .map(|e| e.text().collect::<Vec<_>>().join(" ").trim().to_string())
                 .unwrap_or_default();
 
             let rating = element
-                .select(&rating_sel)
+                .select(&RATING_SEL)
                 .next()
                 .map(|e| e.text().collect::<Vec<_>>().join(" ").trim().to_string())
                 .filter(|s| !s.is_empty());
@@ -233,36 +259,31 @@ impl RezkaParser {
 
         let html = client.post_ajax(&url, &params, Some(base)).await?;
         let document = Html::parse_fragment(&html);
-        let item_sel = Selector::parse(".b-search__section_list li a").unwrap();
-        let enty_sel = Selector::parse(".enty").unwrap();
-        let rating_sel = Selector::parse(".rating, .rating-green-string").unwrap();
-
         let mut items = Vec::new();
 
-        for link in document.select(&item_sel) {
+        for link in document.select(&AUTO_ITEM_SEL) {
             let href = link.value().attr("href").unwrap_or_default();
             let full_url = Self::normalize_link(href, base_url);
 
             let title = link
-                .select(&enty_sel)
+                .select(&AUTO_ENTY_SEL)
                 .next()
                 .map(|e| e.text().collect::<Vec<_>>().join(" ").trim().to_string())
                 .unwrap_or_default();
 
             let rating = link
-                .select(&rating_sel)
+                .select(&AUTO_RATING_SEL)
                 .next()
                 .map(|e| e.text().collect::<Vec<_>>().join(" ").trim().to_string());
 
             // Full text inside <a> contains (Original Title, Type, Year)
             let full_text = link.text().collect::<Vec<_>>().join(" ");
-            let paren_re = Regex::new(r"\((.*?)\)").unwrap();
 
             let mut orig_title = None;
             let mut entity_type = None;
             let mut year = None;
 
-            if let Some(cap) = paren_re.captures(&full_text) {
+            if let Some(cap) = PAREN_RE.captures(&full_text) {
                 if let Some(meta_str) = cap.get(1) {
                     let parts: Vec<&str> = meta_str.as_str().split(',').map(|s| s.trim()).collect();
                     if !parts.is_empty() {
@@ -297,9 +318,8 @@ impl RezkaParser {
         let document = Html::parse_document(html);
 
         // Title
-        let title_sel = Selector::parse("div.b-post__title > h1, .b-post__title").unwrap();
         let title = document
-            .select(&title_sel)
+            .select(&TITLE_SEL)
             .next()
             .map(|e| e.text().collect::<Vec<_>>().join(" ").trim().to_string())
             .unwrap_or_default();
@@ -309,58 +329,49 @@ impl RezkaParser {
         }
 
         // Original Title
-        let orig_title_sel = Selector::parse("div.b-post__origtitle").unwrap();
         let orig_title = document
-            .select(&orig_title_sel)
+            .select(&ORIG_TITLE_SEL)
             .next()
             .map(|e| e.text().collect::<Vec<_>>().join(" ").trim().to_string())
             .filter(|s| !s.is_empty());
 
         // Posters
-        let poster_img_sel = Selector::parse("div.b-sidecover img").unwrap();
         let poster = document
-            .select(&poster_img_sel)
+            .select(&POSTER_IMG_SEL)
             .next()
             .and_then(|img| img.value().attr("src"))
             .map(|s| Self::normalize_link(s, base_url))
             .unwrap_or_default();
 
-        let poster_link_sel = Selector::parse("div.b-sidecover a").unwrap();
         let high_res_poster = document
-            .select(&poster_link_sel)
+            .select(&POSTER_LINK_SEL)
             .next()
             .and_then(|a| a.value().attr("href"))
             .map(|s| Self::normalize_link(s, base_url));
 
         // Ratings
-        let imdb_sel = Selector::parse(".b-post__info_rates.imdb .bold").unwrap();
         let imdb_rating = document
-            .select(&imdb_sel)
+            .select(&IMDB_SEL)
             .next()
             .map(|e| e.text().collect::<Vec<_>>().join(" ").trim().to_string());
 
-        let kp_sel = Selector::parse(".b-post__info_rates.kp .bold").unwrap();
         let kp_rating = document
-            .select(&kp_sel)
+            .select(&KP_SEL)
             .next()
             .map(|e| e.text().collect::<Vec<_>>().join(" ").trim().to_string());
 
         // Description
-        let desc_sel = Selector::parse("div.b-post__description_text").unwrap();
         let description = document
-            .select(&desc_sel)
+            .select(&DESC_SEL)
             .next()
             .map(|e| e.text().collect::<Vec<_>>().join("\n").trim().to_string())
             .unwrap_or_default();
 
         // Info table
-        let table_tr_sel = Selector::parse("table.b-post__info tr").unwrap();
-        let td_l_sel = Selector::parse("td.l").unwrap();
-        let td_r_sel = Selector::parse("td:nth-child(2)").unwrap();
         let mut info_table = Vec::new();
 
-        for tr in document.select(&table_tr_sel) {
-            if let (Some(l_elem), Some(r_elem)) = (tr.select(&td_l_sel).next(), tr.select(&td_r_sel).next()) {
+        for tr in document.select(&TABLE_TR_SEL) {
+            if let (Some(l_elem), Some(r_elem)) = (tr.select(&TD_L_SEL).next(), tr.select(&TD_R_SEL).next()) {
                 let key = l_elem.text().collect::<Vec<_>>().join(" ").trim().trim_end_matches(':').trim().to_string();
                 let val = r_elem.text().collect::<Vec<_>>().join(" ").trim().to_string();
                 if !key.is_empty() && !val.is_empty() {
@@ -370,10 +381,9 @@ impl RezkaParser {
         }
 
         // Translators: deduplicate by id (rezka can contain hidden SEO <a> tags)
-        let trans_sel = Selector::parse("#translators-list [data-translator_id]").unwrap();
         let mut translators: Vec<Translator> = Vec::new();
 
-        for elem in document.select(&trans_sel) {
+        for elem in document.select(&TRANS_SEL) {
             let id = elem.value().attr("data-translator_id").unwrap_or_default();
             if id.is_empty() {
                 continue;
@@ -389,9 +399,8 @@ impl RezkaParser {
             let is_active = elem.value().classes().any(|c| c == "active");
             let is_premium = elem.value().classes().any(|c| c == "b-prem_translator");
 
-            let lang_img_sel = Selector::parse("img").unwrap();
             let language = elem
-                .select(&lang_img_sel)
+                .select(&IMG_SEL)
                 .next()
                 .and_then(|img| img.value().attr("title").or_else(|| img.value().attr("alt")))
                 .map(|s| s.to_string())
@@ -420,9 +429,8 @@ impl RezkaParser {
         }
 
         // Seasons tabs (.b-simple_season__item matches both <li> and <a>)
-        let season_sel = Selector::parse(".b-simple_season__item").unwrap();
         let mut seasons: Vec<SeasonTab> = Vec::new();
-        for elem in document.select(&season_sel) {
+        for elem in document.select(&SEASON_SEL) {
             let tab_id = elem.value().attr("data-tab_id").unwrap_or_default();
             let title = elem.text().collect::<Vec<_>>().join(" ").trim().to_string();
             if !tab_id.is_empty() && !seasons.iter().any(|s| s.id == tab_id) {
@@ -434,9 +442,8 @@ impl RezkaParser {
         }
 
         // Episodes tabs (.b-simple_episode__item matches both <li> and <a>)
-        let episode_sel = Selector::parse(".b-simple_episode__item").unwrap();
         let mut episodes: Vec<EpisodeTab> = Vec::new();
-        for elem in document.select(&episode_sel) {
+        for elem in document.select(&EPISODE_SEL) {
             let season_id = elem.value().attr("data-season_id").unwrap_or_default();
             let episode_id = elem.value().attr("data-episode_id").unwrap_or_default();
             let ep_title = elem.text().collect::<Vec<_>>().join(" ").trim().to_string();
@@ -454,12 +461,9 @@ impl RezkaParser {
         }
 
         // Extract media id and fallback translator_id from URL or initCDN scripts
-        let init_re =
-            Regex::new(r"sof\.tv\.initCDN(?:Movies|Series)Events\(\s*(\d+)\s*,\s*(\d+)").unwrap();
-        let init_caps = init_re.captures(html);
+        let init_caps = INIT_CDN_RE.captures(html);
 
-        let id_re = Regex::new(r"/(\d+)-[^/]+\.html").unwrap();
-        let media_id = if let Some(cap) = id_re.captures(page_url) {
+        let media_id = if let Some(cap) = ID_RE.captures(page_url) {
             cap.get(1).map(|m| m.as_str().to_string()).unwrap_or_default()
         } else {
             init_caps
@@ -602,10 +606,45 @@ impl RezkaParser {
         };
 
         let response_text = client.post_ajax(&ajax_url, &form_params, Some(&active_referer)).await?;
-        let json: Value = serde_json::from_str(&response_text)?;
+        let trimmed_resp = response_text.trim();
+        if trimmed_resp.starts_with("<!DOCTYPE")
+            || trimmed_resp.starts_with("<!doctype")
+            || trimmed_resp.starts_with("<html")
+        {
+            return Err("Отримано HTML-сторінку замість очікуваного JSON від сервера (захист Cloudflare або помилка 502/503)".into());
+        }
+
+        let json: Value = serde_json::from_str(&response_text)
+            .map_err(|e| format!("Некоректна відповідь сервера (очікувався JSON): {e}"))?;
+
+        let is_premium = json
+            .get("premium_content")
+            .and_then(|v| {
+                v.as_bool()
+                    .or_else(|| v.as_i64().map(|n| n == 1))
+                    .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok().map(|n| n == 1)))
+            })
+            .unwrap_or(false)
+            || json
+                .get("message")
+                .and_then(|v| v.as_str())
+                .map(|m| {
+                    let m_lower = m.to_lowercase();
+                    m_lower.contains("премиум") || m_lower.contains("преміум") || m_lower.contains("premium")
+                })
+                .unwrap_or(false);
 
         let success = json.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
         if !success {
+            if is_premium {
+                return Ok(StreamData {
+                    qualities: vec![],
+                    default_quality: String::new(),
+                    subtitles: vec![],
+                    thumbnails: None,
+                    is_premium: true,
+                });
+            }
             let msg = json.get("message").and_then(|v| v.as_str()).unwrap_or("Stream fetch failed");
             return Err(msg.into());
         }
@@ -614,11 +653,6 @@ impl RezkaParser {
         let default_q = json.get("quality").and_then(|v| v.as_str());
         let subtitles = json.get("subtitle").and_then(|v| v.as_str());
         let thumbnails = json.get("thumbnails").and_then(|v| v.as_str());
-        let is_premium = json
-            .get("premium_content")
-            .and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
-            .map(|val| val == 1)
-            .unwrap_or(false);
 
         let mut stream_data = StreamDeobfuscator::build_stream_data(
             raw_url,
@@ -652,15 +686,23 @@ impl RezkaParser {
         ];
 
         let response_text = client.post_ajax(&ajax_url, &form_params, Some(&active_referer)).await?;
-        let json: Value = serde_json::from_str(&response_text)?;
+        let trimmed_resp = response_text.trim();
+        if trimmed_resp.starts_with("<!DOCTYPE")
+            || trimmed_resp.starts_with("<!doctype")
+            || trimmed_resp.starts_with("<html")
+        {
+            return Err("Отримано HTML-сторінку замість очікуваного JSON від сервера (захист Cloudflare або помилка 502/503)".into());
+        }
+
+        let json: Value = serde_json::from_str(&response_text)
+            .map_err(|e| format!("Некоректна відповідь сервера (очікувався JSON): {e}"))?;
 
         let mut seasons: Vec<SeasonTab> = Vec::new();
         let mut episodes: Vec<EpisodeTab> = Vec::new();
 
         if let Some(seasons_html) = json.get("seasons").and_then(|v| v.as_str()) {
             let doc = Html::parse_fragment(seasons_html);
-            let season_sel = Selector::parse(".b-simple_season__item").unwrap();
-            for elem in doc.select(&season_sel) {
+            for elem in doc.select(&SEASON_SEL) {
                 let tab_id = elem.value().attr("data-tab_id").unwrap_or_default();
                 let title = elem.text().collect::<Vec<_>>().join(" ").trim().to_string();
                 if !tab_id.is_empty() && !seasons.iter().any(|s| s.id == tab_id) {
@@ -674,8 +716,7 @@ impl RezkaParser {
 
         if let Some(episodes_html) = json.get("episodes").and_then(|v| v.as_str()) {
             let doc = Html::parse_fragment(episodes_html);
-            let ep_sel = Selector::parse(".b-simple_episode__item").unwrap();
-            for elem in doc.select(&ep_sel) {
+            for elem in doc.select(&EPISODE_SEL) {
                 let s_id = elem.value().attr("data-season_id").unwrap_or_default();
                 let ep_id = elem.value().attr("data-episode_id").unwrap_or_default();
                 let title = elem.text().collect::<Vec<_>>().join(" ").trim().to_string();
@@ -692,15 +733,27 @@ impl RezkaParser {
             }
         }
 
-        let stream_data = if let Some(raw_url) = json.get("url").and_then(|v| v.as_str()) {
+        let is_premium = json
+            .get("premium_content")
+            .and_then(|v| {
+                v.as_bool()
+                    .or_else(|| v.as_i64().map(|n| n == 1))
+                    .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok().map(|n| n == 1)))
+            })
+            .unwrap_or(false)
+            || json
+                .get("message")
+                .and_then(|v| v.as_str())
+                .map(|m| {
+                    let m_lower = m.to_lowercase();
+                    m_lower.contains("премиум") || m_lower.contains("преміум") || m_lower.contains("premium")
+                })
+                .unwrap_or(false);
+
+        let stream_data = if let Some(raw_url) = json.get("url").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
             let default_q = json.get("quality").and_then(|v| v.as_str());
             let subtitles = json.get("subtitle").and_then(|v| v.as_str());
             let thumbnails = json.get("thumbnails").and_then(|v| v.as_str());
-            let is_premium = json
-                .get("premium_content")
-                .and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
-                .map(|val| val == 1)
-                .unwrap_or(false);
 
             let mut s = StreamDeobfuscator::build_stream_data(
                 raw_url,
@@ -710,6 +763,14 @@ impl RezkaParser {
             );
             s.is_premium = is_premium;
             Some(s)
+        } else if is_premium {
+            Some(StreamData {
+                qualities: vec![],
+                default_quality: String::new(),
+                subtitles: vec![],
+                thumbnails: None,
+                is_premium: true,
+            })
         } else {
             None
         };
@@ -826,5 +887,30 @@ mod tests {
         // Default 'last' filter does not append redundant query param
         let url5 = RezkaParser::build_category_url(base, "series", Some("action"), Some("last"), Some(1));
         assert_eq!(url5, "https://rezka-tv.org/series/action/");
+    }
+
+    #[test]
+    fn test_premium_response_detection() {
+        let raw_json = r#"{"success":false,"message":"Доступно только премиум пользователям","premium_content":1}"#;
+        let json: Value = serde_json::from_str(raw_json).unwrap();
+
+        let is_premium = json
+            .get("premium_content")
+            .and_then(|v| {
+                v.as_bool()
+                    .or_else(|| v.as_i64().map(|n| n == 1))
+                    .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok().map(|n| n == 1)))
+            })
+            .unwrap_or(false)
+            || json
+                .get("message")
+                .and_then(|v| v.as_str())
+                .map(|m| {
+                    let m_lower = m.to_lowercase();
+                    m_lower.contains("премиум") || m_lower.contains("преміум") || m_lower.contains("premium")
+                })
+                .unwrap_or(false);
+
+        assert!(is_premium);
     }
 }

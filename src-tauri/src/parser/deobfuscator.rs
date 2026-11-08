@@ -1,14 +1,19 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use regex::Regex;
+use std::sync::LazyLock;
 use crate::parser::models::{StreamData, StreamQuality, SubtitleTrack};
+
+static TAG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]*>").unwrap());
+static STREAM_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[(.*?)\]([^\[]+)").unwrap());
+static SUBTITLES_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[(.*?)\](https?://[^\s,]+)").unwrap());
+static JUNK_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"//_//|bk[0-9]").unwrap());
 
 pub struct StreamDeobfuscator;
 
 impl StreamDeobfuscator {
     /// Cleans HTML tags from quality labels (e.g. `<span class="pjs-prem-quality">1080p Ultra</span>` -> `1080p Ultra`)
     pub fn clean_quality_label(raw: &str) -> String {
-        let tag_regex = Regex::new(r"<[^>]*>").unwrap();
-        tag_regex.replace_all(raw, "").trim().to_string()
+        TAG_RE.replace_all(raw, "").trim().to_string()
     }
 
     /// Deobfuscates HDRezka `#h` encoded stream string into clear text if obfuscated
@@ -31,12 +36,8 @@ impl StreamDeobfuscator {
             cleaned = &cleaned[1..];
         }
 
-        // Strip known HDRezka junk tokens
-        let junk_tokens = ["//_//", "bk0", "bk1", "bk2", "bk3", "bk4"];
-        let mut stripped = cleaned.to_string();
-        for token in &junk_tokens {
-            stripped = stripped.replace(token, "");
-        }
+        // Strip known HDRezka junk tokens (//_//, bk0..bk9)
+        let stripped = JUNK_RE.replace_all(cleaned, "");
 
         // Try Base64 decoding
         let b64_cleaned = stripped.trim();
@@ -68,10 +69,7 @@ impl StreamDeobfuscator {
         }
 
         // Format is: [quality1]url1 or url2,[quality2]url3 or url4,...
-        // Regex to match `\[(.*?)\]([^\[]+)`
-        let re = Regex::new(r"\[(.*?)\]([^\[]+)").unwrap();
-
-        for cap in re.captures_iter(&deobfuscated) {
+        for cap in STREAM_RE.captures_iter(&deobfuscated) {
             let raw_label = cap.get(1).map_or("", |m| m.as_str());
             let urls_str = cap.get(2).map_or("", |m| m.as_str()).trim().trim_end_matches(',');
 
@@ -112,8 +110,7 @@ impl StreamDeobfuscator {
             return tracks;
         }
 
-        let re = Regex::new(r"\[(.*?)\](https?://[^\s,]+)").unwrap();
-        for cap in re.captures_iter(trimmed) {
+        for cap in SUBTITLES_RE.captures_iter(trimmed) {
             let label = cap.get(1).map_or("", |m| m.as_str()).trim().to_string();
             let url = cap.get(2).map_or("", |m| m.as_str()).trim().to_string();
 
@@ -212,8 +209,8 @@ mod tests {
     fn test_deobfuscate_base64_stream() {
         let original = "[360p]https://stream.com/video.mp4:hls:manifest.m3u8,[720p]https://stream.com/720.mp4";
         let encoded = STANDARD.encode(original);
-        // Inject HDRezka junk tokens
-        let obfuscated = format!("#h//_//{}bk1{}bk2", &encoded[..10], &encoded[10..]);
+        // Inject HDRezka junk tokens (including extended bk5..bk9)
+        let obfuscated = format!("#h//_//{}bk1{}bk5{}bk9", &encoded[..10], &encoded[10..20], &encoded[20..]);
 
         let deobfuscated = StreamDeobfuscator::deobfuscate(&obfuscated);
         assert_eq!(deobfuscated, original);
