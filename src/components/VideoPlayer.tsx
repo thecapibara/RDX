@@ -44,7 +44,7 @@ import type {
 } from "../types";
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
-import { VideoEnhanceMode, VideoShaderRenderer } from "../utils/videoShaders";
+import { VideoEnhanceMode } from "../utils/videoShaders";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
@@ -665,7 +665,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [nightMode, ensureAudioGraph, applyCompressorParams]);
 
-  // 6. Video Enhancement (WebGL Deband + CAS Sharpening)
+  // 6. Video Enhancement (Hardware GPU Deband & CAS Sharpening)
   const [videoEnhanceMode, setVideoEnhanceMode] = useState<VideoEnhanceMode>(() => {
     try {
       return (localStorage.getItem("rdx_video_enhance") as VideoEnhanceMode) || "off";
@@ -673,8 +673,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       return "off";
     }
   });
-  const shaderCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const shaderRendererRef = useRef<VideoShaderRenderer | null>(null);
 
   const handleSelectEnhanceMode = useCallback((mode: VideoEnhanceMode) => {
     setVideoEnhanceMode(mode);
@@ -689,30 +687,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       max: "Покращення: Максимальне (Deband + CAS)",
     };
     showHud(`✨ ${labels[mode]}`);
-  }, []);
-
-  useEffect(() => {
-    if (videoEnhanceMode === "off") {
-      shaderRendererRef.current?.stop();
-      return;
-    }
-    if (!shaderCanvasRef.current || !videoRef.current) return;
-
-    if (!shaderRendererRef.current) {
-      shaderRendererRef.current = new VideoShaderRenderer(
-        shaderCanvasRef.current,
-        videoRef.current
-      );
-    }
-    shaderRendererRef.current.setMode(videoEnhanceMode);
-    shaderRendererRef.current.start();
-  }, [videoEnhanceMode]);
-
-  useEffect(() => {
-    return () => {
-      shaderRendererRef.current?.destroy();
-      shaderRendererRef.current = null;
-    };
   }, []);
 
   const [subFontSize, setSubFontSize] = useState<"sm" | "md" | "lg" | "xl">("md");
@@ -829,16 +803,34 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   const getVideoStyle = (): React.CSSProperties => {
+    const style: React.CSSProperties = {};
     if (aspectRatioMode === "16:9") {
-      return { aspectRatio: "16 / 9", objectFit: "fill", width: "100%", maxHeight: "100%" };
+      style.aspectRatio = "16 / 9";
+      style.objectFit = "fill";
+      style.width = "100%";
+      style.maxHeight = "100%";
+    } else if (aspectRatioMode === "21:9") {
+      style.aspectRatio = "21 / 9";
+      style.objectFit = "fill";
+      style.width = "100%";
+      style.maxHeight = "100%";
+    } else if (aspectRatioMode === "4:3") {
+      style.aspectRatio = "4 / 3";
+      style.objectFit = "fill";
+      style.width = "auto";
+      style.height = "100%";
+      style.maxWidth = "100%";
     }
-    if (aspectRatioMode === "21:9") {
-      return { aspectRatio: "21 / 9", objectFit: "fill", width: "100%", maxHeight: "100%" };
+
+    if (videoEnhanceMode === "cas") {
+      style.filter = "url(#rdx-filter-cas) contrast(1.02)";
+    } else if (videoEnhanceMode === "deband") {
+      style.filter = "url(#rdx-filter-deband)";
+    } else if (videoEnhanceMode === "max") {
+      style.filter = "url(#rdx-filter-max) contrast(1.03)";
     }
-    if (aspectRatioMode === "4:3") {
-      return { aspectRatio: "4 / 3", objectFit: "fill", width: "auto", height: "100%", maxWidth: "100%" };
-    }
-    return {};
+
+    return style;
   };
 
   const getVideoObjectFitClass = (): string => {
@@ -2193,18 +2185,39 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         key="video-stage"
         className="relative w-full h-full overflow-hidden bg-black flex items-center justify-center"
       >
-        {/* WebGL Post-Processing Canvas (rendered underneath transparent video) */}
-        {videoEnhanceMode !== "off" && (
-          <canvas
-            ref={shaderCanvasRef}
-            aria-hidden="true"
-            className={cn(
-              "absolute inset-0 w-full h-full pointer-events-none z-0",
-              getVideoObjectFitClass()
-            )}
-            style={getVideoStyle()}
-          />
-        )}
+        {/* Hardware GPU SVG Video Enhancement Filters */}
+        <svg className="sr-only" aria-hidden="true" width="0" height="0">
+          <defs>
+            {/* CAS: Adaptive Unsharp Convolution Matrix */}
+            <filter id="rdx-filter-cas" x="-10%" y="-10%" width="120%" height="120%">
+              <feConvolveMatrix
+                order="3"
+                kernelMatrix="0 -0.8 0  -0.8 4.2 -0.8  0 -0.8 0"
+                preserveAlpha="true"
+              />
+            </filter>
+
+            {/* Deband: Spatial Dither Overlay to eliminate 8-bit banding */}
+            <filter id="rdx-filter-deband" x="0%" y="0%" width="100%" height="100%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="1" result="noise" />
+              <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.035 0" result="dither" />
+              <feBlend mode="overlay" in="SourceGraphic" in2="dither" />
+            </filter>
+
+            {/* Max: Deband Spatial Dither + CAS Convolution Sharpener */}
+            <filter id="rdx-filter-max" x="-10%" y="-10%" width="120%" height="120%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="1" result="noise" />
+              <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.03 0" result="dither" />
+              <feBlend mode="overlay" in="SourceGraphic" in2="dither" result="debanded" />
+              <feConvolveMatrix
+                in="debanded"
+                order="3"
+                kernelMatrix="0 -0.75 0  -0.75 4.0 -0.75  0 -0.75 0"
+                preserveAlpha="true"
+              />
+            </filter>
+          </defs>
+        </svg>
 
         <video
           key="persistent-video"
@@ -2215,9 +2228,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           controlsList="nodownload nofullscreen noremoteplayback"
           onContextMenu={handleContextMenu}
           className={cn(
-            "w-full h-full cursor-pointer relative z-10 transition-opacity duration-150",
-            getVideoObjectFitClass(),
-            videoEnhanceMode !== "off" && "opacity-0"
+            "w-full h-full cursor-pointer relative z-10",
+            getVideoObjectFitClass()
           )}
           style={getVideoStyle()}
           onTimeUpdate={() => {
@@ -3437,7 +3449,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {contextMenu?.open && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="fixed z-[100] min-w-[240px] max-w-[340px] py-1.5 bg-zinc-950/95 border border-white/15 rounded-2xl shadow-2xl text-xs text-white/90 select-none overflow-hidden"
+          className="fixed z-[100] min-w-[270px] max-w-[350px] py-1.5 bg-zinc-950/95 border border-white/15 rounded-2xl shadow-2xl text-xs text-white/90 select-none overflow-hidden"
           style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
         >
           {contextMenu.page === "main" && (
@@ -3581,24 +3593,36 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </span>
               </button>
 
-              {/* Video Enhancement Submenu (WebGL Deband & CAS) */}
+              {/* Video Enhancement Submenu */}
               <button
                 onClick={() => setContextMenu({ ...contextMenu, page: "enhance" })}
-                className="w-full flex items-center justify-between px-3 py-2 text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+                className="w-full flex items-center justify-between gap-3 px-3 py-2 text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer group"
               >
-                <div className="flex items-center gap-2.5 truncate">
-                  <Sparkles className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Sparkles
+                    className={cn(
+                      "w-4 h-4 flex-shrink-0 transition-colors",
+                      videoEnhanceMode !== "off" ? "text-rose-400" : "text-zinc-400 group-hover:text-zinc-300"
+                    )}
+                  />
                   <span className="truncate">Покращення відео</span>
                 </div>
-                <div className="flex items-center gap-1 text-[11px] text-zinc-400 font-medium">
-                  <span>
+                <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-zinc-400 font-medium">
+                  <span
+                    className={cn(
+                      "px-1.5 py-0.5 rounded-md text-[10px] font-medium transition-colors",
+                      videoEnhanceMode !== "off"
+                        ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                        : "bg-white/5 text-zinc-400"
+                    )}
+                  >
                     {videoEnhanceMode === "off"
-                      ? "Вимкнено"
+                      ? "Вимк"
                       : videoEnhanceMode === "deband"
                       ? "Deband"
                       : videoEnhanceMode === "cas"
                       ? "CAS"
-                      : "Макс (Deband+CAS)"}
+                      : "Макс"}
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
                 </div>
@@ -4200,7 +4224,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer font-semibold text-[11px]"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Покращення відео (WebGL)</span>
+                <span>Покращення відео</span>
               </button>
               <div className="h-px bg-white/10 my-1 mx-2" />
               {[
