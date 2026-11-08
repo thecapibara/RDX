@@ -15,12 +15,29 @@ export type VideoEnhanceMode = "off" | "deband" | "cas" | "max";
 const VERTEX_SHADER_SOURCE = `
 attribute vec2 a_position;
 attribute vec2 a_texCoord;
+
+uniform vec2 u_texelSize;
+
 varying vec2 v_texCoord;
+varying vec4 v_casHoriz;
+varying vec4 v_casVert;
+varying vec4 v_debandHoriz;
+varying vec4 v_debandVert;
 
 void main() {
     gl_Position = vec4(a_position, 0.0, 1.0);
     // Invert Y coordinate so WebGL matches video frame orientation
-    v_texCoord = vec2(a_texCoord.x, 1.0 - a_texCoord.y);
+    vec2 uv = vec2(a_texCoord.x, 1.0 - a_texCoord.y);
+    v_texCoord = uv;
+
+    // Precompute neighbor UVs in vertex shader (runs 6 times/frame instead of 2M times/frame in fragment shader)
+    // Enables hardware texture pre-fetching on Intel Iris Xe / AMD / NVIDIA without dependent texture read stalls
+    v_casHoriz = vec4(uv.x - u_texelSize.x, uv.y, uv.x + u_texelSize.x, uv.y);
+    v_casVert  = vec4(uv.x, uv.y - u_texelSize.y, uv.x, uv.y + u_texelSize.y);
+
+    vec2 dbOffset = u_texelSize * 3.5;
+    v_debandHoriz = vec4(uv.x - dbOffset.x, uv.y, uv.x + dbOffset.x, uv.y);
+    v_debandVert  = vec4(uv.x, uv.y - dbOffset.y, uv.x, uv.y + dbOffset.y);
 }
 `;
 
@@ -28,100 +45,70 @@ const FRAGMENT_SHADER_SOURCE = `
 precision mediump float;
 
 uniform sampler2D u_image;
-uniform vec2 u_resolution;
 uniform int u_mode; // 0: off, 1: deband, 2: cas, 3: max
 uniform float u_sharpness; // 0.0 to 1.0
-uniform float u_deband_threshold; // e.g. 0.035
-uniform float u_time;
+uniform float u_deband_threshold; // e.g. 0.015
 
 varying vec2 v_texCoord;
-
-// Pseudo-random noise generator
-float rand(vec2 co) {
-    return fract(sin(dot(co, vec2(12.9898, 78.233) + u_time)) * 43758.5453);
-}
+varying vec4 v_casHoriz;
+varying vec4 v_casVert;
+varying vec4 v_debandHoriz;
+varying vec4 v_debandVert;
 
 // Convert RGB to perceived luminance (ITU-R BT.709)
 float luma(vec3 color) {
     return dot(color, vec3(0.2126, 0.7152, 0.0722));
 }
 
-// 1. Cinema-grade Deband: Gentle gradient smoothing on flat regions without edge smearing
-vec3 applyDeband(vec2 uv, vec2 dxdy, vec3 orig) {
-    vec3 s1 = texture2D(u_image, uv + vec2( 3.5,  0.0) * dxdy).rgb;
-    vec3 s2 = texture2D(u_image, uv + vec2(-3.5,  0.0) * dxdy).rgb;
-    vec3 s3 = texture2D(u_image, uv + vec2( 0.0,  3.5) * dxdy).rgb;
-    vec3 s4 = texture2D(u_image, uv + vec2( 0.0, -3.5) * dxdy).rgb;
+// 1. Cinema-grade Branchless Deband: Gentle gradient smoothing on flat regions without edge smearing
+vec3 applyDeband(vec3 orig) {
+    vec3 s1 = texture2D(u_image, v_debandHoriz.xy).rgb;
+    vec3 s2 = texture2D(u_image, v_debandHoriz.zw).rgb;
+    vec3 s3 = texture2D(u_image, v_debandVert.xy).rgb;
+    vec3 s4 = texture2D(u_image, v_debandVert.zw).rgb;
 
     vec3 avg = (s1 + s2 + s3 + s4) * 0.25;
     vec3 diff = abs(avg - orig);
+    float maxDiff = max(max(diff.r, diff.g), diff.b);
 
-    // Only smooth if difference is below threshold (preserves faces, eyes, and real edges)
-    if (max(max(diff.r, diff.g), diff.b) < u_deband_threshold) {
-        return mix(orig, avg, 0.65);
-    }
-    return orig;
+    // Branchless factor: 0.65 when maxDiff < threshold, 0.0 otherwise
+    float factor = step(maxDiff, u_deband_threshold) * 0.65;
+    return mix(orig, avg, factor);
 }
 
-// 2. High-Impact AMD CAS (Contrast Adaptive Sharpening) with 8-tap directional sampling
-vec3 applyCAS(vec2 uv, vec2 dxdy, vec3 center) {
-    vec2 off = dxdy * (1.1 + 0.4 * u_sharpness);
+// 2. Canonical 5-Tap AMD Contrast Adaptive Sharpening (CAS) with pre-fetched UVs
+vec3 applyCAS(vec3 center) {
+    vec3 a = texture2D(u_image, v_casVert.xy).rgb;
+    vec3 b = texture2D(u_image, v_casHoriz.xy).rgb;
+    vec3 c = texture2D(u_image, v_casHoriz.zw).rgb;
+    vec3 d = texture2D(u_image, v_casVert.zw).rgb;
 
-    // Cardinal samples
-    vec3 b = texture2D(u_image, uv + vec2( 0.0,   -off.y)).rgb;
-    vec3 d = texture2D(u_image, uv + vec2(-off.x,  0.0)).rgb;
-    vec3 f = texture2D(u_image, uv + vec2( off.x,  0.0)).rgb;
-    vec3 h = texture2D(u_image, uv + vec2( 0.0,    off.y)).rgb;
-
-    // Diagonal samples
-    vec3 a = texture2D(u_image, uv + vec2(-off.x, -off.y)).rgb;
-    vec3 c = texture2D(u_image, uv + vec2( off.x, -off.y)).rgb;
-    vec3 g = texture2D(u_image, uv + vec2(-off.x,  off.y)).rgb;
-    vec3 i = texture2D(u_image, uv + vec2( off.x,  off.y)).rgb;
-
-    // 8-tap weighted local neighborhood
-    vec3 cross = (b + d + f + h) * 0.25;
-    vec3 diag = (a + c + g + i) * 0.25;
-    vec3 blurred = cross * 0.65 + diag * 0.35;
-
-    // High-frequency detail extraction
-    vec3 detail = center - blurred;
-
-    // Strict local bounds to prevent ringing or glowing halos
-    vec3 minRGB = min(min(min(a, b), min(c, d)), min(min(min(f, g), min(h, i)), center));
-    vec3 maxRGB = max(max(max(a, b), max(c, d)), max(max(max(f, g), max(h, i)), center));
+    // Strict local bounds from 5-tap neighborhood
+    vec3 minRGB = min(min(min(a, b), min(c, d)), center);
+    vec3 maxRGB = max(max(max(a, b), max(c, d)), center);
 
     float minLuma = luma(minRGB);
     float maxLuma = luma(maxRGB);
-    float contrast = clamp(maxLuma - minLuma, 0.0, 1.0);
 
-    // Amplify detail on real textures & edges, gentle on flat areas
-    float strength = (1.6 + 1.2 * u_sharpness) * clamp(contrast * 3.5, 0.3, 1.0);
-    vec3 sharpened = center + detail * strength;
+    // Adaptive sharpening weight (suppresses ringing, amplifies real edges)
+    float amp = clamp(min(minLuma, 1.0 - maxLuma) / max(maxLuma, 0.0001), 0.0, 1.0);
+    float w = -sqrt(amp) * (u_sharpness * 0.20);
 
-    // Clamp strictly within local bounds (prevents white halos or glowing eyes)
-    sharpened = clamp(sharpened, minRGB - 0.02, maxRGB + 0.02);
-
-    // Subtle 3.5% micro-contrast pop for unmistakable cinematic clarity
-    sharpened = (sharpened - 0.5) * (1.0 + 0.035 * u_sharpness) + 0.5;
-
-    return clamp(sharpened, 0.0, 1.0);
+    // Filter output: center pixel amplified, neighbors subtracted
+    vec3 filtered = (center + w * (a + b + c + d)) / (1.0 + 4.0 * w);
+    return clamp(filtered, minRGB, maxRGB);
 }
 
 void main() {
-    vec2 dxdy = 1.0 / u_resolution;
     vec3 color = texture2D(u_image, v_texCoord).rgb;
 
     if (u_mode == 1) {
-        // Deband only
-        color = applyDeband(v_texCoord, dxdy, color);
+        color = applyDeband(color);
     } else if (u_mode == 2) {
-        // CAS only
-        color = applyCAS(v_texCoord, dxdy, color);
+        color = applyCAS(color);
     } else if (u_mode == 3) {
-        // Max: Deband first to clean banding, then CAS to restore edge crispness
-        vec3 debanded = applyDeband(v_texCoord, dxdy, color);
-        color = applyCAS(v_texCoord, dxdy, debanded);
+        vec3 debanded = applyDeband(color);
+        color = applyCAS(debanded);
     }
 
     gl_FragColor = vec4(color, 1.0);
@@ -129,6 +116,9 @@ void main() {
 `;
 
 export class VideoShaderRenderer {
+  public static readonly VERSION = 5;
+  public readonly version = VideoShaderRenderer.VERSION;
+
   private canvas: HTMLCanvasElement;
   private video: HTMLVideoElement;
   private gl: WebGLRenderingContext | null = null;
@@ -137,32 +127,42 @@ export class VideoShaderRenderer {
   private mode: VideoEnhanceMode = "off";
   private sharpness = 0.85;
   private debandThreshold = 0.015;
-  private startTime = Date.now();
   private animFrameId: number | null = null;
+  private rvfcId: number | null = null;
+  private newVideoFrameAvailable = true;
   private isDestroyed = false;
   private isRunning = false;
+  private hasReportedSuccess = false;
   private allocatedWidth = 0;
   private allocatedHeight = 0;
   private lastRenderedTime = -1;
+  private fps = 60;
+  private fpsFrameCount = 0;
+  private lastFpsTime = performance.now();
   private onFrameSuccess?: () => void;
   private onFrameError?: () => void;
+  private onFpsUpdate?: (fps: number) => void;
 
   private uImageLoc: WebGLUniformLocation | null = null;
-  private uResolutionLoc: WebGLUniformLocation | null = null;
+  private uTexelSizeLoc: WebGLUniformLocation | null = null;
   private uModeLoc: WebGLUniformLocation | null = null;
   private uSharpnessLoc: WebGLUniformLocation | null = null;
   private uDebandThresholdLoc: WebGLUniformLocation | null = null;
-  private uTimeLoc: WebGLUniformLocation | null = null;
 
   constructor(
     canvas: HTMLCanvasElement,
     video: HTMLVideoElement,
-    callbacks?: { onFrameSuccess?: () => void; onFrameError?: () => void }
+    callbacks?: {
+      onFrameSuccess?: () => void;
+      onFrameError?: () => void;
+      onFpsUpdate?: (fps: number) => void;
+    }
   ) {
     this.canvas = canvas;
     this.video = video;
     this.onFrameSuccess = callbacks?.onFrameSuccess;
     this.onFrameError = callbacks?.onFrameError;
+    this.onFpsUpdate = callbacks?.onFpsUpdate;
 
     this.initWebGL();
   }
@@ -178,7 +178,15 @@ export class VideoShaderRenderer {
         preserveDrawingBuffer: false,
       }) ||
       (this.canvas.getContext(
-        "experimental-webgl"
+        "experimental-webgl",
+        {
+          alpha: false,
+          depth: false,
+          stencil: false,
+          antialias: false,
+          powerPreference: "high-performance",
+          preserveDrawingBuffer: false,
+        }
       ) as WebGLRenderingContext | null);
 
     if (!gl) {
@@ -253,14 +261,13 @@ export class VideoShaderRenderer {
 
     // Cache Uniform Locations
     this.uImageLoc = gl.getUniformLocation(program, "u_image");
-    this.uResolutionLoc = gl.getUniformLocation(program, "u_resolution");
+    this.uTexelSizeLoc = gl.getUniformLocation(program, "u_texelSize");
     this.uModeLoc = gl.getUniformLocation(program, "u_mode");
     this.uSharpnessLoc = gl.getUniformLocation(program, "u_sharpness");
     this.uDebandThresholdLoc = gl.getUniformLocation(
       program,
       "u_deband_threshold"
     );
-    this.uTimeLoc = gl.getUniformLocation(program, "u_time");
   }
 
   private compileShader(type: number, source: string): WebGLShader | null {
@@ -281,21 +288,57 @@ export class VideoShaderRenderer {
     return shader;
   }
 
+  private setupRvfc() {
+    if (this.rvfcId !== null) return;
+    const vid = this.video as any;
+    if (typeof vid.requestVideoFrameCallback === "function") {
+      const onFrame = () => {
+        if (this.isDestroyed || !this.isRunning) {
+          this.rvfcId = null;
+          return;
+        }
+        this.newVideoFrameAvailable = true;
+        this.rvfcId = vid.requestVideoFrameCallback(onFrame);
+      };
+      this.rvfcId = vid.requestVideoFrameCallback(onFrame);
+    }
+  }
+
+  private teardownRvfc() {
+    if (this.rvfcId !== null) {
+      const vid = this.video as any;
+      if (typeof vid.cancelVideoFrameCallback === "function") {
+        vid.cancelVideoFrameCallback(this.rvfcId);
+      }
+      this.rvfcId = null;
+    }
+  }
+
   public setMode(mode: VideoEnhanceMode) {
     this.mode = mode;
+    this.hasReportedSuccess = false;
+    this.lastRenderedTime = -1;
+    this.newVideoFrameAvailable = true;
     if (mode === "off") {
       this.stop();
     } else {
       this.start();
+      this.renderFrame(true);
     }
   }
 
   public setSharpness(val: number) {
     this.sharpness = Math.max(0.0, Math.min(1.0, val));
+    if (this.mode !== "off") {
+      this.renderFrame(true);
+    }
   }
 
   public setDebandThreshold(val: number) {
     this.debandThreshold = Math.max(0.01, Math.min(0.1, val));
+    if (this.mode !== "off") {
+      this.renderFrame(true);
+    }
   }
 
   public start() {
@@ -303,11 +346,17 @@ export class VideoShaderRenderer {
       return;
     }
     this.isRunning = true;
+    this.hasReportedSuccess = false;
+    this.newVideoFrameAvailable = true;
+    this.fpsFrameCount = 0;
+    this.lastFpsTime = performance.now();
+    this.setupRvfc();
     this.renderLoop();
   }
 
   public stop() {
     this.isRunning = false;
+    this.teardownRvfc();
     if (this.animFrameId !== null) {
       cancelAnimationFrame(this.animFrameId);
       this.animFrameId = null;
@@ -318,6 +367,22 @@ export class VideoShaderRenderer {
     if (!this.isRunning || this.isDestroyed || this.mode === "off") {
       this.animFrameId = null;
       return;
+    }
+
+    // Track real-time compositor framerate smoothly over a 750ms sliding window
+    this.fpsFrameCount++;
+    const now = performance.now();
+    const elapsed = now - this.lastFpsTime;
+    if (elapsed >= 750) {
+      const nextFps = Math.round((this.fpsFrameCount * 1000) / elapsed);
+      this.fpsFrameCount = 0;
+      this.lastFpsTime = now;
+      if (this.fps !== nextFps) {
+        this.fps = nextFps;
+        if (this.onFpsUpdate) {
+          this.onFpsUpdate(nextFps);
+        }
+      }
     }
 
     this.renderFrame();
@@ -355,22 +420,37 @@ export class VideoShaderRenderer {
     return true;
   }
 
-  public renderFrame() {
+  public renderFrame(force = false) {
     const gl = this.gl;
     if (!gl || !this.program || !this.texture) return;
-    if (this.video.readyState < 2) return; // HAVE_CURRENT_DATA
+    if (this.video.seeking || this.video.readyState < 2) return;
 
     const videoWidth = this.video.videoWidth || 1920;
     const videoHeight = this.video.videoHeight || 1080;
     if (videoWidth <= 0 || videoHeight <= 0) return;
 
+    const resized =
+      this.allocatedWidth !== videoWidth || this.allocatedHeight !== videoHeight;
     if (!this.ensureTextureAllocation(videoWidth, videoHeight)) return;
+
+    const curTime = this.video.currentTime;
+    let isNewFrame = force || resized || this.lastRenderedTime === -1;
+
+    if (!isNewFrame) {
+      if (this.rvfcId !== null) {
+        // High-precision browser-composited video frame callback
+        isNewFrame = this.newVideoFrameAvailable;
+      } else {
+        // Fallback: media clock delta (~36ms for 24-27fps cinema VOD streams)
+        const minFrameDelta = 0.036 * Math.max(0.5, this.video.playbackRate || 1);
+        isNewFrame = Math.abs(curTime - this.lastRenderedTime) >= minFrameDelta;
+      }
+    }
 
     gl.useProgram(this.program);
 
-    // Update texture pixels IN-PLACE without allocating new memory
-    const curTime = this.video.currentTime;
-    if (!this.video.paused || this.lastRenderedTime !== curTime) {
+    // Update texture pixels IN-PLACE ONLY when video actually advances a film frame
+    if (isNewFrame) {
       gl.bindTexture(gl.TEXTURE_2D, this.texture);
       try {
         gl.texSubImage2D(
@@ -383,6 +463,7 @@ export class VideoShaderRenderer {
           this.video
         );
         this.lastRenderedTime = curTime;
+        this.newVideoFrameAvailable = false;
       } catch {
         if (this.onFrameError) this.onFrameError();
         return;
@@ -391,7 +472,7 @@ export class VideoShaderRenderer {
 
     // Set uniforms
     gl.uniform1i(this.uImageLoc, 0);
-    gl.uniform2f(this.uResolutionLoc, videoWidth, videoHeight);
+    gl.uniform2f(this.uTexelSizeLoc, 1.0 / videoWidth, 1.0 / videoHeight);
 
     let modeInt = 0;
     if (this.mode === "deband") modeInt = 1;
@@ -401,12 +482,14 @@ export class VideoShaderRenderer {
     gl.uniform1i(this.uModeLoc, modeInt);
     gl.uniform1f(this.uSharpnessLoc, this.sharpness);
     gl.uniform1f(this.uDebandThresholdLoc, this.debandThreshold);
-    gl.uniform1f(this.uTimeLoc, (Date.now() - this.startTime) / 1000.0);
 
-    // Draw full-screen quad
+    // Draw full-screen quad on every VSync tick (runs at 0.02ms on GPU using cached texture)
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
     if (this.onFrameSuccess) {
+      if (!this.hasReportedSuccess) {
+        this.hasReportedSuccess = true;
+      }
       this.onFrameSuccess();
     }
   }

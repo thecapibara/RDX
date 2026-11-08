@@ -23,11 +23,11 @@ fn default_true() -> bool {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            active_mirror: "https://rezka-tv.org".to_string(),
+            active_mirror: "https://hdrezka.me".to_string(),
             custom_mirrors: vec![
-                "https://rezka-tv.org".to_string(),
                 "https://hdrezka.me".to_string(),
-                "https://rezka.ag".to_string(),
+                "https://hdrezka.kim".to_string(),
+                "https://rezka.pub".to_string(),
             ],
             proxy_url: "".to_string(),
             preferred_quality: "720p".to_string(),
@@ -812,7 +812,7 @@ mod tests {
     fn test_storage_settings() {
         let storage = Storage::in_memory().expect("in memory db");
         let settings = storage.get_settings().expect("get settings");
-        assert_eq!(settings.active_mirror, "https://rezka-tv.org");
+        assert_eq!(settings.active_mirror, "https://hdrezka.me");
 
         let mut updated = settings;
         updated.active_mirror = "https://custom-mirror.com".to_string();

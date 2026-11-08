@@ -36,6 +36,8 @@ async fn test_live_mirror_and_catalog() {
 async fn test_storage_lifecycle_in_test() {
     let storage = Storage::in_memory().expect("in memory");
     let settings = storage.get_settings().expect("settings");
-    assert_eq!(settings.active_mirror, "https://rezka-tv.org");
+    assert_eq!(settings.active_mirror, "https://hdrezka.me");
     assert_eq!(settings.custom_mirrors.len(), 3);
 }
+
+

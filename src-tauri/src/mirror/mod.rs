@@ -6,21 +6,21 @@ use url::Url;
 use crate::client::HttpClient;
 
 pub const PRESET_MIRRORS: &[&str] = &[
-    "https://rezka-tv.org",
-    "https://rezka.ag",
     "https://hdrezka.me",
-    "https://hdrezka.sh",
     "https://hdrezka.kim",
     "https://rezka.pub",
+    "https://rezka.ag",
+    "https://hdrezka.sh",
+    "https://rezka-tv.org",
 ];
 
 pub const DISCOVERY_CANDIDATES: &[&str] = &[
-    "https://rezka-tv.org",
-    "https://rezka.ag",
     "https://hdrezka.me",
-    "https://hdrezka.sh",
     "https://hdrezka.kim",
     "https://rezka.pub",
+    "https://rezka.ag",
+    "https://hdrezka.sh",
+    "https://rezka-tv.org",
     "https://rezkify.com",
     "https://rezka.fi",
     "https://hdrezka.cm",
@@ -78,9 +78,9 @@ impl MirrorManager {
 
         match client.execute_with_anti_bot(Method::GET, &normalized, None, None, false).await {
             Ok(resp) => {
+                let latency_ms = start.elapsed().as_millis() as u64;
                 let status_code = resp.status();
                 let body_text = resp.text().await.unwrap_or_default();
-                let latency_ms = start.elapsed().as_millis() as u64;
 
                 let has_catalog = body_text.contains("b-content__inline_item");
                 let is_login_wall = body_text.contains("Вход на HDrezka") && !has_catalog;
@@ -169,9 +169,13 @@ impl MirrorManager {
             results.push(status);
         }
 
-        // Sort: working catalog mirrors first (by lowest latency), then others
+        // Sort: working catalog mirrors first (by lowest latency + DoH priority), then others
         results.sort_by(|a, b| match (a.online && a.catalog_available, b.online && b.catalog_available) {
-            (true, true) => a.latency_ms.cmp(&b.latency_ms),
+            (true, true) => {
+                let score_a = a.latency_ms + if a.doh_bypass { 0 } else { 80 };
+                let score_b = b.latency_ms + if b.doh_bypass { 0 } else { 80 };
+                score_a.cmp(&score_b)
+            }
             (true, false) => std::cmp::Ordering::Less,
             (false, true) => std::cmp::Ordering::Greater,
             (false, false) => a.mirror_url.cmp(&b.mirror_url),

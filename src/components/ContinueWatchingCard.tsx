@@ -52,11 +52,11 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
   return (
     <div
       onMouseEnter={playHoverSound}
-      className="group relative flex-shrink-0 w-64 cursor-pointer select-none [contain:layout_style]"
+      className="group relative flex-shrink-0 w-40 sm:w-44 md:w-48 cursor-pointer select-none [contain:layout_style]"
     >
       <div
         onClick={handleResumeClick}
-        className="relative aspect-video w-full overflow-hidden rounded-2xl bg-zinc-900 border border-white/10 shadow-md transition-transform duration-200 ease-out transform-gpu group-hover:scale-[1.03] group-hover:border-rose-500/50"
+        className="relative aspect-[2/3] w-full overflow-hidden rounded-2xl bg-zinc-900 border border-white/10 shadow-md transition-transform duration-200 ease-out transform-gpu group-hover:scale-[1.025] group-hover:border-rose-500/50"
       >
         <img
           src={item.poster_url}
@@ -68,12 +68,12 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
           onError={(e) => {
             e.currentTarget.onerror = null;
             (e.currentTarget as HTMLImageElement).src =
-              "data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22320%22%20height%3D%22180%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20fill%3D%22%2318181b%22%20width%3D%22320%22%20height%3D%22180%22%2F%3E%3Ctext%20fill%3D%22%2371717a%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3ERDX%3C%2Ftext%3E%3C%2Fsvg%3E";
+              "data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22200%22%20height%3D%22300%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20fill%3D%22%2318181b%22%20width%3D%22200%22%20height%3D%22300%22%2F%3E%3Ctext%20fill%3D%22%2371717a%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3ERDX%3C%2Ftext%3E%3C%2Fsvg%3E";
           }}
         />
 
         {/* Gradient shadow */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/40 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-black/40 pointer-events-none" />
 
         {/* Top Badges */}
         <div className="absolute top-2.5 left-2.5 z-10 pointer-events-none">
@@ -98,7 +98,7 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 pointer-events-none">
           <div
             onClick={handleResumeClick}
-            className="w-11 h-11 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-lg pointer-events-auto hover:bg-rose-500 hover:scale-110 active:scale-95 transition-transform duration-150 cursor-pointer"
+            className="w-12 h-12 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-lg pointer-events-auto hover:bg-rose-500 hover:scale-110 active:scale-95 transition-transform duration-150 cursor-pointer"
           >
             {isLoading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -109,13 +109,16 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
         </div>
 
         {/* Bottom Time & Translator */}
-        <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between text-[11px] font-medium text-zinc-300 z-10 pointer-events-none">
-          <span className="truncate max-w-[120px] text-zinc-300">
-            {item.translator_name || "Стандартне"}
-          </span>
-          <span className="font-mono text-zinc-400">
-            {formatDuration(item.position_sec)} / {formatDuration(item.duration_sec)}
-          </span>
+        <div className="absolute bottom-2.5 left-2.5 right-2.5 flex flex-col gap-0.5 z-10 pointer-events-none">
+          {item.translator_name && (
+            <span className="truncate text-zinc-300 text-[10px] font-medium drop-shadow-sm">
+              {item.translator_name}
+            </span>
+          )}
+          <div className="flex items-center justify-between text-[10px] font-mono font-medium text-zinc-300">
+            <span>{formatDuration(item.position_sec)}</span>
+            <span className="text-zinc-400">/ {formatDuration(item.duration_sec)}</span>
+          </div>
         </div>
 
         {/* Progress Bar at the bottom edge */}

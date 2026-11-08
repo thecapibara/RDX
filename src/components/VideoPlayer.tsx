@@ -584,11 +584,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   });
   const [shaderReady, setShaderReady] = useState(false);
+  const [renderFps, setRenderFps] = useState<number>(0);
+  const [streamFps, setStreamFps] = useState<number>(0);
   const shaderCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const shaderRendererRef = useRef<VideoShaderRenderer | null>(null);
 
   const handleSelectEnhanceMode = useCallback((mode: VideoEnhanceMode) => {
     setVideoEnhanceMode(mode);
+    if (mode === "off") {
+      setShaderReady(false);
+    } else {
+      setShaderReady(true);
+    }
     try {
       localStorage.setItem("rdx_video_enhance", mode);
     } catch {}
@@ -611,6 +618,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     if (!shaderCanvasRef.current || !videoRef.current) return;
 
+    if (
+      shaderRendererRef.current &&
+      shaderRendererRef.current.version !== VideoShaderRenderer.VERSION
+    ) {
+      shaderRendererRef.current.destroy();
+      shaderRendererRef.current = null;
+    }
+
     if (!shaderRendererRef.current) {
       shaderRendererRef.current = new VideoShaderRenderer(
         shaderCanvasRef.current,
@@ -618,20 +633,51 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {
           onFrameSuccess: () => setShaderReady(true),
           onFrameError: () => setShaderReady(false),
+          onFpsUpdate: (fps) =>
+            setRenderFps((prev) => (prev === fps ? prev : fps)),
         }
       );
     }
 
     shaderRendererRef.current.setMode(videoEnhanceMode);
     shaderRendererRef.current.start();
+    setShaderReady(true);
   }, [videoEnhanceMode, streamData]);
+
+  // Real-time video decoder framerate monitor for Stream Info overlay when shaders are off
+  useEffect(() => {
+    if (!showMediaInfo || videoEnhanceMode !== "off") return;
+
+    let frameCount = 0;
+    let lastTime = performance.now();
+    let animId: number | null = null;
+
+    const measureFps = () => {
+      frameCount++;
+      const now = performance.now();
+      const elapsed = (now - lastTime) / 1000;
+      if (elapsed >= 0.8) {
+        const nextFps = Math.round(frameCount / elapsed);
+        setStreamFps((prev) => (prev === nextFps ? prev : nextFps));
+        frameCount = 0;
+        lastTime = now;
+      }
+      animId = requestAnimationFrame(measureFps);
+    };
+
+    animId = requestAnimationFrame(measureFps);
+
+    return () => {
+      if (animId !== null) cancelAnimationFrame(animId);
+    };
+  }, [showMediaInfo, isPlaying, videoEnhanceMode]);
 
   useEffect(() => {
     return () => {
       shaderRendererRef.current?.destroy();
       shaderRendererRef.current = null;
     };
-  }, []);
+  }, [details.id, activeSeason, activeEpisode]);
 
   const [subFontSize, setSubFontSize] = useState<"sm" | "md" | "lg" | "xl">("md");
   const [subBgOpacity, setSubBgOpacity] = useState<number>(60);
@@ -1137,7 +1183,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         hlsRef.current = null;
       }
       video.src = mp4Url;
-      video.onloadedmetadata = () => {
+      const onMetadata = () => {
         const vidDur = video.duration;
         if (Number.isFinite(vidDur) && vidDur > 0) {
           hlsDurationRef.current = vidDur;
@@ -1154,6 +1200,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         video.playbackRate = playbackSpeed;
         video.play().catch(() => {});
       };
+      video.addEventListener("loadedmetadata", onMetadata, { once: true });
+      video.playbackRate = playbackSpeed;
+      video.play().catch(() => {});
     };
 
     // Helper to start HLS playback with native startPosition and LEVEL_LOADED duration capture
@@ -1171,11 +1220,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           startPosition: prevTime > 0 ? prevTime : -1,
           maxBufferLength: 60,
           maxMaxBufferLength: 120,
-          backBufferLength: 120,
-          maxBufferHole: 0.5,
+          backBufferLength: 60,
+          maxBufferHole: 1.2,
           highBufferWatchdogPeriod: 2,
-          nudgeOffset: 0.1,
-          nudgeMaxRetry: 5,
+          nudgeOffset: 0.2,
+          nudgeMaxRetry: 10,
         });
         hlsRef.current = hls;
         hls.loadSource(hlsUrl);
@@ -1196,14 +1245,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           if (prevTime > 0) {
-            const knownDur = hlsDurationRef.current || video.duration;
-            if (!Number.isFinite(knownDur) || knownDur <= 0 || prevTime < knownDur - 5) {
-              video.currentTime = prevTime;
-              setCurrentTime(prevTime);
-              if (initialPositionSec > 0 && prevTime === initialPositionSec) {
-                setResumeNotice(`Відновлено з ${formatTime(initialPositionSec)}`);
-                setTimeout(() => setResumeNotice(null), 3500);
-              }
+            setCurrentTime(prevTime);
+            if (initialPositionSec > 0 && prevTime === initialPositionSec) {
+              setResumeNotice(`Відновлено з ${formatTime(initialPositionSec)}`);
+              setTimeout(() => setResumeNotice(null), 3500);
             }
           }
           video.playbackRate = playbackSpeed;
@@ -1258,8 +1303,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
 
     return () => {
-      video.onerror = null;
-      video.onloadedmetadata = null;
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -1352,7 +1395,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         : (details.orig_title || "RDX");
 
       const effDur = getEffectiveDuration();
-      const currentPos = overrideTime !== undefined ? overrideTime : currentTime;
+      const liveTime = videoRef.current?.currentTime ?? 0;
+      const currentPos = overrideTime !== undefined ? overrideTime : liveTime;
       const playing = overridePlaying !== undefined ? overridePlaying : isPlaying;
 
       api
@@ -1376,7 +1420,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       activeEpisode,
       currentTranslator?.name,
       isPlaying,
-      currentTime,
       getEffectiveDuration,
     ]
   );
@@ -2117,7 +2160,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             if (!videoRef.current) return;
             const time = videoRef.current.currentTime;
             if (!isDraggingSeek && Number.isFinite(time)) {
-              setCurrentTime(time);
+              const minUiDelta = showControls || showMediaInfo ? 0.25 : 0.9;
+              setCurrentTime((prev) =>
+                Math.abs(time - prev) >= minUiDelta ? time : prev
+              );
             }
             if (effectiveDur <= 0) {
               syncDurationFromVideo();
@@ -2168,7 +2214,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           ref={shaderCanvasRef}
           aria-hidden="true"
           className={cn(
-            "absolute inset-0 w-full h-full pointer-events-none z-10 transition-opacity duration-150",
+            "absolute inset-0 m-auto w-full h-full pointer-events-none z-10 transition-opacity duration-150",
             getVideoObjectFitClass(),
             videoEnhanceMode !== "off" && shaderReady ? "opacity-100" : "opacity-0"
           )}
@@ -3301,6 +3347,48 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <span className="text-zinc-500">Роздільність:</span>
                 <span className="text-emerald-400 font-bold">
                   {videoRef.current ? `${videoRef.current.videoWidth}×${videoRef.current.videoHeight}` : "—"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Частота кадрів:</span>
+                <span
+                  className={cn(
+                    "font-bold font-mono",
+                    (videoEnhanceMode !== "off" ? renderFps : streamFps) >= 23
+                      ? "text-emerald-400"
+                      : "text-amber-400"
+                  )}
+                >
+                  {videoRef.current && videoRef.current.videoWidth > 0 ? (
+                    isPlaying ? (
+                      `${(videoEnhanceMode !== "off" ? renderFps : streamFps) || 24} FPS`
+                    ) : (
+                      "Пауза"
+                    )
+                  ) : (
+                    "—"
+                  )}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Покращення:</span>
+                <span
+                  className={cn(
+                    "font-medium",
+                    videoEnhanceMode === "off"
+                      ? "text-zinc-400"
+                      : videoEnhanceMode === "max"
+                      ? "text-rose-400"
+                      : "text-amber-400"
+                  )}
+                >
+                  {videoEnhanceMode === "off"
+                    ? "Вимкнено (0% GPU)"
+                    : videoEnhanceMode === "deband"
+                    ? "Deband (згладжування)"
+                    : videoEnhanceMode === "cas"
+                    ? "AMD CAS (чіткість)"
+                    : "Макс (Deband + CAS)"}
                 </span>
               </div>
               <div className="flex justify-between">

@@ -49,12 +49,12 @@ interface MirrorModalProps {
 }
 
 const PRESET_MIRRORS = [
-  "https://rezka-tv.org",
-  "https://rezka.ag",
   "https://hdrezka.me",
-  "https://hdrezka.sh",
   "https://hdrezka.kim",
   "https://rezka.pub",
+  "https://rezka.ag",
+  "https://hdrezka.sh",
+  "https://rezka-tv.org",
 ];
 
 export const MirrorModal: React.FC<MirrorModalProps> = ({
