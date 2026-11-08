@@ -32,7 +32,6 @@ import {
   ArrowLeft,
   Crown,
   Sparkles,
-  Moon,
 } from "lucide-react";
 import type {
   MediaDetails,
@@ -569,101 +568,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, [streamData?.thumbnails]);
 
-  // 5. Audio Gain Booster (up to 200%) & Night Mode (Dialogue Compression)
-  const [audioBoost, setAudioBoost] = useState<number>(1);
-  const [nightMode, setNightMode] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem("rdx_night_mode") === "true";
-    } catch {
-      return false;
-    }
-  });
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const gainNodeRef = useRef<GainNode | null>(null);
-  const compressorRef = useRef<DynamicsCompressorNode | null>(null);
-  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
-
-  const ensureAudioGraph = useCallback(() => {
-    if (!audioCtxRef.current && videoRef.current) {
-      try {
-        const AudioCtxClass =
-          window.AudioContext ||
-          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        const ctx = new AudioCtxClass();
-        const source = ctx.createMediaElementSource(videoRef.current);
-        const compressor = ctx.createDynamicsCompressor();
-        const gain = ctx.createGain();
-
-        // Audio pipeline: source -> compressor -> gain -> destination
-        source.connect(compressor);
-        compressor.connect(gain);
-        gain.connect(ctx.destination);
-
-        audioCtxRef.current = ctx;
-        compressorRef.current = compressor;
-        gainNodeRef.current = gain;
-        sourceNodeRef.current = source;
-      } catch (err) {
-        console.warn("Failed to create Web Audio graph:", err);
-      }
-    }
-
-    if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
-      audioCtxRef.current.resume().catch(() => {});
-    }
-  }, []);
-
-  const applyCompressorParams = useCallback((enabled: boolean) => {
-    if (!compressorRef.current || !audioCtxRef.current) return;
-    const t = audioCtxRef.current.currentTime;
-    if (enabled) {
-      // Night Mode ON: compress loud transients (explosions, gunshots), boost quiet dialogue
-      compressorRef.current.threshold.setValueAtTime(-24, t);
-      compressorRef.current.knee.setValueAtTime(30, t);
-      compressorRef.current.ratio.setValueAtTime(12, t);
-      compressorRef.current.attack.setValueAtTime(0.003, t);
-      compressorRef.current.release.setValueAtTime(0.25, t);
-    } else {
-      // Night Mode OFF: linear passthrough
-      compressorRef.current.threshold.setValueAtTime(0, t);
-      compressorRef.current.knee.setValueAtTime(0, t);
-      compressorRef.current.ratio.setValueAtTime(1, t);
-    }
-  }, []);
-
-  const handleSelectAudioBoost = useCallback((boost: number) => {
-    setAudioBoost(boost);
-    if (boost > 1) {
-      ensureAudioGraph();
-      applyCompressorParams(nightMode);
-    }
-
-    if (gainNodeRef.current) {
-      gainNodeRef.current.gain.value = boost;
-    }
-
-    showHud(`🔊 Підсилення: ${Math.round(boost * 100)}%`);
-  }, [ensureAudioGraph, applyCompressorParams, nightMode]);
-
-  const handleToggleNightMode = useCallback((forced?: boolean) => {
-    const next = typeof forced === "boolean" ? forced : !nightMode;
-    setNightMode(next);
-    try {
-      localStorage.setItem("rdx_night_mode", String(next));
-    } catch {}
-
-    ensureAudioGraph();
-    applyCompressorParams(next);
-    showHud(next ? "🌙 Нічний режим: Увімкнено (вирівнювання діалогів)" : "🌙 Нічний режим: Вимкнено");
-  }, [nightMode, ensureAudioGraph, applyCompressorParams]);
-
-  // Synchronize night mode on stream startup if previously enabled
+  // Clear any legacy broken audio/night-mode flags from previous sessions
   useEffect(() => {
-    if (nightMode) {
-      ensureAudioGraph();
-      applyCompressorParams(true);
-    }
-  }, [nightMode, ensureAudioGraph, applyCompressorParams]);
+    try {
+      localStorage.removeItem("rdx_night_mode");
+    } catch {}
+  }, []);
 
   // 6. Video Enhancement (High-Performance Zero-Leak Deband & CAS Sharpening)
   const [videoEnhanceMode, setVideoEnhanceMode] = useState<VideoEnhanceMode>(() => {
@@ -1528,16 +1438,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       } catch {}
     }
 
-    // Clean up Web Audio GainNode & AudioContext
-    if (audioCtxRef.current) {
-      try {
-        audioCtxRef.current.close().catch(() => {});
-      } catch {}
-      audioCtxRef.current = null;
-      gainNodeRef.current = null;
-      sourceNodeRef.current = null;
-    }
-
     // 3. Destroy HLS instance
     if (hlsRef.current) {
       try {
@@ -1583,16 +1483,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           video.removeAttribute("src");
           video.load();
         } catch {}
-      }
-
-      if (audioCtxRef.current) {
-        try {
-          audioCtxRef.current.close().catch(() => {});
-        } catch {}
-        audioCtxRef.current = null;
-        gainNodeRef.current = null;
-        compressorRef.current = null;
-        sourceNodeRef.current = null;
       }
 
       if (hlsRef.current) {
@@ -3565,38 +3455,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </div>
               </button>
 
-              {/* Audio Boost Submenu */}
-              <button
-                onClick={() => setContextMenu({ ...contextMenu, page: "boost" })}
-                className="w-full flex items-center justify-between px-3 py-2 text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
-              >
-                <div className="flex items-center gap-2.5 truncate">
-                  <Volume2 className="w-4 h-4 text-zinc-400 flex-shrink-0" />
-                  <span className="truncate">Підсилення звуку</span>
-                </div>
-                <div className="flex items-center gap-1 text-[11px] text-zinc-400 font-medium font-mono">
-                  <span>{Math.round(audioBoost * 100)}%</span>
-                  <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
-                </div>
-              </button>
-
-              {/* Night Mode Toggle (Dialogue Compression) */}
-              <button
-                onClick={() => {
-                  handleToggleNightMode();
-                  setContextMenu(null);
-                }}
-                className="w-full flex items-center justify-between px-3 py-2 text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
-              >
-                <div className="flex items-center gap-2.5 truncate">
-                  <Moon className={cn("w-4 h-4 flex-shrink-0", nightMode ? "text-indigo-400" : "text-zinc-400")} />
-                  <span className="truncate">Нічний режим (Діалоги)</span>
-                </div>
-                <span className={cn("text-xs font-bold font-mono", nightMode ? "text-indigo-400" : "text-zinc-500")}>
-                  {nightMode ? "Увімк" : "Вимк"}
-                </span>
-              </button>
-
               {/* Video Enhancement Submenu */}
               <button
                 onClick={() => setContextMenu({ ...contextMenu, page: "enhance" })}
@@ -4181,46 +4039,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </div>
           )}
 
-          {/* Submenu: Audio Gain Booster */}
-          {contextMenu.page === "boost" && (
-            <div className="space-y-0.5">
-              <button
-                onClick={() => setContextMenu({ ...contextMenu, page: "main" })}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer font-semibold text-[11px]"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Підсилення звуку</span>
-              </button>
-              <div className="h-px bg-white/10 my-1 mx-2" />
-              {[
-                { val: 1, label: "100% (Стандарт)" },
-                { val: 1.25, label: "125%" },
-                { val: 1.5, label: "150%" },
-                { val: 1.75, label: "175%" },
-                { val: 2, label: "200% (Макс)" },
-              ].map(({ val, label }) => {
-                const isSelected = audioBoost === val;
-                return (
-                  <button
-                    key={val}
-                    onClick={() => {
-                      handleSelectAudioBoost(val);
-                      setContextMenu(null);
-                    }}
-                    className={cn(
-                      "w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer",
-                      isSelected ? "bg-rose-600 text-white" : "text-zinc-300 hover:bg-white/10"
-                    )}
-                  >
-                    <span>{label}</span>
-                    {isSelected && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Submenu: Video Enhance (WebGL Deband & CAS) */}
+          {/* Submenu: Video Enhance */}
           {contextMenu.page === "enhance" && (
             <div className="space-y-1">
               <button
