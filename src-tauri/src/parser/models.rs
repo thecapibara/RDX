@@ -66,6 +66,10 @@ pub struct StreamData {
     pub thumbnails: Option<String>,
     #[serde(default)]
     pub is_premium: bool,
+    #[serde(default)]
+    pub cdn_host: Option<String>,
+    #[serde(default)]
+    pub cdn_ping_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

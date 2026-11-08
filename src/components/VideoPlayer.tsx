@@ -32,6 +32,7 @@ import {
   ArrowLeft,
   Crown,
   Sparkles,
+  Zap,
 } from "lucide-react";
 import type {
   MediaDetails,
@@ -576,6 +577,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }, []);
 
   // 6. Video Enhancement (High-Performance Zero-Leak Deband & CAS Sharpening)
+  const [turboBufferEnabled, setTurboBufferEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("rdx_turbo_buffer") !== "false";
+    } catch {
+      return true;
+    }
+  });
   const [videoEnhanceMode, setVideoEnhanceMode] = useState<VideoEnhanceMode>(() => {
     try {
       return (localStorage.getItem("rdx_video_enhance") as VideoEnhanceMode) || "off";
@@ -1177,12 +1185,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       ? video.currentTime
       : initialPositionSec;
 
-    const startMp4 = (mp4Url: string) => {
+    const startMp4 = async (mp4Url: string) => {
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
-      video.src = mp4Url;
+      let playUrl = mp4Url;
+      if (turboBufferEnabled && typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+        try {
+          playUrl = await api.getTurboStreamUrl(mp4Url);
+        } catch (err) {
+          console.warn("Turbo proxy error, fallback to direct MP4:", err);
+        }
+      }
+      video.src = playUrl;
       const onMetadata = () => {
         const vidDur = video.duration;
         if (Number.isFinite(vidDur) && vidDur > 0) {
@@ -1218,11 +1234,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           enableWorker: true,
           lowLatencyMode: false,
           startPosition: prevTime > 0 ? prevTime : -1,
-          maxBufferLength: 60,
-          maxMaxBufferLength: 120,
-          backBufferLength: 60,
+          maxBufferLength: turboBufferEnabled ? 300 : 60,
+          maxMaxBufferLength: turboBufferEnabled ? 600 : 120,
+          backBufferLength: turboBufferEnabled ? 120 : 60,
+          progressive: true,
           maxBufferHole: 1.2,
-          highBufferWatchdogPeriod: 2,
+          highBufferWatchdogPeriod: 1,
           nudgeOffset: 0.2,
           nudgeMaxRetry: 10,
         });
@@ -3402,6 +3419,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </span>
               </div>
               <div className="flex justify-between">
+                <span className="text-zinc-500">Smart CDN:</span>
+                <span className="text-emerald-400 font-mono font-medium truncate ml-2 max-w-[170px]" title={streamData?.cdn_host || "Voidboost Edge"}>
+                  {streamData?.cdn_host || "Voidboost Edge"} {streamData?.cdn_ping_ms ? `(${streamData.cdn_ping_ms} мс)` : ""}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Turbo-буфер:</span>
+                <span className={cn("font-medium", turboBufferEnabled ? "text-amber-400 font-bold" : "text-zinc-400")}>
+                  {turboBufferEnabled ? "⚡ Активний (Multi-segment)" : "Вимкнено"}
+                </span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-zinc-500">Буфер:</span>
                 <span className="text-white">
                   {videoRef.current ? `${Math.max(0, getBufferedEnd() - currentTime).toFixed(1)} сек` : "—"}
@@ -3654,6 +3683,26 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <span>Статистика потоку</span>
                 </div>
                 <span className="font-mono text-[10px] text-zinc-500 pl-2">I</span>
+              </button>
+
+              {/* Turbo Buffer Toggle */}
+              <button
+                onClick={() => {
+                  const next = !turboBufferEnabled;
+                  setTurboBufferEnabled(next);
+                  try {
+                    localStorage.setItem("rdx_turbo_buffer", String(next));
+                  } catch {}
+                  showHud(next ? "⚡ Turbo-буфер: Увімкнено (Prefetch)" : "Turbo-буфер: Вимкнено");
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center justify-between px-3 py-2 text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Zap className={cn("w-4 h-4 flex-shrink-0", turboBufferEnabled ? "text-amber-400 fill-amber-400/25" : "text-zinc-400")} />
+                  <span>Turbo-буфер (Segment Prefetch)</span>
+                </div>
+                {turboBufferEnabled && <Check className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />}
               </button>
 
               {/* Sleep Timer */}

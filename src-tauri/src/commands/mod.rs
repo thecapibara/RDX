@@ -15,6 +15,7 @@ pub struct AppState {
     pub client: Arc<HttpClient>,
     pub mpris: Arc<crate::mpris::MprisState>,
     pub downloader: Arc<DownloadManager>,
+    pub turbo: Arc<crate::turbo::TurboServer>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -361,9 +362,15 @@ pub async fn search_autocomplete(state: State<'_, AppState>, query: String) -> R
 #[tauri::command]
 pub async fn get_media_details(state: State<'_, AppState>, item_url: String) -> Result<MediaDetails, String> {
     let mirror = state.storage.get_settings().map_err(|e| e.to_string())?.active_mirror;
-    RezkaParser::get_media_details(&state.client, &mirror, &item_url)
+    let mut details = RezkaParser::get_media_details(&state.client, &mirror, &item_url)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    if let Some(ref mut s) = details.initial_streams {
+        crate::cdn::CdnSelector::optimize_stream(&state.client, s).await;
+    }
+
+    Ok(details)
 }
 
 #[tauri::command]
@@ -377,7 +384,7 @@ pub async fn get_stream(
     referer_url: String,
 ) -> Result<StreamData, String> {
     let mirror = state.storage.get_settings().map_err(|e| e.to_string())?.active_mirror;
-    RezkaParser::get_stream(
+    let mut stream = RezkaParser::get_stream(
         &state.client,
         &mirror,
         &media_id,
@@ -388,7 +395,10 @@ pub async fn get_stream(
         &referer_url,
     )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+
+    crate::cdn::CdnSelector::optimize_stream(&state.client, &mut stream).await;
+    Ok(stream)
 }
 
 #[tauri::command]
@@ -399,7 +409,7 @@ pub async fn get_episodes(
     referer_url: String,
 ) -> Result<EpisodesData, String> {
     let mirror = state.storage.get_settings().map_err(|e| e.to_string())?.active_mirror;
-    let (seasons, episodes, stream_data) = RezkaParser::get_episodes(
+    let (seasons, episodes, mut stream_data) = RezkaParser::get_episodes(
         &state.client,
         &mirror,
         &media_id,
@@ -409,11 +419,30 @@ pub async fn get_episodes(
     .await
     .map_err(|e| e.to_string())?;
 
+    if let Some(ref mut s) = stream_data {
+        crate::cdn::CdnSelector::optimize_stream(&state.client, s).await;
+    }
+
     Ok(EpisodesData {
         seasons,
         episodes,
         stream_data,
     })
+}
+
+#[tauri::command]
+pub fn get_turbo_stream_url(state: State<'_, AppState>, raw_url: String) -> String {
+    state.turbo.get_turbo_url(&raw_url)
+}
+
+#[tauri::command]
+pub fn get_turbo_stats(state: State<'_, AppState>) -> crate::turbo::TurboStats {
+    state.turbo.get_stats()
+}
+
+#[tauri::command]
+pub async fn select_fastest_cdn(state: State<'_, AppState>, stream_url: String) -> Result<(String, u64), String> {
+    Ok(crate::cdn::CdnSelector::select_fastest_cdn(&state.client, &stream_url).await)
 }
 
 // ==================== Window & Player Helper Commands ====================

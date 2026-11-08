@@ -116,6 +116,17 @@ export interface StreamData {
   subtitles: SubtitleTrack[];
   thumbnails: string | null;
   is_premium?: boolean;
+  cdn_host?: string;
+  cdn_ping_ms?: number;
+}
+
+export interface TurboStats {
+  enabled: boolean;
+  port: number;
+  buffered_mb: number;
+  total_prefetched_mb: number;
+  active_workers: number;
+  cdn_mode: string;
 }
 
 export interface MediaDetails {

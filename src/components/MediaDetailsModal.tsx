@@ -677,10 +677,10 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                     {hasAvailableStream && (
                       <button
                         onClick={handleOpenDownloadModal}
-                        className="flex items-center gap-2 px-6 py-3.5 rounded-2xl font-semibold text-sm border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 transition-all cursor-pointer active:scale-95 shadow-lg shadow-cyan-950/30"
+                        className="flex items-center gap-2 px-6 py-3.5 rounded-2xl font-semibold text-sm border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 transition-all cursor-pointer active:scale-95 shadow-lg shadow-rose-950/30"
                         title="Завантажити для перегляду офлайн"
                       >
-                        <Download className="w-4 h-4 text-cyan-400" />
+                        <Download className="w-4 h-4 text-rose-400" />
                         <span>Завантажити</span>
                       </button>
                     )}
@@ -1051,7 +1051,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
             <div className="relative w-full max-w-md bg-zinc-900 border border-white/15 rounded-3xl p-6 shadow-2xl space-y-5 text-white">
               <div className="flex items-center justify-between pb-3 border-b border-white/10">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                  <div className="w-8 h-8 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400">
                     <Download className="w-4 h-4" />
                   </div>
                   <div>
@@ -1077,7 +1077,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                       className={cn(
                         "px-3 py-2.5 rounded-xl text-xs font-medium border text-center transition-all cursor-pointer",
                         downloadMode === "single"
-                          ? "bg-cyan-500/20 border-cyan-500/50 text-cyan-300 font-semibold"
+                          ? "bg-rose-600 border-rose-500 text-white font-semibold shadow-md shadow-rose-950/40"
                           : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
                       )}
                     >
@@ -1088,7 +1088,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                       className={cn(
                         "px-3 py-2.5 rounded-xl text-xs font-medium border text-center transition-all cursor-pointer",
                         downloadMode === "season"
-                          ? "bg-cyan-500/20 border-cyan-500/50 text-cyan-300 font-semibold"
+                          ? "bg-rose-600 border-rose-500 text-white font-semibold shadow-md shadow-rose-950/40"
                           : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
                       )}
                     >
@@ -1103,7 +1103,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                 <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Якість відео:</span>
                 {loadingQualities ? (
                   <div className="flex items-center gap-2 py-3 text-xs text-zinc-400">
-                    <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
+                    <Loader2 className="w-4 h-4 animate-spin text-rose-500" />
                     <span>Перевірка доступних якостей...</span>
                   </div>
                 ) : downloadQualities.length === 0 ? (
@@ -1121,7 +1121,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                           className={cn(
                             "px-3 py-2 rounded-xl text-xs font-medium border text-center transition-all cursor-pointer",
                             isSelected
-                              ? "bg-cyan-500/25 border-cyan-500/60 text-cyan-300 font-bold"
+                              ? "bg-rose-600 border-rose-500 text-white font-bold shadow-md shadow-rose-950/40"
                               : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
                           )}
                         >
@@ -1150,7 +1150,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                 </button>
                 <button
                   onClick={handleStartDownload}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all shadow-lg shadow-cyan-950/50 cursor-pointer active:scale-95"
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-lg shadow-rose-950/50 cursor-pointer active:scale-95"
                 >
                   <Download className="w-4 h-4" />
                   <span>Почати</span>
@@ -1162,8 +1162,8 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
 
         {/* Floating Download Notification Toast */}
         {downloadNotification && (
-          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-zinc-900 border border-cyan-500/40 text-cyan-300 text-xs font-semibold shadow-2xl shadow-cyan-950/80">
-            <Download className="w-4 h-4 text-cyan-400 animate-bounce" />
+          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-zinc-900 border border-rose-500/40 text-rose-300 text-xs font-semibold shadow-2xl shadow-rose-950/80">
+            <Download className="w-4 h-4 text-rose-400 animate-bounce" />
             <span>{downloadNotification}</span>
           </div>
         )}

@@ -622,7 +622,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => setActiveTab("downloads")}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs transition-colors cursor-pointer shadow-lg shadow-cyan-950/50"
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-semibold text-xs border border-white/10 transition-colors cursor-pointer shadow-lg"
               >
                 <span>Офлайн-завантаження</span>
               </button>
@@ -702,6 +702,7 @@ export default function App() {
                   items={continueWatching}
                   onResume={handleResumeContinueWatching}
                   onRemove={handleRemoveContinueWatching}
+                  onOpenDetails={handleOpenDetails}
                 />
               )}
 

@@ -1,4 +1,5 @@
 pub mod audio;
+pub mod cdn;
 pub mod client;
 pub mod commands;
 pub mod downloader;
@@ -6,6 +7,7 @@ pub mod mirror;
 pub mod mpris;
 pub mod parser;
 pub mod storage;
+pub mod turbo;
 
 use std::sync::Arc;
 use client::{default_cookie_path, HttpClient, PersistentCookieStore};
@@ -36,7 +38,15 @@ pub fn run() {
 
     let mpris = Arc::new(MprisState::new());
     let downloader = Arc::new(downloader::DownloadManager::new(storage.clone()));
-    let state = AppState { storage, client, mpris, downloader };
+    let turbo = Arc::new(turbo::TurboServer::new(client.get_reqwest_client()));
+    let turbo_spawn = turbo.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = turbo_spawn.start().await {
+            eprintln!("[RDX Turbo] Server start warning: {}", e);
+        }
+    });
+
+    let state = AppState { storage, client, mpris, downloader, turbo };
 
     tauri::Builder::default()
         .manage(state)
@@ -113,6 +123,9 @@ pub fn run() {
             commands::clear_mpris_state,
             commands::play_startup_sound,
             commands::play_ui_sound,
+            commands::get_turbo_stream_url,
+            commands::get_turbo_stats,
+            commands::select_fastest_cdn,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

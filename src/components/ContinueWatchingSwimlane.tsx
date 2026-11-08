@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { ChevronLeft, ChevronRight, History } from "lucide-react";
-import type { WatchProgress } from "../types";
+import type { WatchProgress, MediaCard } from "../types";
 import { ContinueWatchingCard } from "./ContinueWatchingCard";
 import { cn } from "../lib/utils";
 import { playButtonClickSound } from "../services/sound";
@@ -9,6 +9,7 @@ interface ContinueWatchingSwimlaneProps {
   items: WatchProgress[];
   onResume: (item: WatchProgress) => void;
   onRemove: (mediaId: string) => void;
+  onOpenDetails?: (card: MediaCard) => void;
   className?: string;
 }
 
@@ -16,6 +17,7 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
   items,
   onResume,
   onRemove,
+  onOpenDetails,
   className,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -222,6 +224,7 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
               item={item}
               onResume={onResume}
               onRemove={onRemove}
+              onOpenDetails={onOpenDetails}
             />
           ))}
           <div ref={endSentinelRef} className="w-px h-1 shrink-0 -ml-4 pointer-events-none opacity-0" aria-hidden="true" />

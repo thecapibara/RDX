@@ -735,4 +735,25 @@ export const api = {
     }
     return "";
   },
+
+  getTurboStreamUrl: async (rawUrl: string): Promise<string> => {
+    if (isTauri) {
+      return invoke<string>("get_turbo_stream_url", { rawUrl });
+    }
+    return rawUrl;
+  },
+
+  getTurboStats: async (): Promise<any> => {
+    if (isTauri) {
+      return invoke<any>("get_turbo_stats");
+    }
+    return { enabled: false, port: 0, buffered_mb: 0, total_prefetched_mb: 0, active_workers: 0, cdn_mode: "Off" };
+  },
+
+  selectFastestCdn: async (streamUrl: string): Promise<[string, number]> => {
+    if (isTauri) {
+      return invoke<[string, number]>("select_fastest_cdn", { streamUrl });
+    }
+    return ["auto", 0];
+  },
 };

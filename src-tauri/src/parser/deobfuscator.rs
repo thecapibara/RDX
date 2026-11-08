@@ -150,6 +150,8 @@ impl StreamDeobfuscator {
             subtitles,
             thumbnails: thumbnails.map(|s| s.to_string()),
             is_premium: false,
+            cdn_host: None,
+            cdn_ping_ms: None,
         }
     }
 }

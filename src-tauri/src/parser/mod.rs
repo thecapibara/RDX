@@ -643,6 +643,8 @@ impl RezkaParser {
                     subtitles: vec![],
                     thumbnails: None,
                     is_premium: true,
+                    cdn_host: None,
+                    cdn_ping_ms: None,
                 });
             }
             let msg = json.get("message").and_then(|v| v.as_str()).unwrap_or("Stream fetch failed");
@@ -770,6 +772,8 @@ impl RezkaParser {
                 subtitles: vec![],
                 thumbnails: None,
                 is_premium: true,
+                cdn_host: None,
+                cdn_ping_ms: None,
             })
         } else {
             None

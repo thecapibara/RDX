@@ -398,6 +398,10 @@ impl HttpClient {
         &self.cookie_store
     }
 
+    pub fn get_reqwest_client(&self) -> Client {
+        self.get_client()
+    }
+
     fn get_client(&self) -> Client {
         self.client.read().unwrap().clone()
     }

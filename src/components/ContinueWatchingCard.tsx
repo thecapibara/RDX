@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import { Play, X, Loader2 } from "lucide-react";
-import type { WatchProgress } from "../types";
+import type { WatchProgress, MediaCard } from "../types";
 import { playHoverSound } from "../services/sound";
 
 interface ContinueWatchingCardProps {
   item: WatchProgress;
   onResume: (item: WatchProgress) => void;
   onRemove: (mediaId: string) => void;
+  onOpenDetails?: (card: MediaCard) => void;
 }
 
 function formatDuration(sec: number): string {
@@ -25,6 +26,7 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
   item,
   onResume,
   onRemove,
+  onOpenDetails,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
 
@@ -131,8 +133,26 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
       </div>
 
       {/* Title */}
-      <div className="mt-2 px-1">
-        <h4 className="text-sm font-semibold text-zinc-100 truncate group-hover:text-rose-400 transition-colors duration-150">
+      <div
+        onClick={(e) => {
+          e.stopPropagation();
+          if (onOpenDetails) {
+            onOpenDetails({
+              id: item.media_id,
+              url: item.media_url,
+              title: item.title,
+              poster: item.poster_url,
+              entity_type: item.media_type || (item.season !== null ? "Серіал" : "Фільм"),
+              series_info: item.season !== null && item.episode !== null ? `S${item.season}E${item.episode}` : null,
+              misc_info: item.translator_name || "",
+              rating: null,
+            });
+          }
+        }}
+        title={`Відкрити «${item.title}»`}
+        className="mt-2 px-1 cursor-pointer group/title"
+      >
+        <h4 className="text-sm font-semibold text-zinc-100 truncate group-hover/title:text-rose-400 group-hover:text-rose-400 transition-colors duration-150">
           {item.title}
         </h4>
       </div>

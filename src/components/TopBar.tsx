@@ -29,13 +29,12 @@ const PRIMARY_TABS: { id: NavTab; label: string }[] = [
   { id: "home", label: "Головна" },
   { id: "films", label: "Фільми" },
   { id: "series", label: "Серіали" },
-  { id: "downloads", label: "Завантаження" },
+  { id: "cartoons", label: "Мультфільми" },
+  { id: "animation", label: "Аніме" },
   { id: "bookmarks", label: "Закладки" },
 ];
 
 const SECONDARY_TABS: { id: NavTab; label: string }[] = [
-  { id: "cartoons", label: "Мультфільми" },
-  { id: "animation", label: "Аніме" },
   { id: "new", label: "Новинки" },
 ];
 
