@@ -43,7 +43,7 @@ import type {
 } from "../types";
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
-import { VideoEnhanceMode, VideoShaderRenderer } from "../utils/videoShaders";
+import { VideoEnhanceMode } from "../utils/videoShaders";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
@@ -583,9 +583,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       return "off";
     }
   });
-  const [shaderReady, setShaderReady] = useState(false);
-  const shaderCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const shaderRendererRef = useRef<VideoShaderRenderer | null>(null);
 
   const handleSelectEnhanceMode = useCallback((mode: VideoEnhanceMode) => {
     setVideoEnhanceMode(mode);
@@ -600,35 +597,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       max: "Покращення: Максимальне (Deband + CAS)",
     };
     showHud(`✨ ${labels[mode]}`);
-  }, []);
-
-  useEffect(() => {
-    if (videoEnhanceMode === "off") {
-      shaderRendererRef.current?.stop();
-      setShaderReady(false);
-      return;
-    }
-    if (!shaderCanvasRef.current || !videoRef.current) return;
-
-    if (!shaderRendererRef.current) {
-      shaderRendererRef.current = new VideoShaderRenderer(
-        shaderCanvasRef.current,
-        videoRef.current,
-        {
-          onFrameSuccess: () => setShaderReady(true),
-          onFrameError: () => setShaderReady(false),
-        }
-      );
-    }
-    shaderRendererRef.current.setMode(videoEnhanceMode);
-    shaderRendererRef.current.start();
-  }, [videoEnhanceMode, streamData]);
-
-  useEffect(() => {
-    return () => {
-      shaderRendererRef.current?.destroy();
-      shaderRendererRef.current = null;
-    };
   }, []);
 
   const [subFontSize, setSubFontSize] = useState<"sm" | "md" | "lg" | "xl">("md");
@@ -763,6 +731,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       style.height = "100%";
       style.maxWidth = "100%";
     }
+
+    if (videoEnhanceMode === "cas") {
+      style.filter = "url(#rdx-filter-cas) contrast(1.02)";
+    } else if (videoEnhanceMode === "deband") {
+      style.filter = "url(#rdx-filter-deband)";
+    } else if (videoEnhanceMode === "max") {
+      style.filter = "url(#rdx-filter-max) contrast(1.03)";
+    }
+
     return style;
   };
 
@@ -2093,13 +2070,47 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
       `}</style>
 
-      {/* Persistent Video Stage (Single DOM node across all modes) */}
+      {/* Persistent Video Stage */}
       <div
         key="video-stage"
         className="relative w-full h-full overflow-hidden bg-black flex items-center justify-center"
       >
+        {/* Hardware GPU SVG Video Filters (Deband & Adaptive CAS Sharpening) */}
+        <svg className="absolute w-0 h-0 pointer-events-none opacity-0" aria-hidden="true">
+          <defs>
+            {/* 1. Deband Filter: spatial dithering via feTurbulence & soft blend */}
+            <filter id="rdx-filter-deband" x="0%" y="0%" width="100%" height="100%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="1" result="noise" />
+              <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.04 0" result="dither" />
+              <feBlend mode="overlay" in="SourceGraphic" in2="dither" />
+            </filter>
+
+            {/* 2. CAS Adaptive Sharpening Filter: 3x3 high-contrast unsharp convolution */}
+            <filter id="rdx-filter-cas" x="0%" y="0%" width="100%" height="100%">
+              <feConvolveMatrix
+                order="3"
+                kernelMatrix="0 -0.85 0  -0.85 4.4 -0.85  0 -0.85 0"
+                preserveAlpha="true"
+              />
+            </filter>
+
+            {/* 3. Max Enhancement: Deband + Sharpening combined */}
+            <filter id="rdx-filter-max" x="0%" y="0%" width="100%" height="100%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="1" result="noise" />
+              <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.03 0" result="dither" />
+              <feBlend mode="overlay" in="SourceGraphic" in2="dither" result="debanded" />
+              <feConvolveMatrix
+                in="debanded"
+                order="3"
+                kernelMatrix="0 -0.75 0  -0.75 4.0 -0.75  0 -0.75 0"
+                preserveAlpha="true"
+              />
+            </filter>
+          </defs>
+        </svg>
+
         <video
-          key="persistent-video"
+          key={`video-${details.id}-${effectiveTranslatorId || ""}-${activeSeason ?? 0}-${activeEpisode ?? 0}`}
           ref={videoRef}
           title=""
           controls={false}
@@ -2141,7 +2152,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             if (videoRef.current && !videoRef.current.paused) {
               setIsPlaying(true);
             }
-            shaderRendererRef.current?.renderFrame();
             syncMprisState(true);
           }}
           onPlay={() => {
@@ -2161,20 +2171,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onClick={handleVideoClick}
           onDoubleClick={handleVideoDoubleClick}
         />
-
-        {/* High-Performance Zero-Leak WebGL Post-Processing Canvas (Layered on top at z-10) */}
-        {videoEnhanceMode !== "off" && (
-          <canvas
-            ref={shaderCanvasRef}
-            aria-hidden="true"
-            className={cn(
-              "absolute inset-0 w-full h-full pointer-events-none z-10 transition-opacity duration-150",
-              getVideoObjectFitClass(),
-              shaderReady ? "opacity-100" : "opacity-0"
-            )}
-            style={getVideoStyle()}
-          />
-        )}
 
         {/* ================= DOUBLE-TAP SEEK RIPPLE INDICATORS ================= */}
         {isMiniMode && miniSeekRipple === "left" && (

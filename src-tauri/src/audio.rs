@@ -1,4 +1,4 @@
-use rodio::{Decoder, OutputStream, Sink};
+use rodio::{source::Zero, Decoder, OutputStream, Sink};
 use std::io::Cursor;
 use std::sync::mpsc::{channel, Sender};
 use std::sync::OnceLock;
@@ -26,6 +26,13 @@ fn get_or_init_ui_audio_tx() -> &'static Sender<UiSoundType> {
                 eprintln!("RDX Audio: failed to acquire default audio stream for UI feedback sounds");
                 return;
             };
+
+            // Keep PipeWire/ALSA/WASAPI audio stream active to prevent DAC sleep & truncated transients
+            if let Ok(keepalive_sink) = Sink::try_new(&stream_handle) {
+                keepalive_sink.set_volume(0.0);
+                keepalive_sink.append(Zero::<f32>::new(2, 44100));
+                keepalive_sink.detach();
+            }
 
             let mut last_hover_time = std::time::Instant::now() - std::time::Duration::from_secs(1);
 
