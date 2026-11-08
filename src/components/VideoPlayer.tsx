@@ -44,7 +44,7 @@ import type {
 } from "../types";
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
-import { VideoEnhanceMode } from "../utils/videoShaders";
+import { VideoEnhanceMode, VideoShaderRenderer } from "../utils/videoShaders";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
@@ -665,7 +665,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [nightMode, ensureAudioGraph, applyCompressorParams]);
 
-  // 6. Video Enhancement (Hardware GPU Deband & CAS Sharpening)
+  // 6. Video Enhancement (High-Performance Zero-Leak Deband & CAS Sharpening)
   const [videoEnhanceMode, setVideoEnhanceMode] = useState<VideoEnhanceMode>(() => {
     try {
       return (localStorage.getItem("rdx_video_enhance") as VideoEnhanceMode) || "off";
@@ -673,6 +673,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       return "off";
     }
   });
+  const [shaderReady, setShaderReady] = useState(false);
+  const shaderCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const shaderRendererRef = useRef<VideoShaderRenderer | null>(null);
 
   const handleSelectEnhanceMode = useCallback((mode: VideoEnhanceMode) => {
     setVideoEnhanceMode(mode);
@@ -687,6 +690,35 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       max: "Покращення: Максимальне (Deband + CAS)",
     };
     showHud(`✨ ${labels[mode]}`);
+  }, []);
+
+  useEffect(() => {
+    if (videoEnhanceMode === "off") {
+      shaderRendererRef.current?.stop();
+      setShaderReady(false);
+      return;
+    }
+    if (!shaderCanvasRef.current || !videoRef.current) return;
+
+    if (!shaderRendererRef.current) {
+      shaderRendererRef.current = new VideoShaderRenderer(
+        shaderCanvasRef.current,
+        videoRef.current,
+        {
+          onFrameSuccess: () => setShaderReady(true),
+          onFrameError: () => setShaderReady(false),
+        }
+      );
+    }
+    shaderRendererRef.current.setMode(videoEnhanceMode);
+    shaderRendererRef.current.start();
+  }, [videoEnhanceMode, streamData]);
+
+  useEffect(() => {
+    return () => {
+      shaderRendererRef.current?.destroy();
+      shaderRendererRef.current = null;
+    };
   }, []);
 
   const [subFontSize, setSubFontSize] = useState<"sm" | "md" | "lg" | "xl">("md");
@@ -821,15 +853,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       style.height = "100%";
       style.maxWidth = "100%";
     }
-
-    if (videoEnhanceMode === "cas") {
-      style.filter = "url(#rdx-filter-cas) contrast(1.02)";
-    } else if (videoEnhanceMode === "deband") {
-      style.filter = "url(#rdx-filter-deband)";
-    } else if (videoEnhanceMode === "max") {
-      style.filter = "url(#rdx-filter-max) contrast(1.03)";
-    }
-
     return style;
   };
 
@@ -2185,40 +2208,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         key="video-stage"
         className="relative w-full h-full overflow-hidden bg-black flex items-center justify-center"
       >
-        {/* Hardware GPU SVG Video Enhancement Filters */}
-        <svg className="sr-only" aria-hidden="true" width="0" height="0">
-          <defs>
-            {/* CAS: Adaptive Unsharp Convolution Matrix */}
-            <filter id="rdx-filter-cas" x="-10%" y="-10%" width="120%" height="120%">
-              <feConvolveMatrix
-                order="3"
-                kernelMatrix="0 -0.8 0  -0.8 4.2 -0.8  0 -0.8 0"
-                preserveAlpha="true"
-              />
-            </filter>
-
-            {/* Deband: Spatial Dither Overlay to eliminate 8-bit banding */}
-            <filter id="rdx-filter-deband" x="0%" y="0%" width="100%" height="100%">
-              <feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="1" result="noise" />
-              <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.035 0" result="dither" />
-              <feBlend mode="overlay" in="SourceGraphic" in2="dither" />
-            </filter>
-
-            {/* Max: Deband Spatial Dither + CAS Convolution Sharpener */}
-            <filter id="rdx-filter-max" x="-10%" y="-10%" width="120%" height="120%">
-              <feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="1" result="noise" />
-              <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.03 0" result="dither" />
-              <feBlend mode="overlay" in="SourceGraphic" in2="dither" result="debanded" />
-              <feConvolveMatrix
-                in="debanded"
-                order="3"
-                kernelMatrix="0 -0.75 0  -0.75 4.0 -0.75  0 -0.75 0"
-                preserveAlpha="true"
-              />
-            </filter>
-          </defs>
-        </svg>
-
         <video
           key="persistent-video"
           ref={videoRef}
@@ -2228,7 +2217,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           controlsList="nodownload nofullscreen noremoteplayback"
           onContextMenu={handleContextMenu}
           className={cn(
-            "w-full h-full cursor-pointer relative z-10",
+            "w-full h-full cursor-pointer relative z-0",
             getVideoObjectFitClass()
           )}
           style={getVideoStyle()}
@@ -2262,6 +2251,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             if (videoRef.current && !videoRef.current.paused) {
               setIsPlaying(true);
             }
+            shaderRendererRef.current?.renderFrame();
             syncMprisState(true);
           }}
           onPlay={() => {
@@ -2281,6 +2271,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onClick={handleVideoClick}
           onDoubleClick={handleVideoDoubleClick}
         />
+
+        {/* High-Performance Zero-Leak WebGL Post-Processing Canvas (Layered on top at z-10) */}
+        {videoEnhanceMode !== "off" && (
+          <canvas
+            ref={shaderCanvasRef}
+            aria-hidden="true"
+            className={cn(
+              "absolute inset-0 w-full h-full pointer-events-none z-10 transition-opacity duration-150",
+              getVideoObjectFitClass(),
+              shaderReady ? "opacity-100" : "opacity-0"
+            )}
+            style={getVideoStyle()}
+          />
+        )}
 
         {/* ================= DOUBLE-TAP SEEK RIPPLE INDICATORS ================= */}
         {isMiniMode && miniSeekRipple === "left" && (
