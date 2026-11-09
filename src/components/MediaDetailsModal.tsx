@@ -13,6 +13,8 @@ import {
   Crown,
   Download,
   X,
+  Mic,
+  Layers,
 } from "lucide-react";
 import type { Bookmark, MediaCard, MediaDetails, WatchProgress, Translator, EpisodeProgress, StreamQuality } from "../types";
 import { api } from "../services/api";
@@ -32,6 +34,19 @@ interface MediaDetailsModalProps {
   ) => void;
   isBookmarked: boolean;
   onToggleBookmark: (bookmark: Bookmark) => void;
+}
+
+function isPremiumQuality(label?: string | null): boolean {
+  if (!label) return false;
+  const lower = label.toLowerCase();
+  return (
+    lower.includes("ultra") ||
+    lower.includes("2k") ||
+    lower.includes("4k") ||
+    lower.includes("prem") ||
+    lower.includes("2160") ||
+    lower.includes("1440")
+  );
 }
 
 export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
@@ -55,17 +70,37 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
 
   // Download states
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
-  const [downloadMode, setDownloadMode] = useState<"single" | "season">("single");
+  const [downloadMode, setDownloadMode] = useState<"single" | "season" | "all_seasons">("single");
+  const [downloadTargetSeason, setDownloadTargetSeason] = useState<number>(1);
+  const [downloadTranslator, setDownloadTranslator] = useState<Translator | null>(null);
+  const [isDownloadTranslatorDropdownOpen, setIsDownloadTranslatorDropdownOpen] = useState(false);
   const [downloadQualities, setDownloadQualities] = useState<StreamQuality[]>([]);
   const [selectedDownloadQuality, setSelectedDownloadQuality] = useState<string>("720p");
   const [loadingQualities, setLoadingQualities] = useState(false);
   const [downloadNotification, setDownloadNotification] = useState<string | null>(null);
+  const downloadTranslatorDropdownRef = useRef<HTMLDivElement>(null);
 
   // Dropdown states for structured voiceover selector
   const [isTranslatorDropdownOpen, setIsTranslatorDropdownOpen] = useState(false);
   const [translatorFilterTab, setTranslatorFilterTab] = useState<"all" | "ukr">("all");
   const [translatorSearch, setTranslatorSearch] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close download translator dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        downloadTranslatorDropdownRef.current &&
+        !downloadTranslatorDropdownRef.current.contains(e.target as Node)
+      ) {
+        setIsDownloadTranslatorDropdownOpen(false);
+      }
+    };
+    if (isDownloadTranslatorDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isDownloadTranslatorDropdownOpen]);
 
   // Close translator dropdown on outside click
   useEffect(() => {
@@ -334,6 +369,10 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
   const handleOpenDownloadModal = async () => {
     if (!details) return;
     setIsDownloadModalOpen(true);
+    setDownloadMode("single");
+    setDownloadTargetSeason(selectedSeason);
+    setDownloadTranslator(selectedTranslator);
+    setIsDownloadTranslatorDropdownOpen(false);
     setLoadingQualities(true);
     try {
       const stream = await api.getStream(
@@ -359,13 +398,71 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
     }
   };
 
+  const handleDownloadTranslatorChange = async (translator: Translator) => {
+    setDownloadTranslator(translator);
+    setIsDownloadTranslatorDropdownOpen(false);
+    setLoadingQualities(true);
+    try {
+      if (isSeries && details) {
+        const data = await api.getEpisodes(details.id, translator.id, details.url);
+        if (data.seasons.length > 0) {
+          setMaxKnownSeasons((prev) => Math.max(prev, data.seasons.length));
+        }
+        setDetails((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            seasons: data.seasons,
+            episodes: data.episodes,
+            initial_streams: data.stream_data || prev.initial_streams,
+          };
+        });
+
+        // Ensure downloadTargetSeason exists in new translator's seasons
+        const sExists = data.seasons.some((s) => Number(s.id) === Number(downloadTargetSeason));
+        if (!sExists && data.seasons.length > 0) {
+          const firstS = Number(data.seasons[0].id) || 1;
+          setDownloadTargetSeason(firstS);
+        }
+      }
+
+      if (details) {
+        const stream = await api.getStream(
+          details.id,
+          details.url,
+          isSeries,
+          translator.id,
+          isSeries ? downloadTargetSeason : undefined,
+          isSeries ? selectedEpisode : undefined
+        );
+
+        if (stream && stream.qualities.length > 0) {
+          setDownloadQualities(stream.qualities);
+          const exists = stream.qualities.some((q) => q.label === selectedDownloadQuality);
+          if (!exists) {
+            const preferred =
+              stream.qualities.find((q) => q.label === "1080p") ||
+              stream.qualities.find((q) => q.label === "720p") ||
+              stream.qualities[0];
+            setSelectedDownloadQuality(preferred.label);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load stream qualities for translator:", err);
+    } finally {
+      setLoadingQualities(false);
+    }
+  };
+
   const handleStartDownload = async () => {
     if (!details) return;
     setIsDownloadModalOpen(false);
 
     const genres = details.info_table?.find((t) => t[0].toLowerCase().includes("жанр"))?.[1] || "";
-    const translatorId = selectedTranslator?.id || "default";
-    const translatorName = selectedTranslator?.name || "Оригінал / За замовчуванням";
+    const activeTranslator = downloadTranslator || selectedTranslator;
+    const translatorId = activeTranslator?.id || "default";
+    const translatorName = activeTranslator?.name || "Оригінал / За замовчуванням";
 
     try {
       if (!isSeries || downloadMode === "single") {
@@ -387,7 +484,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
           genres,
           translatorId,
           translatorName,
-          season: isSeries ? selectedSeason : undefined,
+          season: isSeries ? downloadTargetSeason : undefined,
           episode: isSeries ? selectedEpisode : undefined,
           quality: selectedDownloadQuality,
           streamUrl,
@@ -395,27 +492,43 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
 
         setDownloadNotification(
           isSeries
-            ? `Додано в завантаження: S${selectedSeason}E${selectedEpisode} (${selectedDownloadQuality})`
+            ? `Додано в завантаження: S${downloadTargetSeason}E${selectedEpisode} (${selectedDownloadQuality})`
             : `Додано в завантаження: ${details.title} (${selectedDownloadQuality})`
         );
         setTimeout(() => setDownloadNotification(null), 4000);
       } else {
-        const episodesToDownload = currentSeasonEpisodes;
-        if (episodesToDownload.length === 0) return;
+        // Multi-episode download: either specific chosen season or all seasons
+        const episodesToDownload =
+          downloadMode === "all_seasons"
+            ? details.episodes
+            : details.episodes.filter(
+                (ep) => Number(ep.season_id) === Number(downloadTargetSeason)
+              );
 
-        setDownloadNotification(`Черга: запуск завантаження ${episodesToDownload.length} серій ${selectedSeason} сезону...`);
+        if (episodesToDownload.length === 0) {
+          setDownloadNotification("⚠️ Не знайдено серій для завантаження");
+          setTimeout(() => setDownloadNotification(null), 3000);
+          return;
+        }
+
+        setDownloadNotification(
+          downloadMode === "all_seasons"
+            ? `Черга: запуск завантаження ${episodesToDownload.length} серій усіх ${details.seasons.length} сезонів...`
+            : `Черга: запуск завантаження ${episodesToDownload.length} серій ${downloadTargetSeason} сезону...`
+        );
 
         (async () => {
           let count = 0;
           for (const ep of episodesToDownload) {
             try {
+              const sNum = Number(ep.season_id);
               const epNum = Number(ep.episode_id);
               const stream = await api.getStream(
                 details.id,
                 details.url,
                 true,
-                selectedTranslator?.id,
-                selectedSeason,
+                activeTranslator?.id,
+                sNum,
                 epNum
               );
               const targetQ =
@@ -434,7 +547,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                   genres,
                   translatorId,
                   translatorName,
-                  season: selectedSeason,
+                  season: sNum,
                   episode: epNum,
                   quality: targetQ.label,
                   streamUrl,
@@ -442,10 +555,14 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                 count++;
               }
             } catch (e) {
-              console.error(`Failed to queue S${selectedSeason}E${ep.episode_id}:`, e);
+              console.error(`Failed to queue S${ep.season_id}E${ep.episode_id}:`, e);
             }
           }
-          setDownloadNotification(`Всі ${count} серій ${selectedSeason} сезону додано до черги завантажень!`);
+          setDownloadNotification(
+            downloadMode === "all_seasons"
+              ? `Усі ${count} серій усіх сезонів додано до черги завантажень!`
+              : `Усі ${count} серій ${downloadTargetSeason} сезону додано до черги завантажень!`
+          );
           setTimeout(() => setDownloadNotification(null), 4000);
         })();
       }
@@ -1045,56 +1162,184 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
           </div>
         </div>
 
-        {/* Offline Download Dialog */}
+        {/* Offline Download Dialog (Android TV Glassmorphic UI) */}
         {isDownloadModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-            <div className="relative w-full max-w-md bg-zinc-900 border border-white/15 rounded-3xl p-6 shadow-2xl space-y-5 text-white">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xl animate-in fade-in duration-200">
+            <div className="relative w-full max-w-lg bg-zinc-900/95 border border-white/15 rounded-3xl p-6 shadow-2xl space-y-5 text-white backdrop-blur-2xl">
+              {/* Header */}
               <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400">
-                    <Download className="w-4 h-4" />
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-rose-500/20 to-rose-600/30 border border-rose-500/40 flex items-center justify-center text-rose-400 shadow-md shadow-rose-950/40">
+                    <Download className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-sm sm:text-base">Завантажити офлайн</h3>
-                    <p className="text-[11px] text-zinc-400 truncate max-w-[240px]">{details?.title}</p>
+                    <h3 className="font-black text-base sm:text-lg tracking-tight">Завантажити офлайн</h3>
+                    <p className="text-xs text-zinc-400 truncate max-w-[280px] sm:max-w-xs">{details?.title}</p>
                   </div>
                 </div>
                 <button
                   onClick={() => setIsDownloadModalOpen(false)}
-                  className="p-1.5 rounded-xl hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                  title="Закрити"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
+              {/* Voiceover Selection Section */}
+              {details && details.translators && details.translators.length > 0 && (
+                <div className="space-y-2" ref={downloadTranslatorDropdownRef}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Mic className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Озвучення:</span>
+                    </span>
+                    {downloadTranslator && (downloadTranslator.language?.toLowerCase().includes("украин") || downloadTranslator.language?.toLowerCase().includes("україн") || downloadTranslator.name.toLowerCase().includes("украин") || downloadTranslator.name.toLowerCase().includes("україн")) && (
+                      <span className="text-[10px] font-bold text-amber-300 bg-amber-400/15 border border-amber-400/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <span>🇺🇦</span>
+                        <span>Українська</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="relative">
+                    <button
+                      onClick={() => setIsDownloadTranslatorDropdownOpen(!isDownloadTranslatorDropdownOpen)}
+                      className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-zinc-950/80 hover:bg-zinc-950 border border-white/10 text-xs font-semibold text-zinc-100 transition-all cursor-pointer group hover:border-white/20"
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        {(downloadTranslator?.language?.toLowerCase().includes("украин") || downloadTranslator?.language?.toLowerCase().includes("україн") || downloadTranslator?.name.toLowerCase().includes("украин") || downloadTranslator?.name.toLowerCase().includes("україн")) ? (
+                          <span className="text-sm">🇺🇦</span>
+                        ) : (
+                          <span className="w-2 h-2 rounded-full bg-rose-500" />
+                        )}
+                        <span className="truncate">{downloadTranslator?.name || selectedTranslator?.name || "Оригінал / За замовчуванням"}</span>
+                      </div>
+                      <ChevronDown
+                        className={cn(
+                          "w-4 h-4 text-zinc-400 group-hover:text-white transition-transform duration-200",
+                          isDownloadTranslatorDropdownOpen && "rotate-180"
+                        )}
+                      />
+                    </button>
+
+                    {isDownloadTranslatorDropdownOpen && (
+                      <div className="absolute top-full left-0 right-0 mt-1.5 max-h-52 overflow-y-auto bg-zinc-950/98 border border-white/15 rounded-2xl shadow-2xl p-1.5 z-50 space-y-1 backdrop-blur-2xl">
+                        {details.translators.map((t) => {
+                          const isUkr = t.language?.toLowerCase().includes("украин") || t.language?.toLowerCase().includes("україн") || t.name.toLowerCase().includes("украин") || t.name.toLowerCase().includes("україн");
+                          const isSelected = (downloadTranslator?.id || selectedTranslator?.id || "") === t.id;
+                          return (
+                            <button
+                              key={t.id}
+                              onClick={() => handleDownloadTranslatorChange(t)}
+                              className={cn(
+                                "w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer text-left",
+                                isSelected
+                                  ? "bg-rose-600 text-white font-bold shadow-md shadow-rose-950/50"
+                                  : "text-zinc-300 hover:bg-white/10 hover:text-white"
+                              )}
+                            >
+                              <div className="flex items-center gap-2 truncate">
+                                {isUkr ? <span>🇺🇦</span> : <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />}
+                                <span className="truncate">{t.name}</span>
+                              </div>
+                              {isSelected && <Check className="w-4 h-4 text-white flex-shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Series Scope Option */}
-              {isSeries && (
-                <div className="space-y-2">
-                  <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Що завантажити:</span>
-                  <div className="grid grid-cols-2 gap-2">
+              {isSeries && details && (
+                <div className="space-y-2.5">
+                  <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Що завантажити:</span>
+                  </span>
+
+                  {/* 3-option Segmented Switch */}
+                  <div className="grid grid-cols-3 gap-1.5 p-1 bg-zinc-950/80 rounded-2xl border border-white/5">
                     <button
                       onClick={() => setDownloadMode("single")}
                       className={cn(
-                        "px-3 py-2.5 rounded-xl text-xs font-medium border text-center transition-all cursor-pointer",
+                        "px-2.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer text-center truncate",
                         downloadMode === "single"
-                          ? "bg-rose-600 border-rose-500 text-white font-semibold shadow-md shadow-rose-950/40"
-                          : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
+                          ? "bg-rose-600 text-white shadow-md shadow-rose-950/50"
+                          : "text-zinc-400 hover:text-white hover:bg-white/5"
                       )}
                     >
-                      Серія S{selectedSeason}E{selectedEpisode}
+                      Серія S{downloadTargetSeason}E{selectedEpisode}
                     </button>
                     <button
                       onClick={() => setDownloadMode("season")}
                       className={cn(
-                        "px-3 py-2.5 rounded-xl text-xs font-medium border text-center transition-all cursor-pointer",
+                        "px-2.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer text-center truncate",
                         downloadMode === "season"
-                          ? "bg-rose-600 border-rose-500 text-white font-semibold shadow-md shadow-rose-950/40"
-                          : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
+                          ? "bg-rose-600 text-white shadow-md shadow-rose-950/50"
+                          : "text-zinc-400 hover:text-white hover:bg-white/5"
                       )}
                     >
-                      Весь {selectedSeason} сезон ({currentSeasonEpisodes.length} серій)
+                      {downloadTargetSeason} сезон
+                    </button>
+                    <button
+                      onClick={() => setDownloadMode("all_seasons")}
+                      className={cn(
+                        "px-2.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer text-center truncate",
+                        downloadMode === "all_seasons"
+                          ? "bg-rose-600 text-white shadow-md shadow-rose-950/50"
+                          : "text-zinc-400 hover:text-white hover:bg-white/5"
+                      )}
+                    >
+                      Всі сезони ({details.seasons.length})
                     </button>
                   </div>
+
+                  {/* If 'season' mode is selected: show horizontal pills to pick season! */}
+                  {downloadMode === "season" && details.seasons.length > 1 && (
+                    <div className="space-y-1.5 pt-1">
+                      <div className="text-[11px] text-zinc-400 flex items-center justify-between">
+                        <span>Виберіть сезон для завантаження:</span>
+                        <span className="text-rose-400 font-mono font-semibold">
+                          {details.episodes.filter(ep => Number(ep.season_id) === Number(downloadTargetSeason)).length} серій
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                        {details.seasons.map((s) => {
+                          const sNum = Number(s.id);
+                          const isSelected = downloadTargetSeason === sNum;
+                          const count = details.episodes.filter((ep) => Number(ep.season_id) === sNum).length;
+                          return (
+                            <button
+                              key={s.id}
+                              onClick={() => setDownloadTargetSeason(sNum)}
+                              className={cn(
+                                "px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border cursor-pointer",
+                                isSelected
+                                  ? "bg-rose-600/30 border-rose-500 text-rose-300 font-bold shadow-sm"
+                                  : "bg-white/5 border-white/5 text-zinc-400 hover:bg-white/10 hover:text-zinc-200"
+                              )}
+                            >
+                              Сезон {s.id} {count > 0 ? `(${count})` : ""}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* If 'all_seasons' is selected: show summary info */}
+                  {downloadMode === "all_seasons" && (
+                    <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">
+                      <span className="text-base">📦</span>
+                      <span>
+                        Буде додано до черги <strong>{details.episodes.length} серій</strong> із усіх <strong>{details.seasons.length} сезонів</strong>.
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1102,9 +1347,9 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
               <div className="space-y-2">
                 <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Якість відео:</span>
                 {loadingQualities ? (
-                  <div className="flex items-center gap-2 py-3 text-xs text-zinc-400">
+                  <div className="flex items-center gap-2 py-3 px-3 rounded-2xl bg-white/5 border border-white/5 text-xs text-zinc-400">
                     <Loader2 className="w-4 h-4 animate-spin text-rose-500" />
-                    <span>Перевірка доступних якостей...</span>
+                    <span>Отримання доступних якостей...</span>
                   </div>
                 ) : downloadQualities.length === 0 ? (
                   <div className="py-2 text-xs text-zinc-400">
@@ -1114,18 +1359,22 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                   <div className="grid grid-cols-3 gap-2">
                     {downloadQualities.map((q) => {
                       const isSelected = selectedDownloadQuality === q.label;
+                      const isPrem = isPremiumQuality(q.label);
                       return (
                         <button
                           key={q.label}
                           onClick={() => setSelectedDownloadQuality(q.label)}
                           className={cn(
-                            "px-3 py-2 rounded-xl text-xs font-medium border text-center transition-all cursor-pointer",
+                            "relative px-3 py-2.5 rounded-xl text-xs font-medium border text-center transition-all cursor-pointer flex items-center justify-center gap-1.5",
                             isSelected
-                              ? "bg-rose-600 border-rose-500 text-white font-bold shadow-md shadow-rose-950/40"
-                              : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
+                              ? "bg-rose-600 border-rose-500 text-white font-bold shadow-lg shadow-rose-950/50 scale-[1.02]"
+                              : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10 hover:text-white"
                           )}
                         >
-                          {q.label}
+                          <span>{q.label}</span>
+                          {isPrem && (
+                            <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400/25 flex-shrink-0" />
+                          )}
                         </button>
                       );
                     })}
@@ -1133,10 +1382,17 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                 )}
               </div>
 
-              {/* Voiceover note */}
-              {selectedTranslator && (
-                <div className="text-[11px] text-zinc-400 bg-white/5 px-3 py-2 rounded-xl border border-white/10">
-                  Озвучення: <span className="text-zinc-200 font-semibold">{selectedTranslator.name}</span>
+              {/* Dynamic Summary Note */}
+              {details && (
+                <div className="text-[11px] text-zinc-400 flex items-center justify-between px-1 pt-1 border-t border-white/5">
+                  <span>Разом до завантаження:</span>
+                  <span className="font-bold text-white font-mono">
+                    {!isSeries || downloadMode === "single"
+                      ? `1 файл • ${selectedDownloadQuality}`
+                      : downloadMode === "season"
+                      ? `${details.episodes.filter(ep => Number(ep.season_id) === Number(downloadTargetSeason)).length} серій • ${selectedDownloadQuality}`
+                      : `${details.episodes.length} серій • всі сезони • ${selectedDownloadQuality}`}
+                  </span>
                 </div>
               )}
 
@@ -1153,7 +1409,9 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-lg shadow-rose-950/50 cursor-pointer active:scale-95"
                 >
                   <Download className="w-4 h-4" />
-                  <span>Почати</span>
+                  <span>
+                    Почати {isSeries && downloadMode === "all_seasons" ? `(${details?.episodes.length})` : isSeries && downloadMode === "season" ? `(${details?.episodes.filter(ep => Number(ep.season_id) === Number(downloadTargetSeason)).length})` : ""}
+                  </span>
                 </button>
               </div>
             </div>
