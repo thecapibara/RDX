@@ -16,6 +16,7 @@ pub struct AppState {
     pub mpris: Arc<crate::mpris::MprisState>,
     pub downloader: Arc<DownloadManager>,
     pub turbo: Arc<crate::turbo::TurboServer>,
+    pub tmdb: Arc<crate::tmdb::TmdbService>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -825,4 +826,17 @@ pub fn play_startup_sound(volume: Option<f32>) {
 pub fn play_ui_sound(sound_type: String) {
     crate::audio::play_ui_sound(&sound_type);
 }
+
+// ==================== TMDB Backdrop Commands ====================
+
+#[tauri::command]
+pub async fn get_backdrop(
+    title: String,
+    orig_title: Option<String>,
+    year: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, String> {
+    Ok(state.tmdb.get_backdrop(&title, orig_title.as_deref(), year.as_deref()).await)
+}
+
 

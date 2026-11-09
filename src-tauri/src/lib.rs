@@ -7,6 +7,7 @@ pub mod mirror;
 pub mod mpris;
 pub mod parser;
 pub mod storage;
+pub mod tmdb;
 pub mod turbo;
 
 use std::sync::Arc;
@@ -39,6 +40,7 @@ pub fn run() {
     let mpris = Arc::new(MprisState::new());
     let downloader = Arc::new(downloader::DownloadManager::new(storage.clone()));
     let turbo = Arc::new(turbo::TurboServer::new(client.get_reqwest_client()));
+    let tmdb = Arc::new(tmdb::TmdbService::new());
     let turbo_spawn = turbo.clone();
     tauri::async_runtime::spawn(async move {
         if let Err(e) = turbo_spawn.start().await {
@@ -46,7 +48,7 @@ pub fn run() {
         }
     });
 
-    let state = AppState { storage, client, mpris, downloader, turbo };
+    let state = AppState { storage, client, mpris, downloader, turbo, tmdb };
 
     tauri::Builder::default()
         .manage(state)
@@ -126,6 +128,7 @@ pub fn run() {
             commands::get_turbo_stream_url,
             commands::get_turbo_stats,
             commands::select_fastest_cdn,
+            commands::get_backdrop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

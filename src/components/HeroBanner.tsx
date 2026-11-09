@@ -3,6 +3,7 @@ import { Play, Info, Bookmark as BookmarkIcon, Star, ChevronLeft, ChevronRight }
 import { motion, AnimatePresence } from "framer-motion";
 import type { MediaCard } from "../types";
 import { cn } from "../lib/utils";
+import { api } from "../services/api";
 
 interface HeroBannerProps {
   items?: MediaCard[];
@@ -39,7 +40,30 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
   const [isHovered, setIsHovered] = useState(false);
   const [slideKey, setSlideKey] = useState(0);
   const [isVisible, setIsVisible] = useState(true);
+  const [backdrops, setBackdrops] = useState<Record<string, string | null>>({});
   const bannerRef = useRef<HTMLDivElement>(null);
+
+  // Preload high-res 1080p TMDB backdrops for hero slides
+  useEffect(() => {
+    if (!slides || slides.length === 0) return;
+
+    let isMounted = true;
+    slides.forEach((slide) => {
+      const key = slide.id || slide.url;
+      if (backdrops[key] !== undefined) return;
+
+      const yearMatch = slide.misc_info?.match(/\b(19\d\d|20\d\d)\b/)?.[0];
+      api.getBackdrop(slide.title, (slide as any).orig_title, yearMatch).then((url) => {
+        if (isMounted) {
+          setBackdrops((prev) => ({ ...prev, [key]: url || null }));
+        }
+      });
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [slides]);
 
   // Pause heavy animations and timer when user scrolls down away from the hero banner
   useEffect(() => {
@@ -93,6 +117,8 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
   }
 
   const currentMedia = slides[currentIndex] || slides[0];
+  const activeKey = currentMedia.id || currentMedia.url;
+  const currentBackdrop = backdrops[activeKey];
 
   const isSeries =
     currentMedia.entity_type?.toLowerCase().includes("series") ||
@@ -106,29 +132,54 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
       onMouseLeave={() => setIsHovered(false)}
       className="relative w-full h-[58vh] min-h-[440px] max-h-[640px] overflow-hidden select-none group [contain:layout_paint]"
     >
-      {/* Full-bleed Atmospheric Background Poster */}
+      {/* 1. Backdrop Layer (Full-bleed 1080p TMDB Backdrop or Ambient Aurora Fallback) */}
       <AnimatePresence mode="wait">
-        <motion.div
-          key={currentMedia.id || currentMedia.url}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.35, ease: "easeOut" }}
-          className="absolute inset-0"
-        >
-          <img
-            src={currentMedia.poster}
-            alt={currentMedia.title}
-            decoding="async"
-            className="w-full h-full object-cover object-[center_20%] sm:object-[75%_20%] opacity-50 blur-[10px] scale-106 transform-gpu"
-          />
-
-          {/* Cinematic Vignette Overlays: Left gradient for text, bottom fade into pure black */}
-          <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/50 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/85 to-transparent w-full md:w-3/4" />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-[var(--bg-base,#000000)]" />
-        </motion.div>
+        {currentBackdrop ? (
+          <motion.div
+            key={`backdrop-${activeKey}`}
+            initial={{ opacity: 0, scale: 1.04 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
+            className="absolute inset-0 pointer-events-none overflow-hidden"
+          >
+            <img
+              src={currentBackdrop}
+              alt={currentMedia.title}
+              decoding="async"
+              className="w-full h-full object-cover object-center sm:object-[center_20%] opacity-90 transition-transform duration-1000 ease-out group-hover:scale-105 transform-gpu"
+            />
+            {/* Cinematic Edge Blends */}
+            <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/85 via-40% to-transparent w-full" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-transparent to-[var(--bg-base,#000000)]/30 pointer-events-none" />
+            <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/90 to-transparent pointer-events-none" />
+          </motion.div>
+        ) : (
+          /* 2. Fallback: Ambient Aurora Glow from poster (ZERO pixelation, smooth cinematic glow) */
+          <motion.div
+            key={`aurora-${activeKey}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+            className="absolute inset-0 pointer-events-none overflow-hidden"
+          >
+            <img
+              src={currentMedia.poster}
+              alt=""
+              aria-hidden="true"
+              decoding="async"
+              className="w-full h-full object-cover object-center opacity-40 blur-3xl scale-125 saturate-200 transform-gpu"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-transparent to-transparent opacity-95" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/80 to-transparent w-full" />
+          </motion.div>
+        )}
       </AnimatePresence>
+
+      {/* 3. Text Backdrop Gradient Layer (Ensures maximum legibility on left) */}
+      <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/90 via-35% md:via-45% to-transparent w-full md:w-4/5 pointer-events-none z-[5]" />
+      <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-transparent to-transparent pointer-events-none z-[5]" />
 
       {/* Content Container (Left-aligned text & actions) */}
       <div className="relative z-10 h-full flex flex-col justify-end px-[clamp(1.5rem,5vw,5rem)] pb-12 max-w-5xl space-y-4">
