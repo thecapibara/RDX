@@ -917,6 +917,30 @@ impl Storage {
         )?;
         Ok(())
     }
+
+    pub fn clear_completed_downloads(&self) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM downloads WHERE status = 'completed'", [])?;
+        Ok(())
+    }
+
+    pub fn pause_all_downloads(&self) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE downloads SET status = 'paused' WHERE status IN ('downloading', 'queued')",
+            [],
+        )?;
+        Ok(())
+    }
+
+    pub fn resume_all_downloads(&self) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE downloads SET status = 'queued' WHERE status = 'paused'",
+            [],
+        )?;
+        Ok(())
+    }
 }
 
 pub fn default_db_path() -> PathBuf {

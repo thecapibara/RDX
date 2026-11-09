@@ -736,6 +736,30 @@ export const api = {
     return "";
   },
 
+  pauseAllDownloads: async (): Promise<void> => {
+    if (isTauri) {
+      return invoke<void>("pause_all_downloads");
+    }
+  },
+
+  resumeAllDownloads: async (): Promise<void> => {
+    if (isTauri) {
+      return invoke<void>("resume_all_downloads");
+    }
+  },
+
+  clearCompletedDownloads: async (): Promise<void> => {
+    if (isTauri) {
+      return invoke<void>("clear_completed_downloads");
+    }
+  },
+
+  showInFolder: async (path: string): Promise<void> => {
+    if (isTauri) {
+      return invoke<void>("show_in_folder", { path });
+    }
+  },
+
   getTurboStreamUrl: async (rawUrl: string): Promise<string> => {
     if (isTauri) {
       return invoke<string>("get_turbo_stream_url", { rawUrl });

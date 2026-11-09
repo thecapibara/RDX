@@ -303,6 +303,59 @@ impl DownloadManager {
         Ok(())
     }
 
+    pub fn pause_all(&self, app: AppHandle) -> Result<(), String> {
+        {
+            let mut guard = self.active_tokens.lock().unwrap();
+            for (_, tx) in guard.drain() {
+                let _ = tx.send(true);
+            }
+        }
+
+        {
+            let mut p_guard = self.active_progress.lock().unwrap();
+            for (_, p) in p_guard.iter_mut() {
+                p.status = "paused".to_string();
+                p.speed_bytes_sec = 0;
+            }
+        }
+
+        self.storage
+            .pause_all_downloads()
+            .map_err(|e| format!("DB error: {e}"))?;
+
+        let _ = app.emit("download://reload", ());
+
+        Ok(())
+    }
+
+    pub fn resume_all(&self, app: AppHandle) -> Result<(), String> {
+        self.storage
+            .resume_all_downloads()
+            .map_err(|e| format!("DB error: {e}"))?;
+
+        Self::spawn_check_next(
+            self.storage.clone(),
+            self.active_tokens.clone(),
+            self.active_progress.clone(),
+            self.client.clone(),
+            app.clone(),
+        );
+
+        let _ = app.emit("download://reload", ());
+
+        Ok(())
+    }
+
+    pub fn clear_completed(&self, app: AppHandle) -> Result<(), String> {
+        self.storage
+            .clear_completed_downloads()
+            .map_err(|e| format!("DB error: {e}"))?;
+
+        let _ = app.emit("download://reload", ());
+
+        Ok(())
+    }
+
     fn spawn_check_next(
         storage: Arc<Storage>,
         tokens: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
@@ -761,6 +814,23 @@ impl DownloadManager {
                         "status": "completed",
                     }),
                 );
+
+                // Desktop Notification on complete
+                #[cfg(target_os = "linux")]
+                {
+                    let title = &item.title;
+                    let ep_str = match (item.season, item.episode) {
+                        (Some(s), Some(e)) => format!(" S{:02}E{:02}", s, e),
+                        _ => String::new(),
+                    };
+                    let body = format!("🎬 {}{} успішно завантажено в офлайн-бібліотеку!", title, ep_str);
+                    let _ = std::process::Command::new("notify-send")
+                        .arg("-a")
+                        .arg("RDX Cinema")
+                        .arg("RDX — Завантаження завершено")
+                        .arg(&body)
+                        .spawn();
+                }
             }
         }
 

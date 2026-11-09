@@ -217,6 +217,53 @@ pub async fn get_downloads_dir() -> Result<String, String> {
     Ok(resolve_downloads_dir().to_string_lossy().to_string())
 }
 
+#[tauri::command]
+pub async fn pause_all_downloads(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    state.downloader.pause_all(app)
+}
+
+#[tauri::command]
+pub async fn resume_all_downloads(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    state.downloader.resume_all(app)
+}
+
+#[tauri::command]
+pub async fn clear_completed_downloads(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    state.downloader.clear_completed(app)
+}
+
+#[tauri::command]
+pub async fn show_in_folder(path: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    let target = if p.exists() {
+        if p.is_dir() { p } else { p.parent().unwrap_or(p) }
+    } else if let Some(parent) = p.parent() {
+        if parent.exists() { parent } else { p }
+    } else {
+        p
+    };
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("explorer")
+            .arg(target)
+            .spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg(target)
+            .spawn();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(target)
+            .spawn();
+    }
+    Ok(())
+}
+
 // ==================== Mirror Commands ====================
 
 #[tauri::command]
