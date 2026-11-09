@@ -74,35 +74,81 @@ jobs:
           releaseBody: |
             ## RDX v__VERSION__ — Desktop Streaming Client for HDRezka
 
-            Cross-platform native desktop streaming client built with **Rust (Tauri v2)**, **React 19**, **Tailwind CSS v4**, and **HLS.js**.
+            Cross-platform native desktop streaming client (Linux, Windows, macOS) built with **Rust (Tauri v2)**, **React 19**, **Tailwind CSS v4**, and **HLS.js**, inspired by modern Android TV & Smart TV interfaces with an *Obsidian Crimson* aesthetic.
 
             ---
 
-            ### 🚀 What's New in v__VERSION__ (EN)
+            ### 🇺🇦 Головні нововведення та фічі версії 1.0.0 (UA)
 
-            #### 🎬 Smart Series Playback & Per-Episode Progress
-            - **Next Episode Autoplay & Countdown Card**: Floating glassmorphic card appears 15 seconds before the end of an episode with a live countdown bar, **"Watch Now"**, and **"Cancel"** actions (configurable in *Settings → Playback*, enabled by default).
-            - **New Season Transition Indicator**: Automatically detects when the current episode is the season finale and displays a highlighted **`🌟 NEW SEASON`** badge (`Transition to Season X, Episode 1`).
-            - **Per-Episode Watch History (`episode_progress`)**: Every episode now tracks its own playback progress in SQLite, rendering individual progress bars and emerald **Watched (`✓`)** checkmarks in both the Series Details grid and the in-player Episodes Drawer.
+            #### 🎬 Розумний відеоплеєр нового покоління (Cinema Player)
+            - **Zero-Stall HLS старт**: Оптимізована черга потокового відтворення HLS стартує практично миттєво (1–2 секунди) через невеликі MPEG-TS фрагменти без підвисань GStreamer.
+            - **Turbo-Buffer Streaming Engine**: Вбудований локальний Tokio-проксі сервер (`127.0.0.1`) з паралельними воркерами HTTP Range, що нівелює обмеження швидкості одиночного з'єднання CDN та попередньо кешує до 300–600 секунд для миттєвого перемотування.
+            - **Smart CDN Edge Selector**: Інтелектуальний вибір найшвидшого вузла CDN (`voidboost.cc`, `.net`, `.one`, `.to`, `.pw`) на основі мікро-пінгів (TTFB) з найнижчим пінгом до вашого провайдера.
+            - **Контекстне меню Vayou (ПКМ або клавіша `M`)**: Швидке перемикання озвучок, серій, якості, налаштувань субтитрів, пропорцій екрана, таймера сну та WebGL-шейдерів прямо під час перегляду.
+            - **YouTube-Style Fullscreen & Niri Tiling Support**: Повний екран за подвійним кліком або клавішею `F`, підтримка Wayland-тайлінгу Niri та плавний вихід на `Escape` без зупинки відео.
 
-            #### 🖥️ YouTube-Style Fullscreen, Audio Booster & Subtitles
-            - **True Fullscreen ↔ Windowed Mode**: Double-clicking the video surface, pressing `F` / `F11`, or clicking the bottom-right Fullscreen button toggles native OS Fullscreen (with automatic **Niri / Wayland tiling WM** support). Pressing `Escape` while in Fullscreen exits back to the windowed player without closing the stream.
-            - **Audio Gain Booster (up to 200%)**: Built-in Web Audio API `GainNode` amplifier (`100%`, `125%`, `150%`, `175%`, `200%`) in the player settings menu for quiet voiceovers.
-            - **Subtitle Customizer & Timeline Thumbnails**: Customize subtitle font size (`S / M / L / XL`), background opacity (`0% / 60% / 90%`), and timing offset (`±0.5s`), plus live **WebVTT sprite frame previews** when scrubbing the timeline.
+            #### 🎨 WebGL шейдери (60 FPS) та нічний звук (Night Mode)
+            - **AMD CAS (Contrast Adaptive Sharpening)**: Апаратний шейдер адаптивної різкості відновлює текстури та дрібні деталі 720p/1080p стрімів без ореолів.
+            - **Deband Dithering**: Усуває сходинки та колірний бендинг на темних градієнтах у сценах з низьким бітрейтом.
+            - **Night Mode (Компресія динамічного діапазону звуку)**: Web Audio компресор приглушує гучні вибухи й підсилює тихий шепіт і діалоги.
+            - **Audio Gain Booster**: Підсилення звуку до **200%** для тихих релізів.
 
-            #### ⚡ UI Polish, Skeleton Shimmers & Performance (v0.7.5 – v0.8.0)
-            - **Cinematic Skeleton Shimmers & Smooth Carousel Scrolling**: Shimmer placeholders during catalog loads plus horizontal wheel (`Shift + Wheel`) and mouse grab-and-drag scrolling on all swimlanes.
-            - **Backend & Storage Hardening**: SQLite WAL mode (`PRAGMA journal_mode = WAL`), cached HTML/Regex parsers via `LazyLock`, optimized Anubis PoW solver, Windows SMTC HWND media key attachment, and full window state restoration after Always-on-Top PiP.
+            #### 📥 Менеджер завантажень з чергою та офлайн-режимом
+            - **Паралельне завантаження (3 потоки)**: Багатопотоковий менеджер Rust з автоматичною чергою (`MAX_CONCURRENT_DOWNLOADS = 3`) — наступні серії стартують самі при завершенні попередніх.
+            - **Розумне групування серіалів**: Десятки серій автоматично згортаються у зручні картки сезонів із загальним прогресом, швидкістю та розміром.
+            - **Глобальне керування чергою**: Кнопки «Призупинити всі», «Відновити всі» та «Очистити завершені».
+            - **Індикація на картках каталогу**: Динамічні бейджі завантаження (`↓ 45% (3)`, `⏳ В черзі`) прямо на картках фільмів з 1-клік переходом до менеджера завантажень.
+            - **Показ файлу в системі**: Кнопка відкриття папки з нативним виділенням файлу у Windows Explorer (`explorer.exe /select,`), macOS Finder (`open -R`) та Linux (`xdg-open`).
+            - **Нативні сповіщення ОС**: Системні десктопні сповіщення про завершення завантаження.
+
+            #### 🌐 Центр маршрутизації дзеркал та Anti-Bot
+            - **DNS-over-HTTPS (DoH)**: Вбудований DoH-резолвер Cloudflare / Google DNS, що обходить провайдерські блокування доменів.
+            - **Smart Failover & Health Score**: Комплексна оцінка пулу дзеркал на основі затримок каталогу, стрімів та відсотка успішних запитів з автоперемиканням при збоях.
+            - **Автономний обхід Anubis PoW**: Проходження капчі й перевірок з кешуванням 30-денного токена та нативний Captcha Bridge WebView.
+
+            #### 📺 Інтерфейс Smart TV & Ambient Backdrops
+            - **TMDB 1080p/4K бекдропи**: Автоматичний підбір широкоформатних високоякісних фонів для головного банера з рейтингом популярності.
+            - **Ambient Aurora Fallback**: Естетичний живий неоновий градієнт для рідкісних релізів без розтягування пікселів.
+            - **«Продовжити перегляд» (Continue Watching)**: Автозбереження кожні 5 секунд у SQLite, чекмарки переглянутих серій та лічильник часу.
+            - **Нативний звук запуску та аудіовідгук**: Апаратне програвання через рушій `rodio` (ALSA/PulseAudio/PipeWire) без обмежень браузерів.
+            - **Linux MPRIS & Windows SMTC**: Керування відтворенням медіа-клавішами та через системні віджети панелі завдань.
 
             ---
 
-            ### 🇺🇦 Що нового в RDX v__VERSION__ (UA)
+            ### 🚀 What's New in v1.0.0 (EN)
 
-            - **Автоперехід на наступну серію та індикатор нового сезону**: За 15 секунд до кінця серії з'являється картка зворотного відліку з кнопками «Дивитися зараз» і «Скасувати» (можна вимкнути в *Налаштування → Відтворення*). При переході між сезонами показується спеціальний бейдж **«🌟 НОВИЙ СЕЗОН»**.
-            - **Історія перегляду кожної серії окремо (`episode_progress`)**: Кожна переглянута або розпочата серія тепер має власну смужку прогресу та зелену галочку `✓` у сітці серій і в шторці плеєра.
-            - **Повний екран як на YouTube (підтримка Niri / Wayland)**: Подвійний клік по відео або клавіша `F` перемикає справжній повноекранний режим вікна, а `Escape` виходить із повного екрана без закриття плеєра.
-            - **Підсилювач звуку до 200% та налаштування субтитрів**: Підсилення тихих озвучок через `Web Audio API GainNode` (`100%–200%`), вибір розміру шрифту, прозорості фону та зсуву часу (`±0.5с`) для субтитрів, а також прев'ю кадрів на таймлайні.
-            - **Skeleton Shimmer та оптимізація ядра**: Плавні скелетони при завантаженні каталогу, скрол каруселей мишею (`Grab & Drag` / `Shift + Коліщатко`), режим SQLite WAL та кешування парсера через `LazyLock`.
+            #### 🎬 Next-Gen Cinema Video Player
+            - **Instant Zero-Stall HLS Start**: Stream begins in 1–2 seconds via small MPEG-TS fragments, completely eliminating GStreamer playback freezes.
+            - **Turbo-Buffer Streaming Engine**: Built-in local Tokio proxy server (`127.0.0.1`) with parallel HTTP Range workers that bypass single-connection CDN throttling and prefetch 300–600 seconds ahead for instant seek response.
+            - **Smart CDN Edge Selector**: Automatic ping latency detection across alternative CDN endpoints (`voidboost.cc`, `.net`, `.one`, `.to`, `.pw`) routing to the fastest edge.
+            - **Vayou Context Menu (Right-Click or `M`)**: In-stream quick drawer for voiceovers, episodes, stream quality, subtitles, aspect ratio, sleep timer, and WebGL shaders.
+            - **YouTube-Style Fullscreen & Niri Tiling Support**: Double-click or `F` toggles true native fullscreen, with native Wayland Niri tiling integration and clean `Escape` dismissal.
+
+            #### 🎨 WebGL Shaders (60 FPS) & Night Mode Audio
+            - **AMD CAS (Contrast Adaptive Sharpening)**: Hardware shader reconstructing fine textures and edges without halos.
+            - **Deband Dithering**: Eliminates color banding on dark gradients in compressed releases.
+            - **Night Mode Audio Compression**: Web Audio compressor elevates whisper/speech frequencies while softening loud explosions and gunshots.
+            - **Audio Booster**: Amplifies quiet voiceovers up to **200%**.
+
+            #### 📥 Offline Download Manager with Concurrency Queue
+            - **3-Thread Concurrency Queue**: Rust background multi-stream downloader with `MAX_CONCURRENT_DOWNLOADS = 3` and automatic promotion of `queued` items.
+            - **Smart Series Grouping**: Batches of episodes collapse into unified series/season cards with aggregated speed, progress, and size.
+            - **Global Queue Controls**: "Pause All", "Resume All", and "Clear Completed" buttons.
+            - **Active Download Badges on Media Cards**: Glowing progress badge (`↓ 45% (3)`, `⏳ In queue`) directly on catalog cards with 1-click jump to the Downloads tab.
+            - **Reveal in File Manager**: Native file highlight in Windows Explorer (`explorer.exe /select,`), macOS Finder (`open -R`), and Linux (`xdg-open`).
+            - **Native OS Notifications**: Desktop notifications sent when downloads finish.
+
+            #### 🌐 Mirror Routing Center & Anti-Bot Protection
+            - **DNS-over-HTTPS (DoH)**: Built-in Cloudflare / Google DoH bypasses ISP domain filtering.
+            - **Smart Failover & Health Score**: Real-time mirror pool scoring with automatic failover to the healthiest mirror on error.
+            - **Autonomous Anubis PoW Challenge Solver**: Solves bot challenges with 30-day token persistence and fallback Captcha Bridge WebView.
+
+            #### 📺 Smart TV Experience & Ambient Backdrops
+            - **TMDB 1080p/4K Backdrops**: Popularity-ranked high-res master backdrops for hero banners.
+            - **Ambient Aurora Fallback**: Living neon gradient backdrop for unindexed releases preventing blurry poster upscaling.
+            - **Continue Watching with Resume**: 5-second SQLite progress persistence, episode checkmarks, and countdown timer.
+            - **Native Startup Chime & Audio Feedback**: Powered by `rodio` / PipeWire / ALSA without browser autoplay restrictions.
+            - **Linux MPRIS & Windows SMTC**: Hardware media key binding and desktop widget synchronization.
 
             ---
 
