@@ -181,6 +181,9 @@ impl HttpClient {
         let doh_client = Client::builder()
             .timeout(Duration::from_secs(5))
             .connect_timeout(Duration::from_secs(3))
+            .tcp_nodelay(true)
+            .pool_max_idle_per_host(8)
+            .pool_idle_timeout(Duration::from_secs(90))
             .build()?;
 
         Ok(Self {
@@ -199,13 +202,23 @@ impl HttpClient {
         doh_overrides: &HashMap<String, Option<IpAddr>>,
     ) -> reqwest::Result<(Client, Client)> {
         let mut builder = Client::builder()
-            .timeout(Duration::from_secs(12))
-            .connect_timeout(Duration::from_secs(6))
+            .timeout(Duration::from_secs(20))
+            .connect_timeout(Duration::from_secs(12))
+            .max_tls_version(reqwest::tls::Version::TLS_1_2)
+            .tcp_nodelay(true)
+            .pool_max_idle_per_host(16)
+            .pool_idle_timeout(Duration::from_secs(90))
+            .tcp_keepalive(Duration::from_secs(30))
             .redirect(reqwest::redirect::Policy::limited(10));
 
         let mut no_redirect_builder = Client::builder()
-            .timeout(Duration::from_secs(12))
-            .connect_timeout(Duration::from_secs(6))
+            .timeout(Duration::from_secs(20))
+            .connect_timeout(Duration::from_secs(12))
+            .max_tls_version(reqwest::tls::Version::TLS_1_2)
+            .tcp_nodelay(true)
+            .pool_max_idle_per_host(16)
+            .pool_idle_timeout(Duration::from_secs(90))
+            .tcp_keepalive(Duration::from_secs(30))
             .redirect(reqwest::redirect::Policy::none());
 
         for (host, maybe_ip) in doh_overrides {

@@ -111,53 +111,6 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Load initial settings and mirror status
-  const initializeApp = useCallback(async () => {
-    try {
-      const s = await api.getSettings();
-      setSettings(s);
-      api.checkMirrorStatus(s.active_mirror)
-        .then(setMirrorStatus)
-        .catch(console.warn);
-    } catch (e) {
-      console.warn("Failed to get initial settings:", e);
-    }
-  }, []);
-
-  useEffect(() => {
-    initializeApp();
-    const timer = setTimeout(() => setMinSplashDone(true), 1750);
-    return () => clearTimeout(timer);
-  }, [initializeApp]);
-
-  // Smoothly dismiss and remove persistent DOM #rdx-splash once animation finishes
-  useEffect(() => {
-    if (minSplashDone) {
-      const splash = document.getElementById("rdx-splash");
-      if (splash) {
-        splash.classList.add("rdx-splash-hide");
-        const cleanup = setTimeout(() => {
-          splash.remove();
-        }, 550);
-        return () => clearTimeout(cleanup);
-      }
-    }
-  }, [minSplashDone]);
-
-  // Load "Continue Watching" row
-  const refreshContinueWatching = useCallback(async () => {
-    try {
-      const items = await api.getContinueWatching(20);
-      setContinueWatching(items);
-    } catch (err) {
-      console.warn("Failed to load continue watching items:", err);
-    }
-  }, []);
-
-  useEffect(() => {
-    refreshContinueWatching();
-  }, [refreshContinueWatching]);
-
   // Load Catalog based on current tab (with automatic Smart Mirror Failover if active mirror is down)
   const loadCatalog = useCallback(async () => {
     setLoadingCatalog(true);
@@ -216,6 +169,99 @@ export default function App() {
   useEffect(() => {
     loadCatalog();
   }, [loadCatalog]);
+
+  // Load initial settings and mirror status (Happy Eyeballs Startup & Auto-Pilot)
+  const initializeApp = useCallback(async () => {
+    try {
+      const s = await api.getSettings();
+      setSettings(s);
+
+      const handleStatusCheck = async (status?: MirrorStatus) => {
+        if (status) {
+          setMirrorStatus(status);
+        }
+
+        let autopilot = true;
+        try {
+          autopilot = localStorage.getItem("rdx_mirror_autopilot") !== "false";
+        } catch {
+          autopilot = true;
+        }
+
+        const needsFailover =
+          !status ||
+          !status.online ||
+          status.catalog_available === false ||
+          status.stream_available === false ||
+          status.latency_ms > 1800;
+
+        if (autopilot && needsFailover) {
+          try {
+            const rot = await api.smartSelectMirror(false);
+            if (rot?.selected_mirror) {
+              setSettings((prev) =>
+                prev ? { ...prev, active_mirror: rot.selected_mirror } : null
+              );
+              const bestStatus = rot.statuses?.find(
+                (st) => st.mirror_url === rot.selected_mirror
+              );
+              if (bestStatus) {
+                setMirrorStatus(bestStatus);
+              }
+              if (rot.switched) {
+                loadCatalog();
+              }
+            }
+          } catch (e) {
+            console.warn("Auto-pilot smartSelectMirror failed:", e);
+          }
+        }
+      };
+
+      api.checkMirrorStatus(s.active_mirror)
+        .then((st) => handleStatusCheck(st))
+        .catch((err) => {
+          console.warn("Failed checking active mirror status:", err);
+          handleStatusCheck(undefined);
+        });
+    } catch (e) {
+      console.warn("Failed to get initial settings:", e);
+    }
+  }, [loadCatalog]);
+
+  useEffect(() => {
+    initializeApp();
+    const timer = setTimeout(() => setMinSplashDone(true), 1750);
+    return () => clearTimeout(timer);
+  }, [initializeApp]);
+
+  // Smoothly dismiss and remove persistent DOM #rdx-splash once animation finishes
+  useEffect(() => {
+    if (minSplashDone) {
+      const splash = document.getElementById("rdx-splash");
+      if (splash) {
+        splash.classList.add("rdx-splash-hide");
+        const cleanup = setTimeout(() => {
+          splash.remove();
+        }, 550);
+        return () => clearTimeout(cleanup);
+      }
+    }
+  }, [minSplashDone]);
+
+  // Load "Continue Watching" row
+  const refreshContinueWatching = useCallback(async () => {
+    try {
+      const items = await api.getContinueWatching(20);
+      setContinueWatching(items);
+    } catch (err) {
+      console.warn("Failed to load continue watching items:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshContinueWatching();
+  }, [refreshContinueWatching]);
 
   // Handle Tab Switch (resets page and category filters)
   const handleTabChange = useCallback((tab: NavTab) => {

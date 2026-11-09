@@ -49,9 +49,13 @@ export interface MirrorStatus {
   mirror_url: string;
   online: boolean;
   latency_ms: number;
-  status_message: string;
+  status_message?: string;
   doh_bypass?: boolean;
   catalog_available?: boolean;
+  stream_available?: boolean;
+  stream_latency_ms?: number;
+  health_score?: number;
+  protection_type?: string;
 }
 
 export interface SmartRotationResult {

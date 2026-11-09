@@ -113,11 +113,12 @@ impl TurboServer {
         };
 
         let parts: Vec<&str> = request_line.split_whitespace().collect();
-        if parts.len() < 2 || parts[0] != "GET" {
+        if parts.len() < 2 || (parts[0] != "GET" && parts[0] != "HEAD") {
             let res = "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n";
             socket.write_all(res.as_bytes()).await?;
             return Ok(());
         }
+        let is_head = parts[0] == "HEAD";
 
         let path_and_query = parts[1];
         if !path_and_query.starts_with("/turbo?url=") {
@@ -146,11 +147,13 @@ impl TurboServer {
         }
 
         // Build upstream request to the remote CDN with multi-stream headers
-        let mut upstream_req = self
-            .reqwest_client
-            .get(&target_url)
-            .header("Referer", "https://rezka-tv.org/")
-            .header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36");
+        let mut upstream_req = if is_head {
+            self.reqwest_client.head(&target_url)
+        } else {
+            self.reqwest_client.get(&target_url)
+        }
+        .header("Referer", "https://rezka-tv.org/")
+        .header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36");
 
         if let Some(ref r) = range_header {
             upstream_req = upstream_req.header("Range", r);
@@ -183,6 +186,10 @@ impl TurboServer {
         response_headers.push_str("Accept-Ranges: bytes\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n");
 
         socket.write_all(response_headers.as_bytes()).await?;
+
+        if is_head {
+            return Ok(());
+        }
 
         // High-throughput streaming loop
         let mut total_streamed = 0u64;

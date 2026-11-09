@@ -77,6 +77,21 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
   const [captchaOpening, setCaptchaOpening] = useState(false);
 
   // Appearance & Sound Settings
+  const [mirrorAutopilot, setMirrorAutopilot] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("rdx_mirror_autopilot") !== "false";
+    } catch {
+      return true;
+    }
+  });
+
+  const handleToggleMirrorAutopilot = (enabled: boolean) => {
+    setMirrorAutopilot(enabled);
+    try {
+      localStorage.setItem("rdx_mirror_autopilot", enabled ? "true" : "false");
+    } catch {}
+  };
+
   const [autoplayNext, setAutoplayNext] = useState<boolean>(() => {
     try {
       return localStorage.getItem("rdx_autoplay_next") !== "false";
@@ -410,20 +425,45 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
       if (b === settings?.active_mirror) return 1;
       const sa = testingStatus[a];
       const sb = testingStatus[b];
-      if (sa?.online && sb?.online) return sa.latency_ms - sb.latency_ms;
+
+      // Working mirrors first
       if (sa?.online && !sb?.online) return -1;
       if (!sa?.online && sb?.online) return 1;
+
+      if (sa?.online && sb?.online) {
+        // Highest health_score first
+        const scoreA = sa.health_score ?? (sa.stream_available ? 90 : 70);
+        const scoreB = sb.health_score ?? (sb.stream_available ? 90 : 70);
+        if (scoreB !== scoreA) {
+          return scoreB - scoreA;
+        }
+        // Then stream_available
+        if (sa.stream_available && !sb.stream_available) return -1;
+        if (!sa.stream_available && sb.stream_available) return 1;
+        // Then lowest latency
+        return (sa.latency_ms || 9999) - (sb.latency_ms || 9999);
+      }
       return 0;
     });
   }, [settings, testingStatus]);
 
-  const fastestUrl = useMemo(() => {
+  const recommendedMirrorUrl = useMemo(() => {
     let bestUrl: string | null = null;
-    let bestMs = Infinity;
+    let bestScore = -1;
+    let bestLatency = Infinity;
+
     for (const [url, st] of Object.entries(testingStatus)) {
-      if (st.online && st.latency_ms > 0 && st.latency_ms < bestMs) {
-        bestMs = st.latency_ms;
+      if (!st.online) continue;
+      const score = typeof st.health_score === "number" ? st.health_score : (st.stream_available ? 90 : 60);
+      if (score > bestScore) {
+        bestScore = score;
+        bestLatency = st.latency_ms > 0 ? st.latency_ms : Infinity;
         bestUrl = url;
+      } else if (score === bestScore) {
+        if (st.latency_ms > 0 && st.latency_ms < bestLatency) {
+          bestLatency = st.latency_ms;
+          bestUrl = url;
+        }
       }
     }
     return bestUrl;
@@ -589,6 +629,184 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
             {/* ================= TAB 1: NETWORK & MIRRORS ================= */}
             {activeModalTab === "network" && (
               <div className="space-y-6">
+                {/* 1. Active Node Diagnostic Dashboard Card */}
+                {(() => {
+                  const activeUrl = settings?.active_mirror || "";
+                  const activeSt = testingStatus[activeUrl];
+                  const activeScore = activeSt
+                    ? (activeSt.health_score ?? (activeSt.online ? 85 : 0))
+                    : null;
+
+                  return (
+                    <div className="p-4.5 rounded-2xl bg-gradient-to-br from-zinc-900/90 via-zinc-900/60 to-zinc-950 border border-white/10 shadow-xl shadow-black/40 space-y-3.5">
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-9 h-9 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0">
+                            <Server className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
+                                Активний вузол кластера
+                              </span>
+                              <span
+                                className={cn(
+                                  "w-2 h-2 rounded-full",
+                                  activeSt?.online
+                                    ? "bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400"
+                                    : activeSt
+                                    ? "bg-rose-500"
+                                    : "bg-zinc-600"
+                                )}
+                              />
+                            </div>
+                            <div className="text-sm font-mono font-bold text-white truncate">
+                              {activeUrl || "Завантаження..."}
+                            </div>
+                          </div>
+                        </div>
+
+                        {activeScore !== null ? (
+                          <span
+                            className={cn(
+                              "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold font-mono border tracking-wide",
+                              activeScore >= 80
+                                ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 shadow-sm shadow-emerald-950/40"
+                                : activeScore >= 50
+                                ? "bg-amber-500/15 text-amber-300 border-amber-500/30 shadow-sm shadow-amber-950/40"
+                                : "bg-rose-500/15 text-rose-300 border-rose-500/30 shadow-sm shadow-rose-950/40"
+                            )}
+                          >
+                            <Crown className="w-3.5 h-3.5" />
+                            {activeScore}% Здоров'я
+                          </span>
+                        ) : (
+                          <span className="px-3 py-1 rounded-full text-xs font-bold font-mono border bg-white/5 border-white/10 text-zinc-400">
+                            {testing ? "Тестування..." : "—"}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* 4 Diagnostic Pills in a responsive grid */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        {/* 1. Пінг вузла */}
+                        <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex flex-col justify-between min-h-[68px]">
+                          <div className="text-[10px] font-medium text-zinc-400 truncate whitespace-nowrap">Пінг вузла</div>
+                          <div
+                            className={cn(
+                              "text-xs font-bold font-mono truncate whitespace-nowrap",
+                              activeSt?.online
+                                ? activeSt.latency_ms < 350
+                                  ? "text-emerald-400"
+                                  : activeSt.latency_ms < 700
+                                  ? "text-amber-400"
+                                  : "text-rose-400"
+                                : activeSt
+                                ? "text-rose-400"
+                                : "text-zinc-400"
+                            )}
+                          >
+                            {activeSt ? `${activeSt.latency_ms} мс` : testing ? "Перевірка..." : "—"}
+                          </div>
+                        </div>
+
+                        {/* 2. Відеопотоки */}
+                        <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex flex-col justify-between min-h-[68px]">
+                          <div className="text-[10px] font-medium text-zinc-400 truncate whitespace-nowrap">Відеопотоки</div>
+                          <div
+                            className={cn(
+                              "text-xs font-bold truncate whitespace-nowrap",
+                              activeSt?.stream_available
+                                ? "text-emerald-400"
+                                : activeSt?.online
+                                ? "text-amber-400"
+                                : "text-zinc-400"
+                            )}
+                          >
+                            {activeSt
+                              ? activeSt.stream_available
+                                ? `Потік OK${activeSt.stream_latency_ms ? ` • ${activeSt.stream_latency_ms} мс` : ""}`
+                                : activeSt.online
+                                ? "Лише каталог"
+                                : "Недоступно"
+                              : testing
+                              ? "Перевірка..."
+                              : "Невідомо"}
+                          </div>
+                        </div>
+
+                        {/* 3. Маршрут */}
+                        <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex flex-col justify-between min-h-[68px]">
+                          <div className="text-[10px] font-medium text-zinc-400 truncate whitespace-nowrap">Маршрут</div>
+                          <div className="text-xs font-bold text-cyan-300 font-mono truncate whitespace-nowrap">
+                            {activeSt
+                              ? activeSt.protection_type || (activeSt.doh_bypass ? "DoH + TLS" : "Пряме TLS")
+                              : "DoH + TLS"}
+                          </div>
+                        </div>
+
+                        {/* 4. Автопілот */}
+                        <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex flex-col justify-between min-h-[68px]">
+                          <div className="text-[10px] font-medium text-zinc-400 truncate whitespace-nowrap">Автопілот</div>
+                          <div
+                            className={cn(
+                              "text-xs font-bold truncate whitespace-nowrap flex items-center gap-1",
+                              mirrorAutopilot ? "text-emerald-400" : "text-zinc-500"
+                            )}
+                          >
+                            {mirrorAutopilot && <Zap className="w-3 h-3 text-emerald-400" />}
+                            <span>{mirrorAutopilot ? "Активний" : "Вимкнено"}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* 2. Auto-Pilot Switch Card */}
+                <div className="p-4.5 rounded-2xl bg-zinc-900/50 border border-white/8 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center text-amber-400 flex-shrink-0">
+                      <Zap className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-bold text-white tracking-tight">
+                          Автопілот дзеркал (Zero-Downtime Failover)
+                        </h4>
+                        <span
+                          className={cn(
+                            "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border",
+                            mirrorAutopilot
+                              ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/25"
+                              : "bg-zinc-800 text-zinc-400 border-zinc-700"
+                          )}
+                        >
+                          {mirrorAutopilot ? "Увімкнено" : "Вимкнено"}
+                        </span>
+                      </div>
+                      <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
+                        Автоматичний прогрів сесії та миттєве перемикання на резервне дзеркало у фоні, якщо відеопотік недоступний
+                      </p>
+                    </div>
+                  </div>
+
+                  <label
+                    role="switch"
+                    aria-checked={mirrorAutopilot}
+                    data-testid="mirror-autopilot-toggle"
+                    className="relative inline-flex items-center cursor-pointer flex-shrink-0"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={mirrorAutopilot}
+                      onChange={(e) => handleToggleMirrorAutopilot(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+                  </label>
+                </div>
+
                 {/* Smart Mirror Rotator Card */}
                 <div className="p-4.5 rounded-2xl bg-gradient-to-br from-zinc-900/90 via-zinc-900/50 to-zinc-950 border border-rose-500/20 flex flex-col gap-3.5 shadow-xl shadow-black/40">
                   <div className="flex items-start justify-between gap-3">
@@ -675,7 +893,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                     {allMirrors.map((url) => {
                       const isActive = settings?.active_mirror === url;
                       const status = testingStatus[url];
-                      const isFastest = fastestUrl === url && status?.online;
+                      const isRecommended = recommendedMirrorUrl === url;
                       const isCustomOnly = !PRESET_MIRRORS.includes(url) && !isActive;
 
                       return (
@@ -683,53 +901,96 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                           key={url}
                           onClick={() => handleSelectMirror(url)}
                           className={cn(
-                            "flex items-center justify-between p-3.5 rounded-2xl border transition-all cursor-pointer",
+                            "flex items-center justify-between gap-2 px-4 py-3 rounded-2xl border transition-all cursor-pointer",
                             isActive
                               ? "bg-rose-950/20 border-rose-500/40 text-white shadow-lg shadow-rose-950/20"
                               : "bg-zinc-900/40 border-white/5 hover:border-white/15 text-zinc-300 hover:bg-zinc-900/70"
                           )}
                         >
-                          <div className="flex items-center gap-3">
+                          {/* Left side: Dot + Full URL + 1 Role Badge */}
+                          <div className="flex items-center gap-2.5 min-w-0">
                             <div
                               className={cn(
-                                "w-2.5 h-2.5 rounded-full flex-shrink-0 transition-all",
+                                "w-2.5 h-2.5 rounded-full shrink-0 transition-all",
                                 status?.online
                                   ? "bg-emerald-500 shadow-md shadow-emerald-500/50"
                                   : status
-                                    ? "bg-rose-500 shadow-md shadow-rose-500/50"
-                                    : "bg-zinc-600"
+                                  ? "bg-rose-500 shadow-md shadow-rose-500/50"
+                                  : "bg-zinc-600"
                               )}
                             />
-                            <span className="text-xs sm:text-sm font-mono font-medium">{url}</span>
-                            {isActive && (
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-600 text-white uppercase tracking-wider">
+                            <span className="shrink-0 whitespace-nowrap font-mono text-sm text-zinc-100 font-medium">
+                              {url}
+                            </span>
+
+                            {isActive ? (
+                              <span className="px-2 py-0.5 rounded-md bg-rose-500 text-white text-[10px] font-bold uppercase tracking-wider shrink-0">
                                 АКТИВНЕ
                               </span>
-                            )}
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
-                              DoH
-                            </span>
-                            {isFastest && (
-                              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                                <Zap className="w-2.5 h-2.5" />
-                                Найшвидше
+                            ) : isRecommended && status?.online ? (
+                              <span className="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-bold shrink-0 flex items-center gap-1">
+                                <Crown className="w-3 h-3 text-amber-400" />
+                                Топ
                               </span>
-                            )}
+                            ) : null}
                           </div>
 
-                          <div className="flex items-center gap-2">
-                            {status && (
+                          {/* Right side: Compact Badges + Ping + Actions */}
+                          <div className="flex items-center gap-2 shrink-0">
+                            {status?.online && status.stream_available && (
+                              <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold shrink-0">
+                                Потік OK
+                              </span>
+                            )}
+
+                            {status?.online && status.doh_bypass && (
+                              <span className="px-1.5 py-0.5 rounded-md bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 text-[10px] font-semibold shrink-0">
+                                DoH
+                              </span>
+                            )}
+
+                            {status?.online && typeof status.health_score === "number" && status.health_score > 0 && (
                               <span
                                 className={cn(
-                                  "text-xs font-mono font-semibold",
-                                  status.online
-                                    ? status.latency_ms < 500
-                                      ? "text-emerald-400"
-                                      : "text-amber-400"
-                                    : "text-rose-400"
+                                  "px-1.5 py-0.5 rounded-md text-[10px] font-bold font-mono border shrink-0",
+                                  status.health_score >= 80
+                                    ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/25"
+                                    : status.health_score >= 50
+                                    ? "bg-amber-500/10 text-amber-300 border-amber-500/25"
+                                    : "bg-rose-500/10 text-rose-300 border-rose-500/25"
                                 )}
                               >
-                                {status.online ? `${status.latency_ms} ms` : "Офлайн"}
+                                {status.health_score}%
+                              </span>
+                            )}
+
+                            {status ? (
+                              status.online ? (
+                                <span
+                                  className={cn(
+                                    "min-w-[58px] text-right font-mono text-xs font-bold shrink-0",
+                                    status.latency_ms < 350
+                                      ? "text-emerald-400"
+                                      : status.latency_ms < 700
+                                      ? "text-amber-400"
+                                      : "text-rose-400"
+                                  )}
+                                >
+                                  {status.latency_ms} мс
+                                </span>
+                              ) : (
+                                <div className="flex flex-col items-end text-right shrink-0">
+                                  <span className="text-xs font-mono font-bold text-rose-400">Офлайн</span>
+                                  {status.status_message && (
+                                    <span className="text-[10px] text-zinc-500 font-normal max-w-[140px] truncate text-right">
+                                      {status.status_message}
+                                    </span>
+                                  )}
+                                </div>
+                              )
+                            ) : (
+                              <span className="min-w-[58px] text-right font-mono text-xs font-bold text-zinc-500 shrink-0">
+                                {testing ? "..." : "—"}
                               </span>
                             )}
 
@@ -739,7 +1000,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                                   e.stopPropagation();
                                   handleRemoveCustomMirror(url);
                                 }}
-                                className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer shrink-0"
                                 title="Видалити це дзеркало"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -751,7 +1012,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                                 e.stopPropagation();
                                 testMirror(url);
                               }}
-                              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer shrink-0"
                               title="Оновити пінґ"
                             >
                               <RefreshCw className="w-3.5 h-3.5" />

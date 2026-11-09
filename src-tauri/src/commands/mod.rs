@@ -322,6 +322,50 @@ pub async fn open_captcha_window(app_handle: AppHandle, state: State<'_, AppStat
 
 // ==================== Parser & Streaming Commands ====================
 
+async fn failover_to_best_mirror(state: &AppState, failed_mirror: &str) -> Option<String> {
+    let mut settings = state.storage.get_settings().ok()?;
+    let failed_norm = MirrorManager::normalize_url(failed_mirror);
+
+    let mut extra = vec![MirrorManager::normalize_url(&settings.active_mirror)];
+    for m in &settings.custom_mirrors {
+        extra.push(m.clone());
+    }
+
+    let statuses = MirrorManager::discover_mirrors(state.client.clone(), &extra).await;
+
+    // Persist any newly discovered working public mirrors into custom_mirrors
+    let preset_set: Vec<String> = PRESET_MIRRORS.iter().map(|s| s.to_string()).collect();
+    for st in &statuses {
+        if st.online
+            && st.catalog_available
+            && !preset_set.contains(&st.mirror_url)
+            && !settings.custom_mirrors.contains(&st.mirror_url)
+        {
+            settings.custom_mirrors.push(st.mirror_url.clone());
+        }
+    }
+
+    let mut candidates: Vec<&MirrorStatus> = statuses
+        .iter()
+        .filter(|s| s.online && s.catalog_available && s.mirror_url != failed_norm)
+        .collect();
+
+    candidates.sort_by(|a, b| {
+        b.stream_available
+            .cmp(&a.stream_available)
+            .then_with(|| b.health_score.cmp(&a.health_score))
+            .then_with(|| a.latency_ms.cmp(&b.latency_ms))
+    });
+
+    let best = candidates.first()?;
+    let best_url = best.mirror_url.clone();
+
+    settings.active_mirror = best_url.clone();
+    let _ = state.storage.update_settings(&settings);
+
+    Some(best_url)
+}
+
 #[tauri::command]
 pub async fn get_home_catalog(
     state: State<'_, AppState>,
@@ -375,9 +419,30 @@ pub async fn search_autocomplete(state: State<'_, AppState>, query: String) -> R
 #[tauri::command]
 pub async fn get_media_details(state: State<'_, AppState>, item_url: String) -> Result<MediaDetails, String> {
     let mirror = state.storage.get_settings().map_err(|e| e.to_string())?.active_mirror;
-    let mut details = RezkaParser::get_media_details(&state.client, &mirror, &item_url)
-        .await
-        .map_err(|e| e.to_string())?;
+    let start = std::time::Instant::now();
+    let initial_res = RezkaParser::get_media_details(&state.client, &mirror, &item_url).await;
+
+    let mut details = match initial_res {
+        Ok(d) => {
+            MirrorManager::record_outcome(&mirror, true, start.elapsed().as_millis() as u64, None);
+            d
+        }
+        Err(e) => {
+            MirrorManager::record_outcome(&mirror, false, 0, None);
+            if let Some(new_mirror) = failover_to_best_mirror(&state, &mirror).await {
+                let retry_start = std::time::Instant::now();
+                match RezkaParser::get_media_details(&state.client, &new_mirror, &item_url).await {
+                    Ok(d) => {
+                        MirrorManager::record_outcome(&new_mirror, true, retry_start.elapsed().as_millis() as u64, None);
+                        d
+                    }
+                    Err(retry_err) => return Err(retry_err.to_string()),
+                }
+            } else {
+                return Err(e.to_string());
+            }
+        }
+    };
 
     if let Some(ref mut s) = details.initial_streams {
         crate::cdn::CdnSelector::optimize_stream(&state.client, s).await;
@@ -397,7 +462,8 @@ pub async fn get_stream(
     referer_url: String,
 ) -> Result<StreamData, String> {
     let mirror = state.storage.get_settings().map_err(|e| e.to_string())?.active_mirror;
-    let mut stream = RezkaParser::get_stream(
+    let start = std::time::Instant::now();
+    let initial_res = RezkaParser::get_stream(
         &state.client,
         &mirror,
         &media_id,
@@ -407,8 +473,81 @@ pub async fn get_stream(
         is_series,
         &referer_url,
     )
-    .await
-    .map_err(|e| e.to_string())?;
+    .await;
+
+    let is_bad = match &initial_res {
+        Ok(s) => s.qualities.is_empty() && !s.is_premium,
+        Err(_) => true,
+    };
+
+    let mut stream = if !is_bad {
+        MirrorManager::record_outcome(&mirror, true, start.elapsed().as_millis() as u64, Some(true));
+        initial_res.map_err(|e| e.to_string())?
+    } else {
+        // Step A (Session Warmup on current mirror)
+        let warmup_details = RezkaParser::get_media_details(&state.client, &mirror, &referer_url).await.ok();
+        let retry_start = std::time::Instant::now();
+        let step_a_res = RezkaParser::get_stream(
+            &state.client,
+            &mirror,
+            &media_id,
+            translator_id.as_deref(),
+            season,
+            episode,
+            is_series,
+            &referer_url,
+        )
+        .await;
+
+        let step_a_bad = match &step_a_res {
+            Ok(s) => s.qualities.is_empty() && !s.is_premium,
+            Err(_) => true,
+        };
+
+        if !step_a_bad {
+            MirrorManager::record_outcome(&mirror, true, retry_start.elapsed().as_millis() as u64, Some(true));
+            step_a_res.map_err(|e| e.to_string())?
+        } else if let Some(fallback) = warmup_details.and_then(|d| d.initial_streams).filter(|s| !s.qualities.is_empty() || s.is_premium) {
+            MirrorManager::record_outcome(&mirror, true, retry_start.elapsed().as_millis() as u64, Some(true));
+            fallback
+        } else {
+            // Step B (Zero-Downtime Mirror Failover)
+            MirrorManager::record_outcome(&mirror, false, 0, Some(false));
+            if let Some(new_mirror) = failover_to_best_mirror(&state, &mirror).await {
+                let new_warmup_details = RezkaParser::get_media_details(&state.client, &new_mirror, &referer_url).await.ok();
+                let step_b_start = std::time::Instant::now();
+                let step_b_res = RezkaParser::get_stream(
+                    &state.client,
+                    &new_mirror,
+                    &media_id,
+                    translator_id.as_deref(),
+                    season,
+                    episode,
+                    is_series,
+                    &referer_url,
+                )
+                .await;
+
+                match step_b_res {
+                    Ok(s) if !s.qualities.is_empty() || s.is_premium => {
+                        MirrorManager::record_outcome(&new_mirror, true, step_b_start.elapsed().as_millis() as u64, Some(true));
+                        s
+                    }
+                    _ => {
+                        if let Some(fallback) = new_warmup_details.and_then(|d| d.initial_streams).filter(|s| !s.qualities.is_empty() || s.is_premium) {
+                            MirrorManager::record_outcome(&new_mirror, true, step_b_start.elapsed().as_millis() as u64, Some(true));
+                            fallback
+                        } else {
+                            MirrorManager::record_outcome(&new_mirror, false, 0, Some(false));
+                            return Err("Потоки відтворення недоступні для обраного перекладу".to_string());
+                        }
+                    }
+                }
+            } else {
+                return Err(initial_res.err().map(|e| e.to_string()).unwrap_or_else(|| "Потоки недоступні".to_string()));
+            }
+        }
+    };
 
     crate::cdn::CdnSelector::optimize_stream(&state.client, &mut stream).await;
     Ok(stream)
@@ -422,15 +561,45 @@ pub async fn get_episodes(
     referer_url: String,
 ) -> Result<EpisodesData, String> {
     let mirror = state.storage.get_settings().map_err(|e| e.to_string())?.active_mirror;
-    let (seasons, episodes, mut stream_data) = RezkaParser::get_episodes(
+    let start = std::time::Instant::now();
+    let initial_res = RezkaParser::get_episodes(
         &state.client,
         &mirror,
         &media_id,
         &translator_id,
         &referer_url,
     )
-    .await
-    .map_err(|e| e.to_string())?;
+    .await;
+
+    let (seasons, episodes, mut stream_data) = match initial_res {
+        Ok(data) => {
+            MirrorManager::record_outcome(&mirror, true, start.elapsed().as_millis() as u64, None);
+            data
+        }
+        Err(e) => {
+            MirrorManager::record_outcome(&mirror, false, 0, None);
+            if let Some(new_mirror) = failover_to_best_mirror(&state, &mirror).await {
+                let retry_start = std::time::Instant::now();
+                match RezkaParser::get_episodes(
+                    &state.client,
+                    &new_mirror,
+                    &media_id,
+                    &translator_id,
+                    &referer_url,
+                )
+                .await
+                {
+                    Ok(data) => {
+                        MirrorManager::record_outcome(&new_mirror, true, retry_start.elapsed().as_millis() as u64, None);
+                        data
+                    }
+                    Err(retry_err) => return Err(retry_err.to_string()),
+                }
+            } else {
+                return Err(e.to_string());
+            }
+        }
+    };
 
     if let Some(ref mut s) = stream_data {
         crate::cdn::CdnSelector::optimize_stream(&state.client, s).await;

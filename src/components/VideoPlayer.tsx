@@ -204,8 +204,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [isSeeking, setIsSeeking] = useState(false);
   const isSeekingRef = useRef(false);
   const seekClearTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [currentTime, setCurrentTime] = useState(0);
+  const [currentTime, setCurrentTime] = useState(initialPositionSec || 0);
   const [duration, setDuration] = useState(0);
+  const [isBuffering, setIsBuffering] = useState(false);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -599,11 +600,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const handleSelectEnhanceMode = useCallback((mode: VideoEnhanceMode) => {
     setVideoEnhanceMode(mode);
-    if (mode === "off") {
-      setShaderReady(false);
-    } else {
-      setShaderReady(true);
-    }
+    setShaderReady(false);
     try {
       localStorage.setItem("rdx_video_enhance", mode);
     } catch {}
@@ -649,7 +646,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     shaderRendererRef.current.setMode(videoEnhanceMode);
     shaderRendererRef.current.start();
-    setShaderReady(true);
   }, [videoEnhanceMode, streamData]);
 
   // Real-time video decoder framerate monitor for Stream Info overlay when shaders are off
@@ -838,8 +834,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (Number.isFinite(hlsDurationRef.current) && hlsDurationRef.current > 0) {
       return hlsDurationRef.current;
     }
+    const epKey = `${activeSeason ?? 1}-${activeEpisode ?? 1}`;
+    const savedEp = episodeProgressMap[epKey];
+    if (savedEp && Number.isFinite(savedEp.duration_sec) && savedEp.duration_sec > 0) {
+      return savedEp.duration_sec;
+    }
     return 0;
-  }, [duration]);
+  }, [duration, activeSeason, activeEpisode, episodeProgressMap]);
 
   const syncDurationFromVideo = useCallback(() => {
     const vidDur = videoRef.current?.duration ?? 0;
@@ -1161,7 +1162,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (
       isStreamFetching ||
       loadedStreamKey !== currentStreamTargetKey ||
-      !streamData?.qualities.some((q) => q === selectedQuality)
+      !streamData?.qualities.some((q) => q.label === selectedQuality.label)
     ) {
       return;
     }
@@ -1174,7 +1175,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       lastEpisodeKeyRef.current = currentEpisodeKey;
       hlsDurationRef.current = 0;
       setDuration(0);
-      setCurrentTime(0);
+      setCurrentTime(initialPositionSec || 0);
       setLoopA(null);
       setLoopB(null);
     }
@@ -1185,20 +1186,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       ? video.currentTime
       : initialPositionSec;
 
-    const startMp4 = async (mp4Url: string) => {
+    const startMp4 = (mp4Url: string) => {
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
-      let playUrl = mp4Url;
-      if (turboBufferEnabled && typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-        try {
-          playUrl = await api.getTurboStreamUrl(mp4Url);
-        } catch (err) {
-          console.warn("Turbo proxy error, fallback to direct MP4:", err);
-        }
-      }
-      video.src = playUrl;
+      video.src = mp4Url;
       const onMetadata = () => {
         const vidDur = video.duration;
         if (Number.isFinite(vidDur) && vidDur > 0) {
@@ -1216,7 +1209,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         video.playbackRate = playbackSpeed;
         video.play().catch(() => {});
       };
+      const onError = () => {
+        if (selectedQuality.hls_url && video.src !== selectedQuality.hls_url) {
+          console.warn("Direct MP4 stream error, falling back to HLS stream:", selectedQuality.hls_url);
+          startHls(selectedQuality.hls_url);
+        }
+      };
       video.addEventListener("loadedmetadata", onMetadata, { once: true });
+      video.addEventListener("error", onError, { once: true });
       video.playbackRate = playbackSpeed;
       video.play().catch(() => {});
     };
@@ -1230,6 +1230,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       if (Hls.isSupported()) {
         let mediaErrorRecovered = false;
+        let networkErrorRetries = 0;
+        let hlsWatchdogTimer: NodeJS.Timeout | null = setTimeout(() => {
+          if (hlsRef.current && (!hlsDurationRef.current || hlsDurationRef.current <= 0) && selectedQuality.mp4_url) {
+            console.warn("HLS manifest/level timed out after 6s, falling back to direct MP4");
+            hls.destroy();
+            hlsRef.current = null;
+            startMp4(selectedQuality.mp4_url);
+          }
+        }, 6000);
+
         const hls = new Hls({
           enableWorker: true,
           lowLatencyMode: false,
@@ -1248,6 +1258,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         hls.attachMedia(video);
 
         hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+          if (hlsWatchdogTimer) {
+            clearTimeout(hlsWatchdogTimer);
+            hlsWatchdogTimer = null;
+          }
           const totalDur = data.details?.totalduration;
           if (totalDur && Number.isFinite(totalDur) && totalDur > 0) {
             hlsDurationRef.current = totalDur;
@@ -1261,6 +1275,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         });
 
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          if (hlsWatchdogTimer) {
+            clearTimeout(hlsWatchdogTimer);
+            hlsWatchdogTimer = null;
+          }
           if (prevTime > 0) {
             setCurrentTime(prevTime);
             if (initialPositionSec > 0 && prevTime === initialPositionSec) {
@@ -1277,7 +1295,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             console.warn("HLS fatal error:", data.type, data.details);
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
-                hls.startLoad();
+                if (
+                  networkErrorRetries < 1 &&
+                  data.details !== Hls.ErrorDetails.MANIFEST_LOAD_ERROR &&
+                  data.details !== Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT &&
+                  data.details !== Hls.ErrorDetails.LEVEL_LOAD_ERROR &&
+                  data.details !== Hls.ErrorDetails.LEVEL_LOAD_TIMEOUT
+                ) {
+                  networkErrorRetries++;
+                  hls.startLoad();
+                } else if (selectedQuality.mp4_url) {
+                  console.info("HLS network error, falling back to MP4 stream");
+                  hls.destroy();
+                  hlsRef.current = null;
+                  startMp4(selectedQuality.mp4_url);
+                }
                 break;
               case Hls.ErrorTypes.MEDIA_ERROR:
                 if (!mediaErrorRecovered) {
@@ -1287,6 +1319,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   hls.destroy();
                   hlsRef.current = null;
                   if (selectedQuality.mp4_url) {
+                    console.info("HLS media error, falling back to MP4 stream");
                     startMp4(selectedQuality.mp4_url);
                   }
                 }
@@ -1295,6 +1328,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 hls.destroy();
                 hlsRef.current = null;
                 if (selectedQuality.mp4_url) {
+                  console.info("HLS fatal error, falling back to MP4 stream");
                   startMp4(selectedQuality.mp4_url);
                 }
                 break;
@@ -2161,7 +2195,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         className="relative w-full h-full overflow-hidden bg-black flex items-center justify-center"
       >
         <video
-          key={`video-${details.id}-${effectiveTranslatorId || ""}-${activeSeason ?? 0}-${activeEpisode ?? 0}`}
           ref={videoRef}
           title=""
           controls={false}
@@ -2173,6 +2206,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             getVideoObjectFitClass()
           )}
           style={getVideoStyle()}
+          onWaiting={() => setIsBuffering(true)}
+          onPlaying={() => {
+            setIsBuffering(false);
+            if (!isSeekingRef.current) setIsPlaying(true);
+          }}
+          onCanPlay={() => {
+            syncDurationFromVideo();
+            setIsBuffering(false);
+          }}
           onTimeUpdate={() => {
             if (!videoRef.current) return;
             const time = videoRef.current.currentTime;
@@ -2194,7 +2236,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           }}
           onLoadedMetadata={syncDurationFromVideo}
           onDurationChange={syncDurationFromVideo}
-          onCanPlay={syncDurationFromVideo}
           onSeeking={() => {
             isSeekingRef.current = true;
             setIsSeeking(true);
@@ -2732,8 +2773,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
               {/* Center Quick Pause/Play Indicator or Loading Spinner */}
               <div className="self-center pointer-events-none">
-                {loadingStream ? (
-                  <div className="w-16 h-16 rounded-full bg-black/60 border border-white/20 flex items-center justify-center text-rose-500 shadow-2xl">
+                {loadingStream || isBuffering ? (
+                  <div className="w-16 h-16 rounded-full bg-black/75 border border-white/20 flex flex-col items-center justify-center text-rose-500 shadow-2xl backdrop-blur-md gap-1">
                     <Loader2 className="w-8 h-8 animate-spin" />
                   </div>
                 ) : !isPlaying && !isSeeking ? (
