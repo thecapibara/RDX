@@ -235,32 +235,52 @@ pub async fn clear_completed_downloads(app: AppHandle, state: State<'_, AppState
 #[tauri::command]
 pub async fn show_in_folder(path: String) -> Result<(), String> {
     let p = std::path::Path::new(&path);
-    let target = if p.exists() {
-        if p.is_dir() { p } else { p.parent().unwrap_or(p) }
-    } else if let Some(parent) = p.parent() {
-        if parent.exists() { parent } else { p }
-    } else {
-        p
-    };
 
     #[cfg(target_os = "windows")]
     {
-        let _ = std::process::Command::new("explorer")
-            .arg(target)
-            .spawn();
+        if p.exists() && p.is_file() {
+            let _ = std::process::Command::new("explorer")
+                .arg(format!("/select,{}", path))
+                .spawn();
+        } else {
+            let target = if p.is_dir() { p } else { p.parent().unwrap_or(p) };
+            let _ = std::process::Command::new("explorer")
+                .arg(target)
+                .spawn();
+        }
+        return Ok(());
     }
+
     #[cfg(target_os = "macos")]
     {
-        let _ = std::process::Command::new("open")
-            .arg(target)
-            .spawn();
+        if p.exists() && p.is_file() {
+            let _ = std::process::Command::new("open")
+                .arg("-R")
+                .arg(&path)
+                .spawn();
+        } else {
+            let target = if p.is_dir() { p } else { p.parent().unwrap_or(p) };
+            let _ = std::process::Command::new("open")
+                .arg(target)
+                .spawn();
+        }
+        return Ok(());
     }
+
     #[cfg(target_os = "linux")]
     {
+        let target = if p.exists() && p.is_dir() {
+            p
+        } else {
+            p.parent().unwrap_or(p)
+        };
         let _ = std::process::Command::new("xdg-open")
             .arg(target)
             .spawn();
+        return Ok(());
     }
+
+    #[allow(unreachable_code)]
     Ok(())
 }
 
