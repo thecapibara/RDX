@@ -10,11 +10,25 @@ import {
   CheckCircle2,
   FolderOpen,
   X,
+  Crown,
 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
 import type { DownloadItem, DownloadProgressEvent } from "../types";
+
+function isPremiumQuality(label?: string | null): boolean {
+  if (!label) return false;
+  const lower = label.toLowerCase();
+  return (
+    lower.includes("ultra") ||
+    lower.includes("2k") ||
+    lower.includes("4k") ||
+    lower.includes("prem") ||
+    lower.includes("2160") ||
+    lower.includes("1440")
+  );
+}
 
 interface DownloadsViewProps {
   onPlayDownload: (item: DownloadItem) => void;
@@ -394,7 +408,7 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(185px,1fr))] lg:grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-5">
           {filteredDownloads.map((item) => {
             const isCompleted = item.status === "completed";
             const isDownloading = item.status === "downloading";
@@ -409,6 +423,22 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                   )
                 : 0;
 
+            const isPrem = isPremiumQuality(item.quality);
+
+            const entityType = (item.media_type || "").toLowerCase();
+            let typeLabel = "Фільм";
+            let typeBadgeClass = "bg-indigo-600 text-white";
+            if (entityType.includes("series") || entityType.includes("серіал") || item.season != null) {
+              typeLabel = "Серіал";
+              typeBadgeClass = "bg-rose-600 text-white";
+            } else if (entityType.includes("anime") || entityType.includes("аніме")) {
+              typeLabel = "Аніме";
+              typeBadgeClass = "bg-purple-600 text-white";
+            } else if (entityType.includes("cartoon") || entityType.includes("мульт")) {
+              typeLabel = "Мультфільм";
+              typeBadgeClass = "bg-emerald-600 text-white";
+            }
+
             return (
               <div
                 key={item.id}
@@ -418,92 +448,109 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                   }
                 }}
                 className={cn(
-                  "group relative flex flex-col rounded-2xl bg-zinc-900/80 border border-white/10 overflow-hidden transition-all duration-200",
-                  isCompleted
-                    ? "hover:border-rose-500/50 hover:shadow-xl hover:shadow-rose-950/20 cursor-pointer"
-                    : "cursor-default"
+                  "group relative flex flex-col select-none focus:outline-none transition-all duration-200",
+                  isCompleted ? "cursor-pointer" : "cursor-default"
                 )}
               >
-                {/* Poster & Badges Header */}
-                <div className="relative aspect-video w-full bg-zinc-950 overflow-hidden flex items-center justify-center">
+                {/* 2:3 Vertical Poster Container */}
+                <div className="relative aspect-[2/3] w-full overflow-hidden rounded-2xl bg-zinc-900 border border-white/10 group-hover:border-rose-500/50 transition-all duration-200 group-hover:scale-[1.025] transform-gpu shadow-lg shadow-black/40">
                   <img
                     src={item.poster_url}
                     alt={item.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    draggable={false}
                     loading="lazy"
+                    decoding="async"
+                    className="h-full w-full object-cover pointer-events-none select-none transition-transform duration-300 group-hover:scale-105"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      (e.currentTarget as HTMLImageElement).src =
+                        "data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22200%22%20height%3D%22300%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20fill%3D%22%2318181b%22%20width%3D%22200%22%20height%3D%22300%22%20%2F%3E%3Ctext%20fill%3D%22%2371717a%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3ERDX%3C%2Ftext%3E%3C%2Fsvg%3E";
+                    }}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/30 to-transparent" />
 
-                  {/* Quality Badge */}
-                  <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-rose-600/90 text-white backdrop-blur-md shadow-sm">
-                    {item.quality}
-                  </span>
+                  {/* Gradient overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/20 to-transparent pointer-events-none" />
 
-                  {/* Series Season/Episode Badge */}
-                  {item.season != null && item.episode != null && (
-                    <span className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-md text-[10px] font-bold bg-zinc-900/80 text-zinc-300 border border-white/10 backdrop-blur-md">
-                      S{item.season} E{item.episode}
+                  {/* Top-Left Badges: Entity Type & Quality with Crown */}
+                  <div className="absolute top-2.5 left-2.5 z-10 flex flex-col gap-1 items-start pointer-events-none">
+                    <span
+                      className={cn(
+                        "px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wide uppercase shadow-sm",
+                        typeBadgeClass
+                      )}
+                    >
+                      {typeLabel}
                     </span>
-                  )}
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-black tracking-wide uppercase bg-black/75 backdrop-blur-md text-zinc-200 border border-white/10 shadow-sm">
+                      <span>{item.quality}</span>
+                      {isPrem && <Crown className="w-3 h-3 text-amber-400 fill-amber-400/25 flex-shrink-0" />}
+                    </span>
+                  </div>
 
-                  {/* Play Action Overlay for completed files */}
+                  {/* Top-Right Badges: Season/Episode & Status */}
+                  <div className="absolute top-2.5 right-2.5 z-10 flex flex-col gap-1 items-end pointer-events-none">
+                    {item.season != null && item.episode != null && (
+                      <span className="bg-zinc-950/90 backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-bold text-white border border-white/10 shadow-sm">
+                        S{item.season}E{item.episode}
+                      </span>
+                    )}
+                    {isCompleted ? (
+                      <span className="flex items-center gap-1 bg-emerald-500/90 text-white backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm">
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>Готово</span>
+                      </span>
+                    ) : isDownloading ? (
+                      <span className="flex items-center gap-1 bg-rose-600/90 text-white backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm animate-pulse">
+                        <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                        <span>{percent}%</span>
+                      </span>
+                    ) : isPaused ? (
+                      <span className="bg-zinc-800/90 text-zinc-300 backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-bold border border-white/10">
+                        Пауза
+                      </span>
+                    ) : isError ? (
+                      <span className="bg-red-600/90 text-white backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-bold">
+                        Помилка
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {/* Center Hover Action for Completed: Big Play Button */}
                   {isCompleted && (
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 backdrop-blur-[2px]">
-                      <div className="w-12 h-12 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-lg shadow-rose-600/50 group-hover:scale-110 transition-transform">
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10 pointer-events-none">
+                      <div className="w-12 h-12 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-xl shadow-rose-950/60 group-hover:scale-110 transition-transform">
                         <Play className="w-5 h-5 fill-white ml-0.5" />
                       </div>
                     </div>
                   )}
-                </div>
 
-                {/* Content details */}
-                <div className="p-3.5 flex-1 flex flex-col justify-between space-y-3">
-                  <div className="space-y-1">
-                    <h4 className="text-sm font-bold text-white line-clamp-1 group-hover:text-rose-400 transition-colors">
-                      {item.title}
-                    </h4>
-                    {item.orig_title && (
-                      <p className="text-[11px] text-zinc-400 line-clamp-1">
-                        {item.orig_title}
-                      </p>
-                    )}
-                    <p className="text-[11px] text-zinc-500 font-medium truncate">
-                      🎙️ {item.translator_name}
-                    </p>
-                  </div>
-
-                  {/* Progress status for in-progress or paused */}
+                  {/* Active Download Progress Bar & Speed Overlay at bottom of poster */}
                   {!isCompleted && (
-                    <div className="space-y-2 pt-1 border-t border-white/5">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span
-                          className={cn(
-                            "font-semibold flex items-center gap-1.5",
-                            isDownloading && "text-amber-400",
-                            isPaused && "text-zinc-400",
-                            isError && "text-rose-400"
-                          )}
-                        >
-                          {isDownloading && (
-                            <>
-                              <RefreshCw className="w-3 h-3 animate-spin text-rose-500" />
-                              <span>Завантаження...</span>
-                            </>
-                          )}
-                          {isPaused && "Призупинено"}
-                          {isError && (item.error_message || "Помилка")}
+                    <div className="absolute bottom-0 inset-x-0 p-2.5 bg-gradient-to-t from-black/95 via-black/85 to-transparent z-10 space-y-1.5">
+                      <div className="flex items-center justify-between text-[10px] font-mono">
+                        <span className="text-zinc-300 font-semibold truncate max-w-[80px]">
+                          {formatBytes(item.downloaded_bytes)}
                         </span>
-                        <span className="font-mono font-bold text-rose-400 text-xs">
-                          {percent}%
-                        </span>
+                        {isDownloading && (
+                          <div className="flex items-center gap-1">
+                            {getEtaString(item.downloaded_bytes, item.total_bytes, item.speed_bytes_sec) && (
+                              <span className="text-zinc-400 font-normal">
+                                {getEtaString(item.downloaded_bytes, item.total_bytes, item.speed_bytes_sec)}
+                              </span>
+                            )}
+                            <span className="text-emerald-400 font-bold">
+                              ↓ {formatSpeed(item.speed_bytes_sec)}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Progress bar */}
-                      <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden p-0.5">
+                      <div className="w-full h-1.5 bg-white/15 rounded-full overflow-hidden">
                         <div
                           className={cn(
                             "h-full rounded-full transition-all duration-300",
-                            isDownloading && "bg-gradient-to-r from-rose-600 via-rose-500 to-amber-400 shadow-sm shadow-rose-500/50",
+                            isDownloading && "bg-gradient-to-r from-rose-600 to-amber-400 shadow-sm shadow-rose-500/50",
                             isPaused && "bg-zinc-500",
                             isError && "bg-red-600"
                           )}
@@ -511,66 +558,27 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                         />
                       </div>
 
-                      <div className="flex items-center justify-between text-[10px] text-zinc-400 font-mono">
-                        <span>
-                          {formatBytes(item.downloaded_bytes)} / {formatBytes(item.total_bytes)}
-                        </span>
-                        {isDownloading ? (
-                          <div className="flex items-center gap-1.5">
-                            {getEtaString(item.downloaded_bytes, item.total_bytes, item.speed_bytes_sec) && (
-                              <span className="text-zinc-500 font-normal">
-                                {getEtaString(item.downloaded_bytes, item.total_bytes, item.speed_bytes_sec)}
-                              </span>
-                            )}
-                            <span className="text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
-                              ↓ {formatSpeed(item.speed_bytes_sec)}
-                            </span>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Card actions bottom bar */}
-                  <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs">
-                    {isCompleted ? (
-                      <>
-                        <div className="flex items-center gap-1.5 text-emerald-400 text-[11px] font-semibold">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Завантажено</span>
-                          <span className="text-zinc-500 font-normal font-mono text-[10px] ml-1">
-                            ({formatBytes(item.total_bytes || item.downloaded_bytes)})
-                          </span>
-                        </div>
-                        <button
-                          onClick={(e) => handleDelete(item.id, item.title, e)}
-                          title="Видалити файл"
-                          className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex items-center gap-1.5">
+                      {/* Controls */}
+                      <div className="flex items-center justify-between pt-0.5">
+                        <div className="flex items-center gap-1">
                           {isDownloading && (
                             <button
                               onClick={(e) => handlePause(item.id, e)}
                               title="Призупинити"
-                              className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                              className="px-2 py-0.5 rounded-md bg-white/10 hover:bg-white/20 text-zinc-200 text-[10px] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
                             >
-                              <Pause className="w-3 h-3" />
+                              <Pause className="w-2.5 h-2.5" />
                               <span>Пауза</span>
                             </button>
                           )}
                           {(isPaused || isError) && (
                             <button
                               onClick={(e) => handleResume(item.id, e)}
-                              title="Продовжити завантаження"
-                              className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors shadow-sm"
+                              title="Продовжити"
+                              className="px-2 py-0.5 rounded-md bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-semibold flex items-center gap-1 cursor-pointer transition-colors shadow-sm"
                             >
-                              <Play className="w-3 h-3 fill-white" />
-                              <span>Продовжити</span>
+                              <Play className="w-2.5 h-2.5 fill-white" />
+                              <span>Старт</span>
                             </button>
                           )}
                         </div>
@@ -578,12 +586,44 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                         <button
                           onClick={(e) => handleCancel(item.id, e)}
                           title="Скасувати та видалити"
-                          className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                          className="p-1 rounded-md text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
-                      </>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Text details below poster */}
+                <div className="mt-2.5 flex flex-col space-y-1">
+                  <div className="flex items-start justify-between gap-1.5">
+                    <h4
+                      title={item.title}
+                      className="text-xs font-bold text-zinc-100 line-clamp-1 group-hover:text-rose-400 transition-colors"
+                    >
+                      {item.title}
+                    </h4>
+
+                    {/* Delete button for completed */}
+                    {isCompleted && (
+                      <button
+                        onClick={(e) => handleDelete(item.id, item.title, e)}
+                        title="Видалити файл із диску"
+                        className="p-1 -mr-1 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer shrink-0"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     )}
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-zinc-400">
+                    <span className="truncate max-w-[120px] text-zinc-400" title={item.translator_name}>
+                      🎙️ {item.translator_name}
+                    </span>
+                    <span className="font-mono text-[10px] text-zinc-500 shrink-0">
+                      {isCompleted ? formatBytes(item.total_bytes || item.downloaded_bytes) : `${percent}%`}
+                    </span>
                   </div>
                 </div>
               </div>
