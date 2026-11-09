@@ -10,6 +10,7 @@ interface ContinueWatchingSwimlaneProps {
   onResume: (item: WatchProgress) => void;
   onRemove: (mediaId: string) => void;
   onOpenDetails?: (card: MediaCard) => void;
+  onOpenDownloads?: () => void;
   className?: string;
 }
 
@@ -18,6 +19,7 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
   onResume,
   onRemove,
   onOpenDetails,
+  onOpenDownloads,
   className,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -225,6 +227,7 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
               onResume={onResume}
               onRemove={onRemove}
               onOpenDetails={onOpenDetails}
+              onOpenDownloads={onOpenDownloads}
             />
           ))}
           <div ref={endSentinelRef} className="w-px h-1 shrink-0 -ml-4 pointer-events-none opacity-0" aria-hidden="true" />

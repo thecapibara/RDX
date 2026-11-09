@@ -12,6 +12,7 @@ interface SwimlaneProps {
   items: MediaCardType[];
   onSelectCard: (card: MediaCardType) => void;
   onPlayDirect?: (card: MediaCardType) => void;
+  onOpenDownloads?: () => void;
   onMoreClick?: () => void;
   className?: string;
   loading?: boolean;
@@ -24,6 +25,7 @@ export const Swimlane: React.FC<SwimlaneProps> = React.memo(({
   items,
   onSelectCard,
   onPlayDirect,
+  onOpenDownloads,
   onMoreClick,
   className,
   loading,
@@ -295,6 +297,7 @@ export const Swimlane: React.FC<SwimlaneProps> = React.memo(({
                 card={card}
                 onSelect={onSelectCard}
                 onPlayDirect={onPlayDirect}
+                onOpenDownloads={onOpenDownloads}
               />
             </div>
           ))}

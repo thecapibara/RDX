@@ -1,13 +1,16 @@
 import React, { useState } from "react";
-import { Play, X, Loader2 } from "lucide-react";
+import { Play, X, Loader2, ArrowDownCircle, Clock, Pause } from "lucide-react";
 import type { WatchProgress, MediaCard } from "../types";
 import { playHoverSound } from "../services/sound";
+import { usePoster } from "../services/posterCache";
+import { useMediaDownload, openDownloadsTab } from "../services/downloadsStore";
 
 interface ContinueWatchingCardProps {
   item: WatchProgress;
   onResume: (item: WatchProgress) => void;
   onRemove: (mediaId: string) => void;
   onOpenDetails?: (card: MediaCard) => void;
+  onOpenDownloads?: () => void;
 }
 
 function formatDuration(sec: number): string {
@@ -27,8 +30,11 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
   onResume,
   onRemove,
   onOpenDetails,
+  onOpenDownloads,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
+  const effectivePoster = usePoster(item.media_id, item.poster_url);
+  const downloadInfo = useMediaDownload(item.media_id);
 
   const handleResumeClick = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -61,16 +67,25 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
         className="relative aspect-[2/3] w-full overflow-hidden rounded-2xl bg-zinc-900 border border-white/10 shadow-md transition-transform duration-200 ease-out transform-gpu group-hover:scale-[1.025] group-hover:border-rose-500/50"
       >
         <img
-          src={item.poster_url}
+          src={effectivePoster}
           alt={item.title}
           draggable={false}
           loading="lazy"
           decoding="async"
-          className="h-full w-full object-cover pointer-events-none select-none"
+          style={{
+            imageRendering: "auto",
+            backfaceVisibility: "hidden",
+            transform: "translateZ(0)",
+          }}
+          className="h-full w-full object-cover pointer-events-none select-none transition-opacity duration-300"
           onError={(e) => {
-            e.currentTarget.onerror = null;
-            (e.currentTarget as HTMLImageElement).src =
-              "data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22200%22%20height%3D%22300%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20fill%3D%22%2318181b%22%20width%3D%22200%22%20height%3D%22300%22%2F%3E%3Ctext%20fill%3D%22%2371717a%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3ERDX%3C%2Ftext%3E%3C%2Fsvg%3E";
+            if (e.currentTarget.src !== item.poster_url && item.poster_url) {
+              e.currentTarget.src = item.poster_url;
+            } else {
+              e.currentTarget.onerror = null;
+              (e.currentTarget as HTMLImageElement).src =
+                "data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22200%22%20height%3D%22300%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20fill%3D%22%2318181b%22%20width%3D%22200%22%20height%3D%22300%22%2F%3E%3Ctext%20fill%3D%22%2371717a%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3ERDX%3C%2Ftext%3E%3C%2Fsvg%3E";
+            }
           }}
         />
 
@@ -78,11 +93,43 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-black/40 pointer-events-none" />
 
         {/* Top Badges */}
-        <div className="absolute top-2.5 left-2.5 z-10 pointer-events-none">
+        <div className="absolute top-2.5 left-2.5 z-10 pointer-events-none flex items-center gap-1.5">
           <span className="bg-rose-600/95 text-white font-bold text-xs px-2 py-0.5 rounded-md border border-rose-400/30 shadow-sm">
             {episodeBadge}
           </span>
         </div>
+
+        {/* Active Download Badge if downloading */}
+        {downloadInfo && (
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onOpenDownloads) onOpenDownloads();
+              else openDownloadsTab();
+            }}
+            className="absolute top-9 left-2.5 z-20 flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-zinc-950/95 hover:bg-rose-950/95 text-rose-400 hover:text-rose-300 border border-rose-500/40 hover:border-rose-400 transition-all cursor-pointer shadow-lg backdrop-blur-md group/badge"
+            title="Завантажується. Натисніть, щоб відкрити список завантажень"
+          >
+            {downloadInfo.status === "downloading" ? (
+              <>
+                <ArrowDownCircle className="w-3 h-3 animate-pulse text-rose-500 shrink-0" />
+                <span className="text-[10px] font-bold tracking-tight">
+                  {downloadInfo.progress}%
+                </span>
+              </>
+            ) : downloadInfo.status === "queued" ? (
+              <>
+                <Clock className="w-3 h-3 text-amber-400 shrink-0" />
+                <span className="text-[10px] font-bold text-amber-400">В черзі</span>
+              </>
+            ) : (
+              <>
+                <Pause className="w-3 h-3 text-zinc-400 shrink-0" />
+                <span className="text-[10px] font-bold text-zinc-300">Пауза</span>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Remove Button */}
         <button

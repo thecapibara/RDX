@@ -5,6 +5,7 @@ import { api } from "../services/api";
 import { MediaCard } from "./MediaCard";
 import { cn } from "../lib/utils";
 import { playButtonClickSound } from "../services/sound";
+import { posterCache } from "../services/posterCache";
 
 interface BookmarksViewProps {
   onSelectMedia: (card: MediaCardType) => void;
@@ -26,6 +27,11 @@ export const BookmarksView: React.FC<BookmarksViewProps> = ({
         activeCategory === "all" ? undefined : activeCategory
       );
       setBookmarks(items);
+      items.forEach((b) => {
+        if (b.media_id && b.poster_url) {
+          posterCache.set(b.media_id, b.poster_url);
+        }
+      });
     } catch (err) {
       console.error("Failed to load bookmarks:", err);
     }
