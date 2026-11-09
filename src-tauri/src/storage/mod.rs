@@ -856,6 +856,67 @@ impl Storage {
         conn.execute("DELETE FROM downloads WHERE id = ?1", params![id])?;
         Ok(())
     }
+
+    pub fn get_next_queued_download(&self) -> SqlResult<Option<DownloadItem>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            r#"
+            SELECT id, media_id, media_url, title, orig_title, poster_url, media_type,
+                   genres, translator_id, translator_name, season, episode, quality,
+                   stream_url, file_path, temp_path, total_bytes, downloaded_bytes,
+                   status, error_message, created_at, completed_at
+            FROM downloads
+            WHERE status = 'queued'
+            ORDER BY created_at ASC
+            LIMIT 1
+            "#,
+        )?;
+
+        let mut rows = stmt.query_map([], |row| {
+            let total_i64: i64 = row.get(16)?;
+            let downloaded_i64: i64 = row.get(17)?;
+            Ok(DownloadItem {
+                id: row.get(0)?,
+                media_id: row.get(1)?,
+                media_url: row.get(2)?,
+                title: row.get(3)?,
+                orig_title: row.get(4)?,
+                poster_url: row.get(5)?,
+                media_type: row.get(6)?,
+                genres: row.get(7)?,
+                translator_id: row.get(8)?,
+                translator_name: row.get(9)?,
+                season: row.get(10)?,
+                episode: row.get(11)?,
+                quality: row.get(12)?,
+                stream_url: row.get(13)?,
+                file_path: row.get(14)?,
+                temp_path: row.get(15)?,
+                total_bytes: total_i64.max(0) as u64,
+                downloaded_bytes: downloaded_i64.max(0) as u64,
+                status: row.get(18)?,
+                error_message: row.get(19)?,
+                created_at: row.get(20)?,
+                completed_at: row.get(21)?,
+                speed_bytes_sec: None,
+            })
+        })?;
+
+        if let Some(r) = rows.next() {
+            Ok(r.ok())
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn reset_interrupted_downloads(&self) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE downloads SET status = 'queued' WHERE status = 'downloading'",
+            [],
+        )?;
+        Ok(())
+    }
 }
 
 pub fn default_db_path() -> PathBuf {

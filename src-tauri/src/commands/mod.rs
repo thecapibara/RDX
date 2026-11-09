@@ -160,8 +160,12 @@ pub async fn start_download(
 }
 
 #[tauri::command]
-pub async fn pause_download(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    state.downloader.pause_download(&id)
+pub async fn pause_download(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    state.downloader.pause_download(&id, app)
 }
 
 #[tauri::command]
@@ -174,13 +178,21 @@ pub async fn resume_download(
 }
 
 #[tauri::command]
-pub async fn cancel_download(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    state.downloader.cancel_download(&id).await
+pub async fn cancel_download(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    state.downloader.cancel_download(&id, app).await
 }
 
 #[tauri::command]
-pub async fn delete_download(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    state.downloader.delete_download(&id).await
+pub async fn delete_download(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    state.downloader.delete_download(&id, app).await
 }
 
 #[tauri::command]

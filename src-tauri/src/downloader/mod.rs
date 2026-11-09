@@ -11,6 +11,8 @@ use tokio::sync::watch;
 
 use crate::storage::{DownloadItem, Storage};
 
+pub const MAX_CONCURRENT_DOWNLOADS: usize = 3;
+
 pub fn get_downloads_dir() -> PathBuf {
     if let Some(dir) = dirs::data_local_dir() {
         let target = dir.join("rdx").join("downloads");
@@ -48,6 +50,9 @@ impl DownloadManager {
             .build()
             .unwrap_or_default();
 
+        // On startup: reset any stuck "downloading" tasks from previous session to "queued"
+        let _ = storage.reset_interrupted_downloads();
+
         Self {
             storage,
             active_tokens: Arc::new(Mutex::new(HashMap::new())),
@@ -66,9 +71,51 @@ impl DownloadManager {
         app: AppHandle,
     ) -> Result<DownloadItem, String> {
         let id = item.id.clone();
-
-        // 1. Save or update record in database as queued/downloading
         let mut initial_item = item.clone();
+
+        let active_count = {
+            let guard = self.active_tokens.lock().unwrap();
+            guard.len()
+        };
+
+        // If concurrency limit reached, mark as queued and let the worker queue pick it up
+        if active_count >= MAX_CONCURRENT_DOWNLOADS {
+            initial_item.status = "queued".to_string();
+            initial_item.error_message = None;
+
+            self.storage
+                .add_or_update_download(&initial_item)
+                .map_err(|e| format!("DB error: {e}"))?;
+
+            {
+                let mut p_guard = self.active_progress.lock().unwrap();
+                p_guard.insert(
+                    id.clone(),
+                    ActiveDownloadProgress {
+                        id: id.clone(),
+                        downloaded_bytes: initial_item.downloaded_bytes,
+                        total_bytes: initial_item.total_bytes,
+                        speed_bytes_sec: 0,
+                        status: "queued".to_string(),
+                    },
+                );
+            }
+
+            let _ = app.emit(
+                "download://progress",
+                serde_json::json!({
+                    "id": &id,
+                    "downloaded_bytes": initial_item.downloaded_bytes,
+                    "total_bytes": initial_item.total_bytes,
+                    "speed_bytes_sec": 0,
+                    "status": "queued",
+                }),
+            );
+
+            return Ok(initial_item);
+        }
+
+        // Slot is available: start downloading!
         initial_item.status = "downloading".to_string();
         initial_item.error_message = None;
 
@@ -76,14 +123,14 @@ impl DownloadManager {
             .add_or_update_download(&initial_item)
             .map_err(|e| format!("DB error: {e}"))?;
 
-        // 2. Set up cancellation / pause watch channel
+        // Set up cancellation / pause watch channel
         let (tx, rx) = watch::channel(false);
         {
             let mut guard = self.active_tokens.lock().unwrap();
             guard.insert(id.clone(), tx);
         }
 
-        // 3. Register initial active progress
+        // Register initial active progress
         {
             let mut p_guard = self.active_progress.lock().unwrap();
             p_guard.insert(
@@ -98,7 +145,6 @@ impl DownloadManager {
             );
         }
 
-        // Emit initial started event to UI
         let _ = app.emit(
             "download://progress",
             serde_json::json!({
@@ -110,7 +156,7 @@ impl DownloadManager {
             }),
         );
 
-        // 4. Spawn background download worker task
+        // Spawn background download worker task
         let storage = self.storage.clone();
         let tokens = self.active_tokens.clone();
         let progress = self.active_progress.clone();
@@ -123,7 +169,7 @@ impl DownloadManager {
         Ok(item)
     }
 
-    pub fn pause_download(&self, id: &str) -> Result<(), String> {
+    pub fn pause_download(&self, id: &str, app: AppHandle) -> Result<(), String> {
         let mut guard = self.active_tokens.lock().unwrap();
         if let Some(tx) = guard.remove(id) {
             let _ = tx.send(true);
@@ -145,6 +191,26 @@ impl DownloadManager {
             None,
         );
 
+        let _ = app.emit(
+            "download://progress",
+            serde_json::json!({
+                "id": id,
+                "downloaded_bytes": 0,
+                "total_bytes": 0,
+                "speed_bytes_sec": 0,
+                "status": "paused",
+            }),
+        );
+
+        // Check if there are queued downloads waiting for this freed slot
+        Self::spawn_check_next(
+            self.storage.clone(),
+            self.active_tokens.clone(),
+            self.active_progress.clone(),
+            self.client.clone(),
+            app,
+        );
+
         Ok(())
     }
 
@@ -159,9 +225,14 @@ impl DownloadManager {
         Ok(())
     }
 
-    pub async fn cancel_download(&self, id: &str) -> Result<(), String> {
+    pub async fn cancel_download(&self, id: &str, app: AppHandle) -> Result<(), String> {
         // Stop active task
-        self.pause_download(id)?;
+        {
+            let mut guard = self.active_tokens.lock().unwrap();
+            if let Some(tx) = guard.remove(id) {
+                let _ = tx.send(true);
+            }
+        }
 
         {
             let mut p_guard = self.active_progress.lock().unwrap();
@@ -181,11 +252,25 @@ impl DownloadManager {
             .delete_download(id)
             .map_err(|e| format!("DB delete error: {e}"))?;
 
+        // Slot freed: start next queued
+        Self::spawn_check_next(
+            self.storage.clone(),
+            self.active_tokens.clone(),
+            self.active_progress.clone(),
+            self.client.clone(),
+            app,
+        );
+
         Ok(())
     }
 
-    pub async fn delete_download(&self, id: &str) -> Result<(), String> {
-        self.pause_download(id).ok();
+    pub async fn delete_download(&self, id: &str, app: AppHandle) -> Result<(), String> {
+        {
+            let mut guard = self.active_tokens.lock().unwrap();
+            if let Some(tx) = guard.remove(id) {
+                let _ = tx.send(true);
+            }
+        }
 
         {
             let mut p_guard = self.active_progress.lock().unwrap();
@@ -207,7 +292,100 @@ impl DownloadManager {
             .delete_download(id)
             .map_err(|e| format!("DB delete error: {e}"))?;
 
+        Self::spawn_check_next(
+            self.storage.clone(),
+            self.active_tokens.clone(),
+            self.active_progress.clone(),
+            self.client.clone(),
+            app,
+        );
+
         Ok(())
+    }
+
+    fn spawn_check_next(
+        storage: Arc<Storage>,
+        tokens: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
+        progress: Arc<Mutex<HashMap<String, ActiveDownloadProgress>>>,
+        client: reqwest::Client,
+        app: AppHandle,
+    ) {
+        tokio::spawn(async move {
+            Self::check_and_start_next(storage, tokens, progress, client, app).await;
+        });
+    }
+
+    pub async fn check_and_start_next(
+        storage: Arc<Storage>,
+        tokens: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
+        progress: Arc<Mutex<HashMap<String, ActiveDownloadProgress>>>,
+        client: reqwest::Client,
+        app: AppHandle,
+    ) {
+        loop {
+            let active_count = {
+                let guard = tokens.lock().unwrap();
+                guard.len()
+            };
+
+            if active_count >= MAX_CONCURRENT_DOWNLOADS {
+                break;
+            }
+
+            // Find next queued download in DB
+            let next_item = match storage.get_next_queued_download() {
+                Ok(Some(item)) => item,
+                _ => break,
+            };
+
+            let id = next_item.id.clone();
+            let mut initial_item = next_item;
+            initial_item.status = "downloading".to_string();
+            initial_item.error_message = None;
+
+            let _ = storage.add_or_update_download(&initial_item);
+
+            let (tx, rx) = watch::channel(false);
+            {
+                let mut guard = tokens.lock().unwrap();
+                guard.insert(id.clone(), tx);
+            }
+
+            {
+                let mut p_guard = progress.lock().unwrap();
+                p_guard.insert(
+                    id.clone(),
+                    ActiveDownloadProgress {
+                        id: id.clone(),
+                        downloaded_bytes: initial_item.downloaded_bytes,
+                        total_bytes: initial_item.total_bytes,
+                        speed_bytes_sec: 0,
+                        status: "downloading".to_string(),
+                    },
+                );
+            }
+
+            let _ = app.emit(
+                "download://progress",
+                serde_json::json!({
+                    "id": &id,
+                    "downloaded_bytes": initial_item.downloaded_bytes,
+                    "total_bytes": initial_item.total_bytes,
+                    "speed_bytes_sec": 0,
+                    "status": "downloading",
+                }),
+            );
+
+            let s = storage.clone();
+            let t = tokens.clone();
+            let p = progress.clone();
+            let c = client.clone();
+            let a = app.clone();
+
+            tokio::spawn(async move {
+                Self::run_download_task(initial_item, c, s, t, p, rx, a).await;
+            });
+        }
     }
 
     async fn run_download_task(
@@ -263,7 +441,7 @@ impl DownloadManager {
                         "status": "paused",
                     }),
                 );
-                return;
+                break false;
             }
 
             let mut req = client.get(&item.stream_url);
@@ -374,6 +552,7 @@ impl DownloadManager {
                     let mut last_db_save = Instant::now();
 
                     let mut stream_err = false;
+                    let mut was_paused = false;
 
                     loop {
                         // Check if paused or cancelled by user
@@ -404,7 +583,8 @@ impl DownloadManager {
                                     "status": "paused",
                                 }),
                             );
-                            return;
+                            was_paused = true;
+                            break;
                         }
 
                         match resp.chunk().await {
@@ -476,6 +656,10 @@ impl DownloadManager {
 
                     let _ = file.flush().await;
 
+                    if was_paused {
+                        break false;
+                    }
+
                     if stream_err {
                         if retry_count < MAX_RETRIES {
                             retry_count += 1;
@@ -528,7 +712,7 @@ impl DownloadManager {
             }
         };
 
-        // Cleanup active token
+        // Always remove token on task exit
         {
             let mut guard = tokens.lock().unwrap();
             guard.remove(&id);
@@ -550,35 +734,37 @@ impl DownloadManager {
                     "error",
                     Some("Failed to rename completed file"),
                 );
-                return;
+            } else {
+                let _ = storage.update_download_progress(
+                    &id,
+                    existing_bytes,
+                    existing_bytes,
+                    "completed",
+                    None,
+                );
+
+                let _ = app.emit(
+                    "download://complete",
+                    serde_json::json!({
+                        "id": &id,
+                        "file_path": final_path.to_string_lossy().to_string(),
+                    }),
+                );
+
+                let _ = app.emit(
+                    "download://progress",
+                    serde_json::json!({
+                        "id": &id,
+                        "downloaded_bytes": existing_bytes,
+                        "total_bytes": existing_bytes,
+                        "speed_bytes_sec": 0,
+                        "status": "completed",
+                    }),
+                );
             }
-
-            let _ = storage.update_download_progress(
-                &id,
-                existing_bytes,
-                existing_bytes,
-                "completed",
-                None,
-            );
-
-            let _ = app.emit(
-                "download://complete",
-                serde_json::json!({
-                    "id": &id,
-                    "file_path": final_path.to_string_lossy().to_string(),
-                }),
-            );
-
-            let _ = app.emit(
-                "download://progress",
-                serde_json::json!({
-                    "id": &id,
-                    "downloaded_bytes": existing_bytes,
-                    "total_bytes": existing_bytes,
-                    "speed_bytes_sec": 0,
-                    "status": "completed",
-                }),
-            );
         }
+
+        // Trigger next queued download!
+        Self::spawn_check_next(storage, tokens, progress, client, app);
     }
 }

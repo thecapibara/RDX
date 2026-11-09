@@ -11,6 +11,7 @@ import {
   FolderOpen,
   X,
   Crown,
+  Clock,
 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { api } from "../services/api";
@@ -203,9 +204,11 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
   }, [downloads]);
 
   const activeDownloadsCount = useMemo(() => {
-    return downloads.filter(
-      (d) => d.status === "downloading" || d.status === "queued"
-    ).length;
+    return downloads.filter((d) => d.status === "downloading").length;
+  }, [downloads]);
+
+  const queuedDownloadsCount = useMemo(() => {
+    return downloads.filter((d) => d.status === "queued").length;
   }, [downloads]);
 
   // Actions
@@ -296,10 +299,13 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
             </div>
           </div>
 
-          {activeDownloadsCount > 0 && (
-            <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400 font-semibold animate-pulse">
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              <span>{activeDownloadsCount} активних</span>
+          {(activeDownloadsCount > 0 || queuedDownloadsCount > 0) && (
+            <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400 font-semibold">
+              <RefreshCw className={cn("w-3.5 h-3.5", activeDownloadsCount > 0 && "animate-spin")} />
+              <span>
+                {activeDownloadsCount > 0 ? `${activeDownloadsCount} активні` : "В черзі"}
+                {queuedDownloadsCount > 0 && ` • ${queuedDownloadsCount} очікують`}
+              </span>
             </div>
           )}
         </div>
@@ -504,6 +510,11 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                         <RefreshCw className="w-2.5 h-2.5 animate-spin" />
                         <span>{percent}%</span>
                       </span>
+                    ) : item.status === "queued" ? (
+                      <span className="flex items-center gap-1 bg-amber-500/90 text-black backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm">
+                        <Clock className="w-2.5 h-2.5" />
+                        <span>В черзі</span>
+                      </span>
                     ) : isPaused ? (
                       <span className="bg-zinc-800/90 text-zinc-300 backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-bold border border-white/10">
                         Пауза
@@ -543,6 +554,9 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                             </span>
                           </div>
                         )}
+                        {item.status === "queued" && (
+                          <span className="text-amber-400 font-medium">Очікує черги...</span>
+                        )}
                       </div>
 
                       {/* Progress bar */}
@@ -551,6 +565,7 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                           className={cn(
                             "h-full rounded-full transition-all duration-300",
                             isDownloading && "bg-gradient-to-r from-rose-600 to-amber-400 shadow-sm shadow-rose-500/50",
+                            item.status === "queued" && "bg-amber-500/60",
                             isPaused && "bg-zinc-500",
                             isError && "bg-red-600"
                           )}
