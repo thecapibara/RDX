@@ -25,4 +25,5 @@ Always read [`docs/SPEC.md`](docs/SPEC.md) for full architecture, feature specif
 
 ## Workflow & Multi-Agent Continuity Rules
 - **Single Source of Truth**: Keep [`docs/SPEC.md`](docs/SPEC.md) and [`docs/TASKS.md`](docs/TASKS.md) updated after completing each milestone so any new session, subagent, or model switch has full context immediately.
+- **Streaming Priority**: Always prioritize HLS (`hls_url` via `Hls.js`) over direct MP4 (`mp4_url`) for Voidboost streams. Monolithic MP4 files cause 60+ second GStreamer freezes on Linux, whereas HLS starts in < 2 seconds.
 - **Verification**: Always verify Rust changes with `cargo check` / `cargo test` inside `src-tauri` and frontend changes with `npm run build` before marking a task complete.
