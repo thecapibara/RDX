@@ -20,7 +20,6 @@ import type { Bookmark, MediaCard, MediaDetails, WatchProgress, Translator, Epis
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
 import { playModalOpenSound, suppressHoverSound } from "../services/sound";
-import { posterCache } from "../services/posterCache";
 
 interface MediaDetailsModalProps {
   media: MediaCard | null;
@@ -215,10 +214,6 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
 
         // Display details immediately (cuts initial load wait in half)
         setDetails(det);
-        const highRes = det.high_res_poster || det.poster;
-        if (highRes) {
-          posterCache.set(det.id || media.id, highRes);
-        }
         setSavedProgress(progress);
         setEpisodeProgressList(epProgress || []);
         setLoading(false);

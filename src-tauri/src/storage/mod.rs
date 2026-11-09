@@ -208,28 +208,11 @@ impl Storage {
                 completed_at INTEGER
             );
 
-            CREATE TABLE IF NOT EXISTS poster_cache (
-                media_id TEXT PRIMARY KEY,
-                poster_url TEXT NOT NULL,
-                updated_at INTEGER NOT NULL
-            );
-
             CREATE INDEX IF NOT EXISTS idx_watch_progress_updated_at ON watch_progress (updated_at DESC);
             CREATE INDEX IF NOT EXISTS idx_bookmarks_category ON bookmarks (category);
             CREATE INDEX IF NOT EXISTS idx_episode_progress_media ON episode_progress (media_id);
             CREATE INDEX IF NOT EXISTS idx_downloads_created_at ON downloads (created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_downloads_media_id ON downloads (media_id);
-            CREATE INDEX IF NOT EXISTS idx_poster_cache_updated_at ON poster_cache (updated_at DESC);
-
-            -- Automatically populate poster_cache from existing watch progress, bookmarks, and downloads
-            INSERT OR IGNORE INTO poster_cache (media_id, poster_url, updated_at)
-            SELECT media_id, poster_url, updated_at FROM watch_progress WHERE poster_url IS NOT NULL AND poster_url != '';
-
-            INSERT OR IGNORE INTO poster_cache (media_id, poster_url, updated_at)
-            SELECT media_id, poster_url, added_at FROM bookmarks WHERE poster_url IS NOT NULL AND poster_url != '';
-
-            INSERT OR IGNORE INTO poster_cache (media_id, poster_url, updated_at)
-            SELECT media_id, poster_url, created_at FROM downloads WHERE poster_url IS NOT NULL AND poster_url != '';
             "#,
         )?;
 
@@ -253,47 +236,6 @@ impl Storage {
         }
 
         Ok(())
-    }
-
-    // --- Poster Cache API ---
-
-    pub fn save_cached_poster(&self, media_id: &str, poster_url: &str) -> SqlResult<()> {
-        if media_id.is_empty() || poster_url.is_empty() {
-            return Ok(());
-        }
-        let now = chrono::Utc::now().timestamp();
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "INSERT INTO poster_cache (media_id, poster_url, updated_at)
-             VALUES (?1, ?2, ?3)
-             ON CONFLICT(media_id) DO UPDATE SET poster_url = ?2, updated_at = ?3",
-            params![media_id, poster_url, now],
-        )?;
-        Ok(())
-    }
-
-    pub fn get_cached_posters(&self, media_ids: &[String]) -> SqlResult<std::collections::HashMap<String, String>> {
-        if media_ids.is_empty() {
-            return Ok(std::collections::HashMap::new());
-        }
-        let conn = self.conn.lock().unwrap();
-        let mut result = std::collections::HashMap::new();
-
-        for chunk in media_ids.chunks(50) {
-            let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-            let sql = format!("SELECT media_id, poster_url FROM poster_cache WHERE media_id IN ({})", placeholders);
-            let mut stmt = conn.prepare(&sql)?;
-            let rows = stmt.query_map(rusqlite::params_from_iter(chunk.iter()), |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })?;
-            for item in rows {
-                let (id, url) = item?;
-                if !url.is_empty() {
-                    result.insert(id, url);
-                }
-            }
-        }
-        Ok(result)
     }
 
     // --- Settings API ---

@@ -41,9 +41,6 @@ pub async fn update_settings(state: State<'_, AppState>, settings: AppSettings) 
 
 #[tauri::command]
 pub async fn save_watch_progress(state: State<'_, AppState>, progress: WatchProgress) -> Result<(), String> {
-    if !progress.poster_url.is_empty() {
-        let _ = state.storage.save_cached_poster(&progress.media_id, &progress.poster_url);
-    }
     state.storage.save_watch_progress(&progress).map_err(|e| e.to_string())
 }
 
@@ -72,9 +69,6 @@ pub async fn get_episode_progress(
 
 #[tauri::command]
 pub async fn toggle_bookmark(state: State<'_, AppState>, bookmark: Bookmark) -> Result<bool, String> {
-    if !bookmark.poster_url.is_empty() {
-        let _ = state.storage.save_cached_poster(&bookmark.media_id, &bookmark.poster_url);
-    }
     state.storage.toggle_bookmark(&bookmark).map_err(|e| e.to_string())
 }
 
@@ -452,17 +446,6 @@ async fn failover_to_best_mirror(state: &AppState, failed_mirror: &str) -> Optio
     Some(best_url)
 }
 
-fn upgrade_cards_with_cached_posters(storage: &Storage, cards: &mut [MediaCard]) {
-    let ids: Vec<String> = cards.iter().map(|c| c.id.clone()).filter(|id| !id.is_empty()).collect();
-    if let Ok(cached_map) = storage.get_cached_posters(&ids) {
-        for card in cards.iter_mut() {
-            if let Some(cached_url) = cached_map.get(&card.id) {
-                card.poster = cached_url.clone();
-            }
-        }
-    }
-}
-
 #[tauri::command]
 pub async fn get_home_catalog(
     state: State<'_, AppState>,
@@ -471,11 +454,9 @@ pub async fn get_home_catalog(
     page: Option<u32>,
 ) -> Result<Vec<MediaCard>, String> {
     let mirror = state.storage.get_settings().map_err(|e| e.to_string())?.active_mirror;
-    let mut cards = RezkaParser::get_home_catalog(&state.client, &mirror, filter.as_deref(), genre.as_deref(), page)
+    RezkaParser::get_home_catalog(&state.client, &mirror, filter.as_deref(), genre.as_deref(), page)
         .await
-        .map_err(|e| e.to_string())?;
-    upgrade_cards_with_cached_posters(&state.storage, &mut cards);
-    Ok(cards)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -487,7 +468,7 @@ pub async fn get_category_catalog(
     page: Option<u32>,
 ) -> Result<Vec<MediaCard>, String> {
     let mirror = state.storage.get_settings().map_err(|e| e.to_string())?.active_mirror;
-    let mut cards = RezkaParser::get_category_catalog(
+    RezkaParser::get_category_catalog(
         &state.client,
         &mirror,
         &category,
@@ -496,19 +477,15 @@ pub async fn get_category_catalog(
         page,
     )
     .await
-    .map_err(|e| e.to_string())?;
-    upgrade_cards_with_cached_posters(&state.storage, &mut cards);
-    Ok(cards)
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn search_media(state: State<'_, AppState>, query: String) -> Result<Vec<MediaCard>, String> {
     let mirror = state.storage.get_settings().map_err(|e| e.to_string())?.active_mirror;
-    let mut cards = RezkaParser::search_media(&state.client, &mirror, &query)
+    RezkaParser::search_media(&state.client, &mirror, &query)
         .await
-        .map_err(|e| e.to_string())?;
-    upgrade_cards_with_cached_posters(&state.storage, &mut cards);
-    Ok(cards)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -549,11 +526,6 @@ pub async fn get_media_details(state: State<'_, AppState>, item_url: String) -> 
 
     if let Some(ref mut s) = details.initial_streams {
         crate::cdn::CdnSelector::optimize_stream(&state.client, s).await;
-    }
-
-    let high_res = details.high_res_poster.as_deref().unwrap_or(&details.poster);
-    if !high_res.is_empty() {
-        let _ = state.storage.save_cached_poster(&details.id, high_res);
     }
 
     Ok(details)

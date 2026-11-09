@@ -26,7 +26,6 @@ import { DownloadsView } from "./components/DownloadsView";
 import { CategoryFilterBar } from "./components/CategoryFilterBar";
 import { playButtonClickSound } from "./services/sound";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { posterCache } from "./services/posterCache";
 import { downloadsStore, OPEN_DOWNLOADS_EVENT } from "./services/downloadsStore";
 
 export default function App() {
@@ -80,12 +79,6 @@ export default function App() {
           (i) => i.status === "downloading" || i.status === "queued"
         ).length;
         setActiveDownloadsCount(active);
-        // Pre-populate posterCache with download posters
-        items.forEach((item) => {
-          if (item.media_id && item.poster_url) {
-            posterCache.set(item.media_id, item.poster_url);
-          }
-        });
       } catch {}
     };
 
@@ -158,22 +151,6 @@ export default function App() {
         }
         setHomeItems(homeList);
         setWatchingHeroItems(watchingList);
-
-        // Preload high-res posters for top visible items in the first swimlane
-        const topVisible = homeList.slice(0, 8);
-        (async () => {
-          for (const item of topVisible) {
-            if (!item.id || posterCache.get(item.id)) continue;
-            try {
-              const det = await api.getMediaDetails(item.url);
-              const high = det.high_res_poster || det.poster;
-              if (high) {
-                posterCache.set(item.id, high);
-              }
-            } catch {}
-            await new Promise((r) => setTimeout(r, 200));
-          }
-        })();
       } else if (activeTab !== "bookmarks" && activeTab !== "downloads") {
         const catList = await api.getCategoryCatalog(
           activeTab,
@@ -288,11 +265,6 @@ export default function App() {
     try {
       const items = await api.getContinueWatching(20);
       setContinueWatching(items);
-      items.forEach((item) => {
-        if (item.media_id && item.poster_url) {
-          posterCache.set(item.media_id, item.poster_url);
-        }
-      });
     } catch (err) {
       console.warn("Failed to load continue watching items:", err);
     }

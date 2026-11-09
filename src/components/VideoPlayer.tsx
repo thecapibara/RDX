@@ -43,7 +43,6 @@ import type {
   EpisodeTab,
 } from "../types";
 import { api } from "../services/api";
-import { posterCache } from "../services/posterCache";
 import { cn } from "../lib/utils";
 import { VideoEnhanceMode, VideoShaderRenderer } from "../utils/videoShaders";
 import { listen } from "@tauri-apps/api/event";
@@ -1402,7 +1401,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       media_url: details.url,
       title: details.title,
       orig_title: details.orig_title,
-      poster_url: details.high_res_poster || details.poster,
+      poster_url: details.poster,
       media_type: isSeries ? "series" : "movie",
       translator_id: currentTranslator?.id || null,
       translator_name: currentTranslator?.name || null,
@@ -1413,10 +1412,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       updated_at: Math.floor(Date.now() / 1000),
     };
 
-    const highRes = details.high_res_poster || details.poster;
-    if (highRes) {
-      posterCache.set(details.id, highRes);
-    }
     api.saveWatchProgress(progress).catch((e) =>
       console.warn("Failed to auto-save progress:", e)
     );

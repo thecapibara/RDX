@@ -3,7 +3,6 @@ import { Play, Star, Loader2, ArrowDownCircle, Clock, Pause } from "lucide-react
 import type { MediaCard as MediaCardType } from "../types";
 import { cn } from "../lib/utils";
 import { playHoverSound } from "../services/sound";
-import { usePoster } from "../services/posterCache";
 import { useMediaDownload, openDownloadsTab } from "../services/downloadsStore";
 
 interface MediaCardProps {
@@ -22,7 +21,6 @@ export const MediaCard: React.FC<MediaCardProps> = React.memo(({
   className,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
-  const effectivePoster = usePoster(card.id, card.poster);
   const downloadInfo = useMediaDownload(card.id);
 
   const handlePlayClick = async (e: React.MouseEvent) => {
@@ -76,25 +74,16 @@ export const MediaCard: React.FC<MediaCardProps> = React.memo(({
       {/* Poster 2:3 container — flat single-layer composite on idle, hardware scale only on hover */}
       <div className="relative aspect-[2/3] w-full overflow-hidden rounded-2xl bg-zinc-900 border border-white/10 group-hover:border-rose-500/50 transition-transform duration-150 ease-out group-hover:scale-[1.025] transform-gpu">
         <img
-          src={effectivePoster}
+          src={card.poster}
           alt={card.title}
           draggable={false}
           loading="lazy"
           decoding="async"
-          style={{
-            imageRendering: "auto",
-            backfaceVisibility: "hidden",
-            transform: "translateZ(0)",
-          }}
-          className="h-full w-full object-cover pointer-events-none select-none transition-opacity duration-300"
+          className="h-full w-full object-cover pointer-events-none select-none"
           onError={(e) => {
-            if (e.currentTarget.src !== card.poster && card.poster) {
-              e.currentTarget.src = card.poster;
-            } else {
-              e.currentTarget.onerror = null;
-              (e.currentTarget as HTMLImageElement).src =
-                "data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22200%22%20height%3D%22300%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20fill%3D%22%2318181b%22%20width%3D%22200%22%20height%3D%22300%22%2F%3E%3Ctext%20fill%3D%22%2371717a%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3ERDX%3C%2Ftext%3E%3C%2Fsvg%3E";
-            }
+            e.currentTarget.onerror = null;
+            (e.currentTarget as HTMLImageElement).src =
+              "data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22200%22%20height%3D%22300%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20fill%3D%22%2318181b%22%20width%3D%22200%22%20height%3D%22300%22%2F%3E%3Ctext%20fill%3D%22%2371717a%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3ERDX%3C%2Ftext%3E%3C%2Fsvg%3E";
           }}
         />
 
