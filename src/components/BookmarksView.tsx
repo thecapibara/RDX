@@ -87,13 +87,22 @@ export const BookmarksView: React.FC<BookmarksViewProps> = ({
       {bookmarks.length > 0 ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(185px,1fr))] lg:grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-5">
           {bookmarks.map((bm) => {
+            const statusLabel =
+              bm.category === "watching"
+                ? "Дивлюсь"
+                : bm.category === "completed"
+                ? "Переглянуто"
+                : bm.category === "planned"
+                ? "В планах"
+                : null;
+
             const card: MediaCardType = {
               id: bm.media_id,
               url: bm.media_url,
               title: bm.title,
               poster: bm.poster_url,
               entity_type: bm.media_type,
-              series_info: null,
+              series_info: statusLabel,
               misc_info: bm.year_info || "",
               rating: bm.rating,
             };
@@ -115,10 +124,20 @@ export const BookmarksView: React.FC<BookmarksViewProps> = ({
           </div>
           <div className="space-y-1">
             <h3 className="text-base font-bold text-zinc-200">
-              Список закладок порожній
+              {activeCategory === "all"
+                ? "Список закладок порожній"
+                : activeCategory === "watching"
+                ? "Немає фільмів у розділі «Дивлюсь»"
+                : activeCategory === "completed"
+                ? "Немає переглянутих фільмів"
+                : activeCategory === "favorites"
+                ? "Немає улюблених фільмів"
+                : "Немає запланованих фільмів"}
             </h3>
             <p className="text-xs text-zinc-400 max-w-sm">
-              Натисніть на значок закладки на сторінці фільму чи серіалу, щоб додати його сюди.
+              {activeCategory === "all"
+                ? "Натисніть на значок закладки на сторінці фільму чи серіалу, щоб додати його сюди."
+                : "Фільми та серіали, які ви переглядаєте, автоматично з'являються тут."}
             </p>
           </div>
         </div>

@@ -66,6 +66,21 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
   const [selectedSeason, setSelectedSeason] = useState<number>(1);
   const [selectedEpisode, setSelectedEpisode] = useState<number>(1);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
+
+  // Helper to determine effective bookmark category based on watch progress
+  const getBookmarkCategory = (): string => {
+    if (
+      savedProgress &&
+      savedProgress.duration_sec > 0 &&
+      savedProgress.position_sec / savedProgress.duration_sec >= 0.9
+    ) {
+      return "completed";
+    }
+    if (savedProgress && savedProgress.position_sec > 15) {
+      return "watching";
+    }
+    return "favorites";
+  };
   const [maxKnownSeasons, setMaxKnownSeasons] = useState<number>(1);
 
   // Download states
@@ -701,7 +716,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                           media_type: isSeries ? "series" : "movie",
                           year_info: media.misc_info || null,
                           rating: media.rating || null,
-                          category: "favorites",
+                          category: getBookmarkCategory(),
                           added_at: Math.floor(Date.now() / 1000),
                         };
                         onToggleBookmark(bookmarkItem);
@@ -771,7 +786,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                           media_type: isSeries ? "series" : "movie",
                           year_info: details.year ? [details.year, details.countries?.[0]].filter(Boolean).join(", ") : (media?.misc_info || null),
                           rating: details.imdb_rating || details.kp_rating || null,
-                          category: "favorites",
+                          category: getBookmarkCategory(),
                           added_at: Math.floor(Date.now() / 1000),
                         };
                         onToggleBookmark(bookmarkItem);

@@ -366,6 +366,22 @@ impl Storage {
             )?;
         }
 
+        // If this media is bookmarked, automatically advance category to 'watching' or 'completed'
+        let target_category = if progress.duration_sec > 0.0 && (progress.position_sec / progress.duration_sec) >= 0.90 {
+            "completed"
+        } else if progress.position_sec > 15.0 {
+            "watching"
+        } else {
+            ""
+        };
+
+        if !target_category.is_empty() {
+            let _ = conn.execute(
+                "UPDATE bookmarks SET category = ?1 WHERE media_id = ?2 AND category != 'completed'",
+                params![target_category, progress.media_id],
+            );
+        }
+
         Ok(())
     }
 
@@ -481,6 +497,27 @@ impl Storage {
 
     pub fn toggle_bookmark(&self, bookmark: &Bookmark) -> SqlResult<bool> {
         let conn = self.conn.lock().unwrap();
+
+        // Determine effective category based on watch progress if category is default 'favorites' or 'planned'
+        let mut final_category = bookmark.category.clone();
+        if final_category == "favorites" || final_category == "planned" {
+            let wp: Option<(f64, f64)> = conn
+                .query_row(
+                    "SELECT position_sec, duration_sec FROM watch_progress WHERE media_id = ?1",
+                    params![bookmark.media_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .ok();
+
+            if let Some((pos, dur)) = wp {
+                if dur > 0.0 && (pos / dur) >= 0.90 {
+                    final_category = "completed".to_string();
+                } else if pos > 15.0 {
+                    final_category = "watching".to_string();
+                }
+            }
+        }
+
         let existing: Option<String> = conn
             .query_row(
                 "SELECT category FROM bookmarks WHERE media_id = ?1",
@@ -490,7 +527,7 @@ impl Storage {
             .ok();
 
         if let Some(cat) = existing {
-            if cat == bookmark.category {
+            if cat == final_category {
                 // If same category, remove bookmark (toggle off)
                 conn.execute(
                     "DELETE FROM bookmarks WHERE media_id = ?1",
@@ -525,7 +562,7 @@ impl Storage {
                 bookmark.media_type,
                 bookmark.year_info,
                 bookmark.rating,
-                bookmark.category,
+                final_category,
                 bookmark.added_at,
             ],
         )?;
@@ -535,6 +572,29 @@ impl Storage {
 
     pub fn get_bookmarks(&self, category: Option<&str>) -> SqlResult<Vec<Bookmark>> {
         let conn = self.conn.lock().unwrap();
+
+        // Auto-sync bookmarks category from watch_progress for any items where progress exists
+        let _ = conn.execute(
+            r#"
+            UPDATE bookmarks
+            SET category = CASE
+                WHEN EXISTS (
+                    SELECT 1 FROM watch_progress wp
+                    WHERE wp.media_id = bookmarks.media_id
+                      AND wp.duration_sec > 0 AND (wp.position_sec / wp.duration_sec) >= 0.90
+                ) THEN 'completed'
+                WHEN EXISTS (
+                    SELECT 1 FROM watch_progress wp
+                    WHERE wp.media_id = bookmarks.media_id
+                      AND wp.position_sec > 15.0
+                ) THEN 'watching'
+                ELSE category
+            END
+            WHERE category IN ('favorites', 'planned', 'watching')
+            "#,
+            [],
+        );
+
         let mut list = Vec::new();
 
         if let Some(cat) = category {
@@ -880,6 +940,61 @@ mod tests {
         let removed = storage.toggle_bookmark(&bookmark).expect("toggle bookmark again");
         assert!(!removed);
         assert_eq!(storage.is_bookmarked("456").unwrap(), None);
+    }
+
+    #[test]
+    fn test_bookmarks_auto_categorization() {
+        let storage = Storage::in_memory().expect("in memory db");
+
+        // Save watch progress > 15 seconds
+        let progress = WatchProgress {
+            media_id: "789".to_string(),
+            media_url: "/films/789.html".to_string(),
+            title: "Watching Film".to_string(),
+            orig_title: None,
+            poster_url: "https://example.com/p.jpg".to_string(),
+            media_type: "movie".to_string(),
+            translator_id: None,
+            translator_name: None,
+            season: None,
+            episode: None,
+            position_sec: 120.0,
+            duration_sec: 3600.0,
+            updated_at: 1000,
+        };
+        storage.save_watch_progress(&progress).expect("save progress");
+
+        // Toggle bookmark (frontend passes 'favorites' by default)
+        let bookmark = Bookmark {
+            media_id: "789".to_string(),
+            media_url: "/films/789.html".to_string(),
+            title: "Watching Film".to_string(),
+            poster_url: "https://example.com/p.jpg".to_string(),
+            media_type: "movie".to_string(),
+            year_info: Some("2026".to_string()),
+            rating: Some("9.0".to_string()),
+            category: "favorites".to_string(),
+            added_at: 1000,
+        };
+        let added = storage.toggle_bookmark(&bookmark).expect("toggle bookmark");
+        assert!(added);
+
+        // Effective category must be 'watching' because progress > 15s
+        assert_eq!(storage.is_bookmarked("789").unwrap(), Some("watching".to_string()));
+
+        let watching_items = storage.get_bookmarks(Some("watching")).expect("get watching");
+        assert_eq!(watching_items.len(), 1);
+        assert_eq!(watching_items[0].media_id, "789");
+
+        // Complete the film (>90% progress)
+        let mut completed_prog = progress;
+        completed_prog.position_sec = 3500.0;
+        storage.save_watch_progress(&completed_prog).expect("save completed progress");
+
+        // Must now be in 'completed'
+        assert_eq!(storage.is_bookmarked("789").unwrap(), Some("completed".to_string()));
+        let completed_items = storage.get_bookmarks(Some("completed")).expect("get completed");
+        assert_eq!(completed_items.len(), 1);
     }
 
     #[test]
