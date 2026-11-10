@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   ArrowLeft,
   Play,
@@ -598,7 +598,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
     ) || [];
 
   // Filtered translators for dropdown (prioritizing Ukrainian dubs at the top)
-  const filteredTranslators = useMemo(() => {
+  const filteredTranslators = (() => {
     if (!details?.translators) return [];
     let list = [...details.translators];
     if (translatorSearch.trim()) {
@@ -612,7 +612,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
       if (!aUkr && bUkr) return 1;
       return 0;
     });
-  }, [details?.translators, translatorSearch]);
+  })();
 
   return (
     <div
