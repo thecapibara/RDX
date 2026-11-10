@@ -16,6 +16,12 @@ export const SORT_FILTERS: SortFilter[] = [
 ];
 
 export const CATEGORY_GENRES: Record<string, GenreItem[]> = {
+  new: [
+    { id: "films", label: "Фільми" },
+    { id: "series", label: "Серіали" },
+    { id: "cartoons", label: "Мультфільми" },
+    { id: "animation", label: "Аніме" },
+  ],
   films: [
     { id: "action", label: "Бойовики" },
     { id: "comedy", label: "Комедії" },

@@ -96,7 +96,7 @@ export const CategoryFilterBar: React.FC<CategoryFilterBarProps> = ({
       {/* 2. Genre Chips & Full Dropdown */}
       {availableGenres.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 pt-0.5">
-          {/* "Всі жанри" Chip */}
+          {/* "Всі жанри" / "Всі новинки" Chip */}
           <button
             onClick={() => {
               playButtonClickSound();
@@ -109,10 +109,10 @@ export const CategoryFilterBar: React.FC<CategoryFilterBarProps> = ({
                 : "bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white border border-white/10"
             )}
           >
-            Всі жанри
+            {category === "new" ? "Всі новинки" : "Всі жанри"}
           </button>
 
-          {/* Quick-Access Top Genre Chips */}
+          {/* Quick-Access Top Genre Chips / Content Type Chips */}
           {quickGenres.map((g) => {
             const isActive = activeGenre === g.id;
             return (
@@ -134,35 +134,36 @@ export const CategoryFilterBar: React.FC<CategoryFilterBarProps> = ({
             );
           })}
 
-          {/* Full Genre Dropdown Button */}
-          <div ref={dropdownRef} className="relative">
-            <button
-              onClick={() => {
-                playButtonClickSound();
-                setIsGenreDropdownOpen((prev) => !prev);
-              }}
-              className={cn(
-                "flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer",
-                activeGenre && !quickGenres.some((g) => g.id === activeGenre)
-                  ? "bg-rose-600/30 text-rose-200 border-rose-500/60 font-semibold"
-                  : "bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white border-white/10"
-              )}
-            >
-              <Filter className="w-3.5 h-3.5 opacity-70" />
-              <span>
-                {activeGenre && !quickGenres.some((g) => g.id === activeGenre)
-                  ? activeGenreLabel
-                  : "Більше жанрів"}
-              </span>
-              <ChevronDown
+          {/* Full Genre Dropdown Button (Only shown if more genres exist beyond quick chips) */}
+          {availableGenres.length > quickGenres.length && (
+            <div ref={dropdownRef} className="relative">
+              <button
+                onClick={() => {
+                  playButtonClickSound();
+                  setIsGenreDropdownOpen((prev) => !prev);
+                }}
                 className={cn(
-                  "w-3.5 h-3.5 text-zinc-400 transition-transform duration-200",
-                  isGenreDropdownOpen && "rotate-180"
+                  "flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer",
+                  activeGenre && !quickGenres.some((g) => g.id === activeGenre)
+                    ? "bg-rose-600/30 text-rose-200 border-rose-500/60 font-semibold"
+                    : "bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white border-white/10"
                 )}
-              />
-            </button>
+              >
+                <Filter className="w-3.5 h-3.5 opacity-70" />
+                <span>
+                  {activeGenre && !quickGenres.some((g) => g.id === activeGenre)
+                    ? activeGenreLabel
+                    : "Більше жанрів"}
+                </span>
+                <ChevronDown
+                  className={cn(
+                    "w-3.5 h-3.5 text-zinc-400 transition-transform duration-200",
+                    isGenreDropdownOpen && "rotate-180"
+                  )}
+                />
+              </button>
 
-            {/* Dropdown Popover */}
+              {/* Dropdown Popover */}
             {isGenreDropdownOpen && (
               <div className="absolute left-0 mt-2 w-72 sm:w-80 max-h-96 overflow-hidden bg-zinc-950/95 border border-white/15 rounded-2xl shadow-2xl p-3 z-50 flex flex-col space-y-2 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
                 {/* Search input inside dropdown */}
@@ -234,6 +235,7 @@ export const CategoryFilterBar: React.FC<CategoryFilterBarProps> = ({
               </div>
             )}
           </div>
+        )}
 
           {/* Clear active genre pill if chosen */}
           {activeGenre && (

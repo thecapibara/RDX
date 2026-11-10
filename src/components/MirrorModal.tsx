@@ -22,6 +22,7 @@ import {
   Eye,
   Palette,
   Moon,
+  Globe,
 } from "lucide-react";
 import type { AppSettings, MirrorStatus } from "../types";
 import { api } from "../services/api";
@@ -46,6 +47,7 @@ interface MirrorModalProps {
   isOpen: boolean;
   onClose: () => void;
   onMirrorChanged: (newMirror: string) => void;
+  onCheckUpdates?: () => Promise<boolean> | boolean | void;
 }
 
 const PRESET_MIRRORS = [
@@ -61,6 +63,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
   isOpen,
   onClose,
   onMirrorChanged,
+  onCheckUpdates,
 }) => {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<
@@ -72,6 +75,27 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
   const [proxyInput, setProxyInput] = useState("");
   const [testingStatus, setTestingStatus] = useState<Record<string, MirrorStatus>>({});
   const [testing, setTesting] = useState(false);
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+  const [updateCheckResult, setUpdateCheckResult] = useState<string | null>(null);
+
+  const handleManualUpdateCheck = async () => {
+    setIsCheckingUpdates(true);
+    setUpdateCheckResult(null);
+    try {
+      if (onCheckUpdates) {
+        const found = await onCheckUpdates();
+        if (found) {
+          setUpdateCheckResult("Знайдено оновлення! Відкрито вікно встановлення.");
+        } else {
+          setUpdateCheckResult("У вас встановлено найновішу версію (v1.0.5)");
+        }
+      }
+    } catch {
+      setUpdateCheckResult("Не вдалося перевірити оновлення");
+    } finally {
+      setIsCheckingUpdates(false);
+    }
+  };
   const [smartRotating, setSmartRotating] = useState(false);
   const [savingProxy, setSavingProxy] = useState(false);
   const [captchaOpening, setCaptchaOpening] = useState(false);
@@ -494,7 +518,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                   Налаштування RDX<span className="text-rose-500 text-lg leading-none">.</span>
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-white/5 border border-white/10 text-zinc-400">
-                  v0.7.5
+                  v1.0.5
                 </span>
               </div>
               <p className="text-xs text-zinc-400">
@@ -1457,56 +1481,84 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
             {/* ================= TAB 4: ABOUT & SHORTCUTS ================= */}
             {activeModalTab === "about" && (
               <div className="space-y-6">
-                {/* Brand Hero Card */}
-                <div className="p-5 rounded-2xl bg-gradient-to-r from-rose-950/40 via-zinc-900 to-zinc-950 border border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div>
-                    <h3 className="text-2xl font-black tracking-tight text-white flex items-baseline">
-                      RDX<span className="text-rose-500">.</span>
-                      <span className="text-xs font-semibold text-zinc-400 ml-2 tracking-normal">
-                        v0.8.0 (Beta)
-                      </span>
-                    </h3>
-                    <p className="text-xs text-zinc-400 mt-1">
-                      Сучасний кросплатформний клієнт для HDRezka у стилі Android TV / Spotify Desktop
-                    </p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="text-xs font-semibold text-zinc-300">Автор:</span>
-                      <span className="px-2 py-0.5 rounded-md bg-rose-600/20 text-rose-300 font-mono text-xs font-bold border border-rose-500/30">
-                        justgl
-                      </span>
-                    </div>
+                {/* Brand Banner Card */}
+                <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-zinc-900 shadow-xl group">
+                  <div className="relative aspect-[21/9] sm:aspect-[24/8] w-full overflow-hidden bg-black">
+                    <img
+                      src="/banner.jpg"
+                      alt="RDX Banner"
+                      className="w-full h-full object-cover object-center group-hover:scale-[1.02] transition-transform duration-500 ease-out"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent" />
                   </div>
 
-                  {/* Fixed Badges without awkward line wrapping */}
-                  <div className="flex flex-col sm:items-end gap-1.5 flex-shrink-0">
-                    <span className="whitespace-nowrap px-3 py-1.5 rounded-xl bg-white/10 border border-white/15 text-xs font-mono font-bold text-zinc-200 shadow-sm">
-                      Rust + Tauri v2
-                    </span>
-                    <span className="whitespace-nowrap px-3 py-1 rounded-lg bg-zinc-900 border border-white/8 text-[11px] font-mono text-zinc-400">
-                      React 19 • Vite • Linux / Win / Mac
-                    </span>
+                  <div className="p-5 relative -mt-12 sm:-mt-16 flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4">
+                    <div>
+                      <h3 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-baseline">
+                        RDX<span className="text-rose-500">.</span>
+                        <span className="text-xs font-mono font-bold text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-full ml-2.5">
+                          v1.0.5
+                        </span>
+                      </h3>
+                      <p className="text-xs text-zinc-300 mt-1 max-w-lg leading-relaxed">
+                        Преміальний десктопний клієнт для онлайн-кінотеатру HDRezka з кінематографічним інтерфейсом Smart TV, апаратними шейдерами та офлайн-завантажувачем.
+                      </p>
+                      <div className="flex items-center gap-3 mt-3">
+                        <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                          <span>Розробник:</span>
+                          <span className="px-2 py-0.5 rounded-md bg-white/10 text-white font-mono text-xs font-bold border border-white/10">
+                            justgl
+                          </span>
+                        </div>
+                        <a
+                          href="https://github.com/thecapibara/RDX"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 font-semibold text-xs border border-rose-500/30 transition-colors"
+                        >
+                          <Globe className="w-3.5 h-3.5" />
+                          <span>GitHub Репозиторій</span>
+                        </a>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                {/* Tech Stack Pills */}
-                <div className="flex items-center gap-2 flex-wrap text-xs">
-                  <span className="text-zinc-500 text-[11px]">Технології:</span>
-                  {[
-                    "Tauri v2 (Rust)",
-                    "React 19 + TypeScript",
-                    "Tailwind CSS v4",
-                    "Framer Motion",
-                    "HLS.js MSE",
-                    "Native MPRIS",
-                    "DoH DNS Resolver",
-                  ].map((tech) => (
-                    <span
-                      key={tech}
-                      className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/8 text-zinc-300 text-[11px] font-medium"
+                {/* OTA Updates Card */}
+                <div className="p-4.5 rounded-2xl bg-zinc-900/60 border border-white/10 space-y-3">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0">
+                        <Sparkles className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Оновлення програми (OTA)</h4>
+                        <p className="text-xs text-zinc-400 mt-0.5">
+                          Автоматична перевірка релізів та оновлення через GitHub
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handleManualUpdateCheck}
+                      disabled={isCheckingUpdates}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 font-semibold text-xs border border-rose-500/30 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
                     >
-                      {tech}
-                    </span>
-                  ))}
+                      {isCheckingUpdates ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      )}
+                      <span>{isCheckingUpdates ? "Перевірка..." : "Перевірити оновлення"}</span>
+                    </button>
+                  </div>
+
+                  {updateCheckResult && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-zinc-300">
+                      <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span>{updateCheckResult}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Shortcuts Grid */}

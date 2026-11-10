@@ -105,6 +105,7 @@ pub fn run() {
             commands::resume_all_downloads,
             commands::clear_completed_downloads,
             commands::show_in_folder,
+            commands::open_url,
             commands::toggle_bookmark,
             commands::get_bookmarks,
             commands::is_bookmarked,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   ArrowLeft,
   Play,
@@ -20,6 +20,7 @@ import type { Bookmark, MediaCard, MediaDetails, WatchProgress, Translator, Epis
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
 import { playModalOpenSound, suppressHoverSound } from "../services/sound";
+import { openDownloadsTab } from "../services/downloadsStore";
 
 interface MediaDetailsModalProps {
   media: MediaCard | null;
@@ -596,20 +597,22 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
         t.language?.toLowerCase().includes("україн")
     ) || [];
 
-  // Filtered translators for dropdown
-  const filteredTranslators =
-    details?.translators.filter((t) => {
-      if (translatorFilterTab === "ukr") {
-        const isUkr =
-          t.language?.toLowerCase().includes("украин") ||
-          t.language?.toLowerCase().includes("україн");
-        if (!isUkr) return false;
-      }
-      if (translatorSearch.trim()) {
-        return t.name.toLowerCase().includes(translatorSearch.toLowerCase());
-      }
-      return true;
-    }) || [];
+  // Filtered translators for dropdown (prioritizing Ukrainian dubs at the top)
+  const filteredTranslators = useMemo(() => {
+    if (!details?.translators) return [];
+    let list = [...details.translators];
+    if (translatorSearch.trim()) {
+      const q = translatorSearch.toLowerCase();
+      list = list.filter((t) => t.name.toLowerCase().includes(q));
+    }
+    return list.sort((a, b) => {
+      const aUkr = a.language?.toLowerCase().includes("украин") || a.language?.toLowerCase().includes("україн");
+      const bUkr = b.language?.toLowerCase().includes("украин") || b.language?.toLowerCase().includes("україн");
+      if (aUkr && !bUkr) return -1;
+      if (!aUkr && bUkr) return 1;
+      return 0;
+    });
+  }, [details?.translators, translatorSearch]);
 
   return (
     <div
@@ -754,11 +757,11 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
               ) : details ? (
                 <>
                   {/* Primary Action Buttons */}
-                  <div className="flex flex-wrap items-center gap-3 pt-2">
+                  <div className="flex flex-wrap items-center gap-2.5 pt-2">
                     {hasAvailableStream ? (
                       <button
                         onClick={() => handleStartPlayback()}
-                        className="flex items-center gap-2.5 px-7 py-3.5 rounded-2xl bg-gradient-to-r from-rose-700 via-rose-600 to-rose-500 hover:from-rose-600 hover:to-rose-400 text-white font-bold text-sm shadow-xl shadow-rose-950/60 active:scale-95 transition-all cursor-pointer"
+                        className="flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-rose-700 via-rose-600 to-rose-500 hover:from-rose-600 hover:to-rose-400 text-white font-bold text-sm shadow-xl shadow-rose-950/60 active:scale-95 transition-all cursor-pointer shrink-0"
                       >
                         <Play className="w-4 h-4 fill-current" />
                         <span>
@@ -766,121 +769,51 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                             ? `Продовжити (${Math.floor(savedProgress.position_sec / 60)} хв)`
                             : isSeries
                             ? `Дивитися S${selectedSeason}E${selectedEpisode}`
-                            : "Дивитися фільм"}
+                            : "Дивитися"}
                         </span>
                       </button>
                     ) : (
-                      <div className="flex items-center gap-2 px-5 py-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold text-sm shadow-md select-none cursor-default">
+                      <div className="flex items-center gap-2 px-5 py-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold text-sm shadow-md select-none cursor-default shrink-0">
                         <Clock className="w-4 h-4 text-amber-400" />
-                        <span>В очікуванні релізу</span>
+                        <span>В очікуванні</span>
                       </div>
                     )}
 
-                    <button
-                      onClick={() => {
-                        const bookmarkItem: Bookmark = {
-                          media_id: details.id,
-                          media_url: details.url,
-                          title: details.title,
-                          poster_url: details.poster,
-                          media_type: isSeries ? "series" : "movie",
-                          year_info: details.year ? [details.year, details.countries?.[0]].filter(Boolean).join(", ") : (media?.misc_info || null),
-                          rating: details.imdb_rating || details.kp_rating || null,
-                          category: getBookmarkCategory(),
-                          added_at: Math.floor(Date.now() / 1000),
-                        };
-                        onToggleBookmark(bookmarkItem);
-                      }}
-                      className={cn(
-                        "flex items-center gap-2 px-6 py-3.5 rounded-2xl font-semibold text-sm border transition-all cursor-pointer active:scale-95",
-                        isBookmarked
-                          ? "bg-amber-500/20 text-amber-400 border-amber-500/40 hover:bg-amber-500/30"
-                          : !hasAvailableStream
-                          ? "bg-rose-600 hover:bg-rose-500 text-white border-rose-500 shadow-xl shadow-rose-950/60 font-bold"
-                          : "bg-white/10 hover:bg-white/20 text-white border-white/15"
-                      )}
-                    >
-                      <BookmarkIcon
-                        className={cn("w-4 h-4", isBookmarked && "fill-amber-400")}
-                      />
-                      <span>{isBookmarked ? "У закладках" : "У закладки"}</span>
-                    </button>
-
-                    {hasAvailableStream && (
-                      <button
-                        onClick={handleOpenDownloadModal}
-                        className="flex items-center gap-2 px-6 py-3.5 rounded-2xl font-semibold text-sm border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 transition-all cursor-pointer active:scale-95 shadow-lg shadow-rose-950/30"
-                        title="Завантажити для перегляду офлайн"
-                      >
-                        <Download className="w-4 h-4 text-rose-400" />
-                        <span>Завантажити</span>
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Informational banner if title has no streams yet ("В очікуванні") */}
-                  {!hasAvailableStream && (
-                    <div className="flex items-start gap-3 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs sm:text-sm max-w-2xl">
-                      <Clock className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                      <div className="space-y-0.5">
-                        <p className="font-semibold text-amber-300">
-                          Фільм ще не вийшов у прокат або очікує надходження
-                        </p>
-                        <p className="text-zinc-400 text-xs leading-relaxed">
-                          Відеопотік або озвучення поки відсутні на HDRezka. Ви можете додати тайтл у закладки, щоб не пропустити появу плеєра на сайті!
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Description */}
-                  {details.description && (
-                    <p className="text-sm sm:text-base text-zinc-300 leading-relaxed max-w-4xl pt-1">
-                      {details.description}
-                    </p>
-                  )}
-
-                {/* Structured Voiceover Selector (No Wall of 28 Pills!) */}
-                {details.translators && details.translators.length > 0 && (
-                  <div className="space-y-3 pt-3 border-t border-white/10">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
-                        Озвучення:
-                      </span>
-
-                      {/* Main Dropdown Button */}
-                      <div ref={dropdownRef} className="relative">
+                    {/* Structured Voiceover Selector Dropdown Next to Watch Button */}
+                    {details.translators && details.translators.length > 0 && (
+                      <div ref={dropdownRef} className="relative shrink-0">
                         <button
                           onClick={() => setIsTranslatorDropdownOpen(!isTranslatorDropdownOpen)}
-                          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-zinc-900 border border-white/15 hover:border-rose-500/50 text-white text-xs font-semibold transition-all cursor-pointer shadow-lg"
+                          className="flex items-center gap-2 px-4 py-3.5 rounded-2xl bg-zinc-900 border border-white/15 hover:border-rose-500/60 hover:bg-zinc-850 text-white text-xs sm:text-sm font-semibold transition-all cursor-pointer shadow-lg active:scale-95"
+                          title="Обрати студію озвучення"
                         >
+                          <Mic className="w-4 h-4 text-rose-400 shrink-0" />
                           {selectedTranslator?.language?.toLowerCase().includes("украин") ||
                           selectedTranslator?.language?.toLowerCase().includes("україн") ? (
-                            <span className="text-sm">🇺🇦</span>
+                            <span className="text-sm shrink-0">🇺🇦</span>
                           ) : null}
-                          <span className="truncate max-w-[200px]">
-                            {selectedTranslator?.name || "Оберіть озвучення"}
+                          <span className="truncate max-w-[130px] sm:max-w-[170px]">
+                            {selectedTranslator?.name || "Озвучення"}
                           </span>
                           {selectedTranslator?.is_premium && (
                             <span className="text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1 shrink-0">
                               <Crown className="w-3 h-3 text-amber-400" />
-                              PREMIUM
                             </span>
                           )}
                           <ChevronDown
                             className={cn(
-                              "w-3.5 h-3.5 text-zinc-400 transition-transform",
+                              "w-3.5 h-3.5 text-zinc-400 transition-transform shrink-0",
                               isTranslatorDropdownOpen && "rotate-180"
                             )}
                           />
-                          <span className="text-[11px] text-zinc-500 font-mono ml-0.5">
-                            ({details.translators.length})
+                          <span className="text-[11px] text-zinc-500 font-mono">
+                            {details.translators.length}
                           </span>
                         </button>
 
                         {/* Searchable Dropdown Popover */}
                         {isTranslatorDropdownOpen && (
-                          <div className="absolute top-12 left-0 w-80 sm:w-96 max-h-96 overflow-hidden bg-zinc-900 border border-white/15 rounded-2xl shadow-2xl p-3 z-50 flex flex-col space-y-2">
+                          <div className="absolute top-14 left-0 w-80 sm:w-96 max-h-96 overflow-hidden bg-zinc-900 border border-white/20 rounded-2xl shadow-2xl p-3 z-50 flex flex-col space-y-2 ring-1 ring-black/60">
                             {/* Search input inside dropdown */}
                             <div className="relative">
                               <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-2.5" />
@@ -889,7 +822,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                                 type="text"
                                 value={translatorSearch}
                                 onChange={(e) => setTranslatorSearch(e.target.value)}
-                                placeholder="Пошук студії озвучення..."
+                                placeholder="Пошук озвучення..."
                                 className="w-full bg-zinc-800 border border-white/10 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-rose-500"
                               />
                             </div>
@@ -960,47 +893,86 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                           </div>
                         )}
                       </div>
+                    )}
 
-                      {/* Quick-Access Chips for Top Ukrainian Studios (At most 3-4 chips) */}
-                      {ukrTranslators.slice(0, 4).map((t) => {
-                        const isSelected = selectedTranslator?.id === t.id;
-                        return (
-                          <button
-                            key={t.id}
-                            onClick={() => handleTranslatorSelect(t)}
-                            className={cn(
-                              "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer",
-                              isSelected
-                                ? "bg-rose-600 text-white border-rose-500 shadow-md shadow-rose-950/60"
-                                : "bg-white/5 hover:bg-white/10 text-zinc-300 border-white/10"
-                            )}
-                          >
-                            <span>🇺🇦</span>
-                            <span className="truncate max-w-[130px]">{t.name}</span>
-                            {t.is_premium && (
-                              <Crown className="w-3 h-3 text-amber-400 shrink-0" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <button
+                      onClick={() => {
+                        const bookmarkItem: Bookmark = {
+                          media_id: details.id,
+                          media_url: details.url,
+                          title: details.title,
+                          poster_url: details.poster,
+                          media_type: isSeries ? "series" : "movie",
+                          year_info: details.year ? [details.year, details.countries?.[0]].filter(Boolean).join(", ") : (media?.misc_info || null),
+                          rating: details.imdb_rating || details.kp_rating || null,
+                          category: getBookmarkCategory(),
+                          added_at: Math.floor(Date.now() / 1000),
+                        };
+                        onToggleBookmark(bookmarkItem);
+                      }}
+                      className={cn(
+                        "flex items-center gap-2 px-5 py-3.5 rounded-2xl font-semibold text-xs sm:text-sm border transition-all cursor-pointer active:scale-95 shrink-0",
+                        isBookmarked
+                          ? "bg-amber-500/20 text-amber-400 border-amber-500/40 hover:bg-amber-500/30"
+                          : !hasAvailableStream
+                          ? "bg-rose-600 hover:bg-rose-500 text-white border-rose-500 shadow-xl shadow-rose-950/60 font-bold"
+                          : "bg-white/10 hover:bg-white/20 text-white border-white/15"
+                      )}
+                    >
+                      <BookmarkIcon
+                        className={cn("w-4 h-4", isBookmarked && "fill-amber-400")}
+                      />
+                      <span>{isBookmarked ? "У закладках" : "У закладки"}</span>
+                    </button>
 
-                    {/* Premium Translator Warning Notice */}
-                    {selectedTranslator?.is_premium && (
-                      <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs mt-2">
-                        <Crown className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                        <div>
-                          <span className="font-semibold text-amber-300">
-                            Озвучення доступне лише для передплатників HDRezka Premium.
-                          </span>
-                          <p className="text-[11px] text-amber-200/80 mt-0.5 leading-relaxed">
-                            Без підписки замість фільму транслюється 1-хвилинне промо-відео сайту із QR-кодом.
-                          </p>
-                        </div>
-                      </div>
+                    {hasAvailableStream && (
+                      <button
+                        onClick={handleOpenDownloadModal}
+                        className="flex items-center gap-2 px-5 py-3.5 rounded-2xl font-semibold text-xs sm:text-sm border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 transition-all cursor-pointer active:scale-95 shadow-lg shadow-rose-950/30 shrink-0"
+                        title="Завантажити для перегляду офлайн"
+                      >
+                        <Download className="w-4 h-4 text-rose-400" />
+                        <span>Завантажити</span>
+                      </button>
                     )}
                   </div>
-                )}
+
+                  {/* Premium Translator Warning Notice */}
+                  {selectedTranslator?.is_premium && (
+                    <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs">
+                      <Crown className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-semibold text-amber-300">
+                          Озвучення доступне лише для передплатників HDRezka Premium.
+                        </span>
+                        <p className="text-[11px] text-amber-200/80 mt-0.5 leading-relaxed">
+                          Без підписки замість фільму транслюється 1-хвилинне промо-відео сайту із QR-кодом.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Informational banner if title has no streams yet ("В очікуванні") */}
+                  {!hasAvailableStream && (
+                    <div className="flex items-start gap-3 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs sm:text-sm max-w-2xl">
+                      <Clock className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <p className="font-semibold text-amber-300">
+                          Фільм ще не вийшов у прокат або очікує надходження
+                        </p>
+                        <p className="text-zinc-400 text-xs leading-relaxed">
+                          Відеопотік або озвучення поки відсутні на HDRezka. Ви можете додати тайтл у закладки, щоб не пропустити появу плеєра на сайті!
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Description */}
+                  {details.description && (
+                    <p className="text-sm sm:text-base text-zinc-300 leading-relaxed max-w-4xl pt-1">
+                      {details.description}
+                    </p>
+                  )}
                 </>
               ) : null}
               </div>
@@ -1433,11 +1405,24 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
           </div>
         )}
 
-        {/* Floating Download Notification Toast */}
+        {/* Floating Download Notification Toast (Clickable to jump to Downloads) */}
         {downloadNotification && (
-          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-zinc-900 border border-rose-500/40 text-rose-300 text-xs font-semibold shadow-2xl shadow-rose-950/80">
-            <Download className="w-4 h-4 text-rose-400 animate-bounce" />
-            <span>{downloadNotification}</span>
+          <div
+            onClick={() => {
+              setDownloadNotification(null);
+              handleClose();
+              openDownloadsTab();
+            }}
+            className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3 rounded-2xl bg-zinc-900/95 backdrop-blur-md border border-rose-500/50 text-white text-xs font-semibold shadow-2xl shadow-rose-950/80 cursor-pointer hover:bg-zinc-800/95 hover:border-rose-400 transition-all group active:scale-95 animate-in fade-in slide-in-from-bottom-3"
+            title="Перейти до списку завантажень"
+          >
+            <Download className="w-4 h-4 text-rose-400 animate-bounce group-hover:scale-110 transition-transform shrink-0" />
+            <div className="flex flex-col">
+              <span className="text-zinc-200">{downloadNotification}</span>
+              <span className="text-[10px] text-rose-400 font-bold group-hover:underline flex items-center gap-1">
+                Відкрити список завантажень →
+              </span>
+            </div>
           </div>
         )}
       </div>

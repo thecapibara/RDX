@@ -71,6 +71,13 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
   const [downloadsDir, setDownloadsDir] = useState<string>("");
   const [isGroupedView, setIsGroupedView] = useState<boolean>(true);
   const [expandedSeries, setExpandedSeries] = useState<Record<string, boolean>>({});
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    onConfirm: () => Promise<void> | void;
+  } | null>(null);
 
   // Load downloads from SQLite
   const loadDownloads = async () => {
@@ -354,16 +361,22 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
     }
   };
 
-  const handleDelete = async (id: string, title: string, e: React.MouseEvent) => {
+  const handleDelete = (id: string, title: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm(`Видалити «${title}» з пам'яті комп'ютера?`)) {
-      try {
-        await api.deleteDownload(id);
-        setDownloads((prev) => prev.filter((d) => d.id !== id));
-      } catch (err) {
-        console.warn("Delete error:", err);
-      }
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: "Видалення файлу",
+      message: `Ви дійсно бажаєте видалити «${title}» з пам'яті комп'ютера? Файл буде безповоротно стерто з диска.`,
+      confirmLabel: "Видалити",
+      onConfirm: async () => {
+        try {
+          await api.deleteDownload(id);
+          setDownloads((prev) => prev.filter((d) => d.id !== id));
+        } catch (err) {
+          console.warn("Delete error:", err);
+        }
+      },
+    });
   };
 
   const handlePauseAll = async () => {
@@ -384,15 +397,21 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
     }
   };
 
-  const handleClearCompleted = async () => {
-    if (confirm("Очистити список завершених завантажень? (файли залишаться на диску)")) {
-      try {
-        await api.clearCompletedDownloads();
-        loadDownloads();
-      } catch (err) {
-        console.warn("Clear completed error:", err);
-      }
-    }
+  const handleClearCompleted = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: "Очищення списку",
+      message: "Очистити список завершених завантажень? Завантажені відеофайли залишаться на вашому диску.",
+      confirmLabel: "Очистити",
+      onConfirm: async () => {
+        try {
+          await api.clearCompletedDownloads();
+          loadDownloads();
+        } catch (err) {
+          console.warn("Clear completed error:", err);
+        }
+      },
+    });
   };
 
   const handleShowInFolder = async (filePath: string, e: React.MouseEvent) => {
@@ -1133,6 +1152,58 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Custom Obsidian Crimson Confirmation Dialog */}
+      {confirmDialog && confirmDialog.isOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150"
+          onClick={() => setConfirmDialog(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-3xl bg-zinc-950 border border-white/10 p-6 shadow-2xl shadow-rose-950/40 space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-rose-950/60 border border-rose-500/30 flex items-center justify-center text-rose-500 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white tracking-tight">
+                  {confirmDialog.title}
+                </h3>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Підтвердіть дію для продовження
+                </p>
+              </div>
+            </div>
+
+            <p className="text-sm text-zinc-300 leading-relaxed bg-zinc-900/60 p-3.5 rounded-2xl border border-white/5">
+              {confirmDialog.message}
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDialog(null)}
+                className="px-4 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-semibold border border-white/10 transition-colors cursor-pointer"
+              >
+                Скасувати
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const fn = confirmDialog.onConfirm;
+                  setConfirmDialog(null);
+                  await fn();
+                }}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white text-xs font-bold shadow-lg shadow-rose-950/60 transition-all cursor-pointer"
+              >
+                {confirmDialog.confirmLabel || "Підтвердити"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -21,12 +21,14 @@ import { MediaDetailsModal } from "./components/MediaDetailsModal";
 import { VideoPlayer, type PlayerMode } from "./components/VideoPlayer";
 import { MirrorModal } from "./components/MirrorModal";
 import { SearchModal } from "./components/SearchModal";
+import { UpdateModal } from "./components/UpdateModal";
 import { BookmarksView } from "./components/BookmarksView";
 import { DownloadsView } from "./components/DownloadsView";
 import { CategoryFilterBar } from "./components/CategoryFilterBar";
 import { playButtonClickSound } from "./services/sound";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { downloadsStore, OPEN_DOWNLOADS_EVENT } from "./services/downloadsStore";
+import { checkForUpdates, type UpdateInfo } from "./services/updater";
 
 export default function App() {
   // Navigation & Settings State
@@ -49,6 +51,8 @@ export default function App() {
   // Modals State
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMirrorModalOpen, setIsMirrorModalOpen] = useState(false);
+  const [availableUpdate, setAvailableUpdate] = useState<UpdateInfo | null>(null);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [selectedMediaForDetails, setSelectedMediaForDetails] = useState<MediaCardType | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
@@ -259,6 +263,29 @@ export default function App() {
       }
     }
   }, [minSplashDone]);
+
+  // OTA GitHub Release Updater
+  const handleCheckUpdates = useCallback(async (manual = false): Promise<boolean> => {
+    try {
+      const update = await checkForUpdates("1.0.5", manual);
+      if (update) {
+        setAvailableUpdate(update);
+        setIsUpdateModalOpen(true);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.warn("OTA update check error:", err);
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      handleCheckUpdates(false);
+    }, 4500);
+    return () => clearTimeout(timer);
+  }, [handleCheckUpdates]);
 
   // Load "Continue Watching" row
   const refreshContinueWatching = useCallback(async () => {
@@ -818,6 +845,14 @@ export default function App() {
                   ? "Мультфільми"
                   : activeTab === "animation"
                   ? "Аніме"
+                  : activeGenre === "films"
+                  ? "Новинки: Фільми"
+                  : activeGenre === "series"
+                  ? "Новинки: Серіали"
+                  : activeGenre === "cartoons"
+                  ? "Новинки: Мультфільми"
+                  : activeGenre === "animation"
+                  ? "Новинки: Аніме"
                   : "Новинки кіно"}
               </h1>
               <div className="flex items-center gap-2 self-start sm:self-auto">
@@ -918,6 +953,14 @@ export default function App() {
           setSettings((prev) => (prev ? { ...prev, active_mirror: newMirror } : null));
           loadCatalog();
         }}
+        onCheckUpdates={() => handleCheckUpdates(true)}
+      />
+
+      {/* OTA GitHub Release Auto-Updater Modal */}
+      <UpdateModal
+        update={availableUpdate}
+        isOpen={isUpdateModalOpen}
+        onClose={() => setIsUpdateModalOpen(false)}
       />
 
       {/* Custom Cinema Video Player (Overlay / Docked Mini-Player / OS PiP) */}

@@ -760,6 +760,18 @@ export const api = {
     }
   },
 
+  openUrl: async (url: string): Promise<void> => {
+    if (isTauri) {
+      try {
+        await invoke<void>("open_url", { url });
+        return;
+      } catch (err) {
+        console.warn("Native open_url failed, falling back to window.open:", err);
+      }
+    }
+    window.open(url, "_blank");
+  },
+
   getTurboStreamUrl: async (rawUrl: string): Promise<string> => {
     if (isTauri) {
       return invoke<string>("get_turbo_stream_url", { rawUrl });
