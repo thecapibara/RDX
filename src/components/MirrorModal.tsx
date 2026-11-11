@@ -1526,23 +1526,23 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
 
                 {/* OTA Updates Card */}
                 <div className="p-4.5 rounded-2xl bg-zinc-900/60 border border-white/10 space-y-3">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0">
-                        <Sparkles className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-white">Оновлення програми (OTA)</h4>
-                        <p className="text-xs text-zinc-400 mt-0.5">
-                          Автоматична перевірка релізів та оновлення через GitHub
-                        </p>
-                      </div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0">
+                      <Sparkles className="w-4 h-4" />
                     </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-white">Оновлення програми (OTA)</h4>
+                      <p className="text-xs text-zinc-400 mt-0.5">
+                        Автоматична перевірка релізів та оновлення через GitHub
+                      </p>
+                    </div>
+                  </div>
 
+                  <div className="flex items-center gap-2.5 flex-wrap pt-0.5">
                     <button
                       onClick={handleManualUpdateCheck}
                       disabled={isCheckingUpdates}
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 font-semibold text-xs border border-rose-500/30 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                      className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 font-semibold text-xs border border-rose-500/30 transition-all cursor-pointer active:scale-95 disabled:opacity-50 shrink-0"
                     >
                       {isCheckingUpdates ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1551,14 +1551,14 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                       )}
                       <span>{isCheckingUpdates ? "Перевірка..." : "Перевірити оновлення"}</span>
                     </button>
-                  </div>
 
-                  {updateCheckResult && (
-                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-zinc-300">
-                      <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                      <span>{updateCheckResult}</span>
-                    </div>
-                  )}
+                    {updateCheckResult && (
+                      <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-xs text-emerald-300 font-medium">
+                        <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>{updateCheckResult}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Shortcuts Grid */}
