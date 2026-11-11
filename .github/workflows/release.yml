@@ -73,7 +73,7 @@ jobs:
           tagName: v__VERSION__
           releaseName: 'RDX v__VERSION__'
           releaseBody: |
-            ## RDX v__VERSION__ — Custom Multi-Episode & Season Selection, Distro Switcher & Signed Updates
+            ## RDX v__VERSION__ — Mini-Player Autohide, Universal Shortcuts & Glassmorphism Stats
 
             Cross-platform native desktop streaming client (Linux, Windows, macOS) built with **Rust (Tauri v2)**, **React 19**, **Tailwind CSS v4**, and **HLS.js**, inspired by modern Android TV & Smart TV interfaces with an *Obsidian Crimson* aesthetic.
 
@@ -81,51 +81,41 @@ jobs:
 
             ### 🇺🇦 Що нового у версії __VERSION__:
 
-            - **📥 Гнучкий вибір серій та сезонів у завантажувачі**:
-              - Додано новий 4-й режим завантаження: **«Вибіркові серії»** поруч із «1 серія», «Сезон» та «Всі сезони».
-              - Зручні **таби сезонів із живим лічильником обраних серій** (наприклад, `Сезон 2 (3)`, `Сезон 3 (2)`).
-              - Швидкі дії в один клік: «+ Весь N сезон», «Зняти вибір сезону», «Вибрати всі серії взагалі» та «Очистити вибір».
-              - Довільний вибір будь-яких серій з різних сезонів (наприклад, 6–8 серії 2-го сезону + 1–2 серії 3-го сезону) в одну чергу паралельного завантаження.
+            - **📺 Покращення міні-плеєра (Mini-Player Autohide & Clean Context)**:
+              - **Автозникання кнопок:** додано миттєве приховування контролерів керування при відведенні миші за межі міні-вікна та 2.5-секундний таймер неактивності курсора під час відтворення.
+              - **Чистий контекст:** вимкнено громіздке повноекранне контекстне меню плеєра по правому кліку (ПКМ) у режимі міні-плеєра (PiP / docked), щоб меню більше не перекривало відео.
 
-            - **📦 Інтерактивний вибір формату пакета в модалці оновлення**:
-              - У вікні оновлення додано кнопки вибору інсталятора під вашу систему:
-                - 📦 **.rpm** (Fedora / RHEL / openSUSE)
-                - 📦 **.deb** (Ubuntu / Debian / Linux Mint)
-                - ⚡ **AppImage** (Універсальний переносний пакет для Linux)
-                - 🪟 **Setup.exe / MSI** (Windows)
-                - 🍎 **Disk Image .dmg** (macOS)
-              - Додаток автоматично показує точний розмір та завантажує потрібний пакет в один клік.
+            - **⌨️ Універсальні гарячі клавіші (Universal Shortcuts)**:
+              - Шорткати переведено на фізичні сканкоди клавіш (`e.code`): `F` (повний екран), `Space` / `K` (пауза), `M` (звук), `S` (скриншот), `L` (повтор відрізка A-B), `I` (статистика потоку) тепер стабільно працюють **як на українській, так і на англійській розкладці клавіатури**.
 
-            - **🔐 Безпечні підписані оновлення**:
-              - Налаштовано автоматичну перевірку автентичності та цілісності релізів, що захищає користувачів від підробки файлів оновлення.
+            - **📊 Оновлений оверлей статистики потоку (`I`)**:
+              - Збільшено ширину віконця до 380px для запобігання переносу тексту в рядках Turbo-буфера (Multi-segment) та CDN.
+              - Застосовано стильний напівпрозорий скляний фон із розмиттям (`bg-zinc-950/80 backdrop-blur-xl border border-white/10`).
 
-            - **🎨 Полірування інтерфейсу**:
-              - Оновлено модальне вікно оновлень: прибрано нашарування тексту на 3D логотип у шапці, додано чисте форматування списку змін та вирівняно статусний рядок.
+            - **📥 Усі можливості версії 1.0.6 збережено та вдосконалено**:
+              - Гнучкий вибір серій та сезонів у завантажувачі.
+              - Інтерактивний вибір формату пакета (.rpm, .deb, AppImage, .exe, .dmg) у вікні оновлень.
+              - Криптографічний підпис оновлень Minisign ED25519.
 
             ---
 
             ### 🇬🇧 What's New in v__VERSION__:
 
-            - **📥 Custom Multi-Episode & Multi-Season Downloader**:
-              - Introduced a 4th download mode: **"Custom Episodes"** alongside "1 Episode", "Season", and "All Seasons".
-              - **Season tabs with real-time selection counters** (e.g. `Season 2 (3)`, `Season 3 (2)`).
-              - Quick 1-click batch actions: "+ Entire Season N", "Deselect Season", "Select All Episodes", and "Clear Selection".
-              - Flexible arbitrary episode selection across multiple seasons (e.g. episodes 6–8 of Season 2 + episodes 1–2 of Season 3) into a single concurrent download queue.
+            - **📺 Mini-Player Experience Improvements**:
+              - **Smart Autohide:** Instant hiding of playback controls upon mouse leaving the mini-player window, with a 2.5s inactivity fade-out while playing.
+              - **Clean Context:** Disabled heavy full-player right-click context menu in mini-player mode (PiP / docked) to keep the video unobstructed.
 
-            - **📦 Distro & Package Format Switcher in Update Modal**:
-              - Direct 1-click installer selector chips right inside the update dialog:
-                - 📦 **.rpm** (Fedora / RHEL / openSUSE)
-                - 📦 **.deb** (Ubuntu / Debian / Linux Mint)
-                - ⚡ **AppImage** (Universal standalone Linux binary)
-                - 🪟 **Setup.exe / MSI** (Windows Installer)
-                - 🍎 **Disk Image .dmg** (macOS Apple Silicon)
-              - Displays accurate asset size and triggers immediate direct package download.
+            - **⌨️ Universal Layout-Independent Keyboard Shortcuts**:
+              - Upgraded all player hotkeys to physical key scancodes (`e.code`): `F` (Fullscreen), `Space` / `K` (Play/Pause), `M` (Mute), `S` (Screenshot), `L` (A-B Loop), `I` (Stats overlay) now work seamlessly across Ukrainian, English, and any international keyboard layout.
 
-            - **🔐 Secure Verified Updates**:
-              - Automated cryptographic verification ensuring update binaries are authentic and protected against tampering.
+            - **📊 Polished Stream Diagnostics Overlay (`I`)**:
+              - Widened statistics overlay to 380px to eliminate awkward text line-breaks in Turbo-buffer (Multi-segment) and CDN rows.
+              - Modernized with a sleek translucent dark glassmorphism aesthetic (`backdrop-blur-xl`).
 
-            - **🎨 UI/UX Polish**:
-              - Redesigned update modal header, eliminating text collision with banner artwork, formatted changelog bullets, and streamlined settings status.
+            - **📥 Inherited v1.0.6 Capabilities**:
+              - Custom multi-episode & multi-season selection downloader.
+              - Direct package format switcher (.rpm, .deb, AppImage, .exe, .dmg) in updater modal.
+              - Secure cryptographic Minisign ED25519 signed OTA updates.
 
             ---
 
@@ -133,6 +123,12 @@ jobs:
 
             | Platform | Package | Description |
             | :--- | :--- | :--- |
+            | **Windows** | `RDX___VERSION___x64-setup.exe` | Recommended installer for Windows 10 & 11 |
+            | **Windows** | `RDX___VERSION___x64_en-US.msi` | Windows Installer package |
+            | **Linux (Universal)** | `RDX___VERSION___amd64.AppImage` | Portable binary with bundled GStreamer codecs (Arch, Ubuntu, Fedora, Debian) |
+            | **Linux (Debian/Ubuntu)** | `RDX___VERSION___amd64.deb` | Standard package for Ubuntu / Debian / Linux Mint |
+            | **Linux (RPM)** | `RDX-__VERSION__-1.x86_64.rpm` | Package for Fedora / openSUSE / RHEL |
+            | **macOS** | `RDX___VERSION___aarch64.dmg` | Disk Image for Apple Silicon Mac (M1/M2/M3/M4) |
             | **Windows** | `RDX___VERSION___x64-setup.exe` | Recommended installer for Windows 10 & 11 |
             | **Windows** | `RDX___VERSION___x64_en-US.msi` | Windows Installer package |
             | **Linux (Universal)** | `RDX___VERSION___amd64.AppImage` | Portable binary with bundled GStreamer codecs (Arch, Ubuntu, Fedora, Debian) |
