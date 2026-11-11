@@ -86,8 +86,10 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
 
   // Download states
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
-  const [downloadMode, setDownloadMode] = useState<"single" | "season" | "all_seasons">("single");
+  const [downloadMode, setDownloadMode] = useState<"single" | "season" | "all_seasons" | "custom">("single");
   const [downloadTargetSeason, setDownloadTargetSeason] = useState<number>(1);
+  const [customSeasonTab, setCustomSeasonTab] = useState<number>(1);
+  const [selectedCustomEpisodes, setSelectedCustomEpisodes] = useState<Set<string>>(new Set());
   const [downloadTranslator, setDownloadTranslator] = useState<Translator | null>(null);
   const [isDownloadTranslatorDropdownOpen, setIsDownloadTranslatorDropdownOpen] = useState(false);
   const [downloadQualities, setDownloadQualities] = useState<StreamQuality[]>([]);
@@ -387,6 +389,8 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
     setIsDownloadModalOpen(true);
     setDownloadMode("single");
     setDownloadTargetSeason(selectedSeason);
+    setCustomSeasonTab(selectedSeason);
+    setSelectedCustomEpisodes(new Set([`${selectedSeason}_${selectedEpisode}`]));
     setDownloadTranslator(selectedTranslator);
     setIsDownloadTranslatorDropdownOpen(false);
     setLoadingQualities(true);
@@ -513,22 +517,30 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
         );
         setTimeout(() => setDownloadNotification(null), 4000);
       } else {
-        // Multi-episode download: either specific chosen season or all seasons
-        const episodesToDownload =
-          downloadMode === "all_seasons"
-            ? details.episodes
-            : details.episodes.filter(
-                (ep) => Number(ep.season_id) === Number(downloadTargetSeason)
-              );
+        // Multi-episode download: custom selection, specific season, or all seasons
+        let episodesToDownload: typeof details.episodes = [];
+        if (downloadMode === "custom") {
+          episodesToDownload = details.episodes.filter((ep) =>
+            selectedCustomEpisodes.has(`${ep.season_id}_${ep.episode_id}`)
+          );
+        } else if (downloadMode === "all_seasons") {
+          episodesToDownload = details.episodes;
+        } else {
+          episodesToDownload = details.episodes.filter(
+            (ep) => Number(ep.season_id) === Number(downloadTargetSeason)
+          );
+        }
 
         if (episodesToDownload.length === 0) {
-          setDownloadNotification("⚠️ Не знайдено серій для завантаження");
+          setDownloadNotification("⚠️ Не вибрано жодної серії для завантаження");
           setTimeout(() => setDownloadNotification(null), 3000);
           return;
         }
 
         setDownloadNotification(
-          downloadMode === "all_seasons"
+          downloadMode === "custom"
+            ? `Черга: запуск завантаження ${episodesToDownload.length} вибраних серій...`
+            : downloadMode === "all_seasons"
             ? `Черга: запуск завантаження ${episodesToDownload.length} серій усіх ${details.seasons.length} сезонів...`
             : `Черга: запуск завантаження ${episodesToDownload.length} серій ${downloadTargetSeason} сезону...`
         );
@@ -575,7 +587,9 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
             }
           }
           setDownloadNotification(
-            downloadMode === "all_seasons"
+            downloadMode === "custom"
+              ? `Усі ${count} вибраних серій додано до черги завантажень!`
+              : downloadMode === "all_seasons"
               ? `Усі ${count} серій усіх сезонів додано до черги завантажень!`
               : `Усі ${count} серій ${downloadTargetSeason} сезону додано до черги завантажень!`
           );
@@ -1152,7 +1166,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
         {/* Offline Download Dialog (Android TV Glassmorphic UI) */}
         {isDownloadModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xl animate-in fade-in duration-200">
-            <div className="relative w-full max-w-lg bg-zinc-900/95 border border-white/15 rounded-3xl p-6 shadow-2xl space-y-5 text-white backdrop-blur-2xl">
+            <div className="relative w-full max-w-lg bg-zinc-900/95 border border-white/15 rounded-3xl p-6 shadow-2xl space-y-5 text-white backdrop-blur-2xl max-h-[90vh] overflow-y-auto">
               {/* Header */}
               <div className="flex items-center justify-between pb-3 border-b border-white/10">
                 <div className="flex items-center gap-3">
@@ -1242,29 +1256,36 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
 
               {/* Series Scope Option */}
               {isSeries && details && (
-                <div className="space-y-2.5">
-                  <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <Layers className="w-3.5 h-3.5 text-rose-400" />
-                    <span>Що завантажити:</span>
-                  </span>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Що завантажити:</span>
+                    </span>
+                    {downloadMode === "custom" && (
+                      <span className="text-[11px] font-bold text-rose-300 bg-rose-500/15 border border-rose-500/30 px-2.5 py-0.5 rounded-full">
+                        Вибрано: {selectedCustomEpisodes.size} серій
+                      </span>
+                    )}
+                  </div>
 
-                  {/* 3-option Segmented Switch */}
-                  <div className="grid grid-cols-3 gap-1.5 p-1 bg-zinc-950/80 rounded-2xl border border-white/5">
+                  {/* 4-option Segmented Switch */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-zinc-950/80 rounded-2xl border border-white/5 text-xs font-semibold">
                     <button
                       onClick={() => setDownloadMode("single")}
                       className={cn(
-                        "px-2.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer text-center truncate",
+                        "px-2 py-2 rounded-xl transition-all cursor-pointer text-center truncate",
                         downloadMode === "single"
                           ? "bg-rose-600 text-white shadow-md shadow-rose-950/50"
                           : "text-zinc-400 hover:text-white hover:bg-white/5"
                       )}
                     >
-                      Серія S{downloadTargetSeason}E{selectedEpisode}
+                      1 серія
                     </button>
                     <button
                       onClick={() => setDownloadMode("season")}
                       className={cn(
-                        "px-2.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer text-center truncate",
+                        "px-2 py-2 rounded-xl transition-all cursor-pointer text-center truncate",
                         downloadMode === "season"
                           ? "bg-rose-600 text-white shadow-md shadow-rose-950/50"
                           : "text-zinc-400 hover:text-white hover:bg-white/5"
@@ -1275,13 +1296,24 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                     <button
                       onClick={() => setDownloadMode("all_seasons")}
                       className={cn(
-                        "px-2.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer text-center truncate",
+                        "px-2 py-2 rounded-xl transition-all cursor-pointer text-center truncate",
                         downloadMode === "all_seasons"
                           ? "bg-rose-600 text-white shadow-md shadow-rose-950/50"
                           : "text-zinc-400 hover:text-white hover:bg-white/5"
                       )}
                     >
                       Всі сезони ({details.seasons.length})
+                    </button>
+                    <button
+                      onClick={() => setDownloadMode("custom")}
+                      className={cn(
+                        "px-2 py-2 rounded-xl transition-all cursor-pointer text-center truncate",
+                        downloadMode === "custom"
+                          ? "bg-rose-600 text-white shadow-md shadow-rose-950/50"
+                          : "text-zinc-400 hover:text-white hover:bg-white/5"
+                      )}
+                    >
+                      Вибіркові серії
                     </button>
                   </div>
 
@@ -1325,6 +1357,143 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                       <span>
                         Буде додано до черги <strong>{details.episodes.length} серій</strong> із усіх <strong>{details.seasons.length} сезонів</strong>.
                       </span>
+                    </div>
+                  )}
+
+                  {/* If 'custom' mode is selected: show season tabs + episode selection grid! */}
+                  {downloadMode === "custom" && (
+                    <div className="space-y-2.5 p-3.5 rounded-2xl bg-zinc-950/70 border border-white/10">
+                      {/* Season Tabs Header */}
+                      <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2">
+                        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                          {details.seasons.map((s) => {
+                            const sNum = Number(s.id);
+                            const isTabActive = customSeasonTab === sNum;
+                            const countInSeason = details.episodes.filter(
+                              (ep) => Number(ep.season_id) === sNum && selectedCustomEpisodes.has(`${ep.season_id}_${ep.episode_id}`)
+                            ).length;
+                            return (
+                              <button
+                                key={s.id}
+                                onClick={() => setCustomSeasonTab(sNum)}
+                                className={cn(
+                                  "px-2.5 py-1 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5",
+                                  isTabActive
+                                    ? "bg-rose-600 text-white shadow-sm"
+                                    : "bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white"
+                                )}
+                              >
+                                <span>{s.id} сезон</span>
+                                {countInSeason > 0 && (
+                                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 text-white font-mono">
+                                    {countInSeason}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Quick select buttons for active season tab */}
+                      <div className="flex items-center justify-between gap-2 text-[11px]">
+                        <span className="text-zinc-400">
+                          Серії {customSeasonTab} сезону:
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const seasonEps = details.episodes.filter(
+                                (ep) => Number(ep.season_id) === customSeasonTab
+                              );
+                              setSelectedCustomEpisodes((prev) => {
+                                const next = new Set(prev);
+                                seasonEps.forEach((ep) => next.add(`${ep.season_id}_${ep.episode_id}`));
+                                return next;
+                              });
+                            }}
+                            className="text-rose-400 hover:text-rose-300 font-semibold cursor-pointer"
+                          >
+                            + Весь {customSeasonTab} сезон
+                          </button>
+                          <span className="text-zinc-600">•</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const seasonEps = details.episodes.filter(
+                                (ep) => Number(ep.season_id) === customSeasonTab
+                              );
+                              setSelectedCustomEpisodes((prev) => {
+                                const next = new Set(prev);
+                                seasonEps.forEach((ep) => next.delete(`${ep.season_id}_${ep.episode_id}`));
+                                return next;
+                              });
+                            }}
+                            className="text-zinc-400 hover:text-zinc-300 cursor-pointer"
+                          >
+                            Зняти
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Episode Grid for active season tab */}
+                      <div className="grid grid-cols-5 sm:grid-cols-6 gap-1.5 max-h-40 overflow-y-auto pr-1 no-scrollbar">
+                        {details.episodes
+                          .filter((ep) => Number(ep.season_id) === customSeasonTab)
+                          .map((ep) => {
+                            const key = `${ep.season_id}_${ep.episode_id}`;
+                            const isSelected = selectedCustomEpisodes.has(key);
+                            return (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedCustomEpisodes((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(key)) {
+                                      next.delete(key);
+                                    } else {
+                                      next.add(key);
+                                    }
+                                    return next;
+                                  });
+                                }}
+                                className={cn(
+                                  "py-1.5 px-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer flex items-center justify-center gap-1 select-none",
+                                  isSelected
+                                    ? "bg-rose-600 border-rose-500 text-white shadow-md shadow-rose-950/50 scale-[1.02]"
+                                    : "bg-white/5 border-white/5 text-zinc-300 hover:bg-white/10 hover:text-white"
+                                )}
+                              >
+                                {isSelected && <Check className="w-3 h-3 text-white" />}
+                                <span>{ep.episode_id}</span>
+                              </button>
+                            );
+                          })}
+                      </div>
+
+                      {/* Global selection helpers */}
+                      <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[11px] text-zinc-400">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const all = new Set<string>();
+                            details.episodes.forEach((ep) => all.add(`${ep.season_id}_${ep.episode_id}`));
+                            setSelectedCustomEpisodes(all);
+                          }}
+                          className="hover:text-white cursor-pointer font-medium"
+                        >
+                          Вибрати всі серії ({details.episodes.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCustomEpisodes(new Set())}
+                          className="text-zinc-500 hover:text-zinc-400 cursor-pointer"
+                        >
+                          Очистити вибір
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1378,7 +1547,9 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                       ? `1 файл • ${selectedDownloadQuality}`
                       : downloadMode === "season"
                       ? `${details.episodes.filter(ep => Number(ep.season_id) === Number(downloadTargetSeason)).length} серій • ${selectedDownloadQuality}`
-                      : `${details.episodes.length} серій • всі сезони • ${selectedDownloadQuality}`}
+                      : downloadMode === "all_seasons"
+                      ? `${details.episodes.length} серій • всі сезони • ${selectedDownloadQuality}`
+                      : `${selectedCustomEpisodes.size} вибраних серій • ${selectedDownloadQuality}`}
                   </span>
                 </div>
               )}
@@ -1393,11 +1564,12 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                 </button>
                 <button
                   onClick={handleStartDownload}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-lg shadow-rose-950/50 cursor-pointer active:scale-95"
+                  disabled={isSeries && downloadMode === "custom" && selectedCustomEpisodes.size === 0}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-lg shadow-rose-950/50 cursor-pointer active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Download className="w-4 h-4" />
                   <span>
-                    Почати {isSeries && downloadMode === "all_seasons" ? `(${details?.episodes.length})` : isSeries && downloadMode === "season" ? `(${details?.episodes.filter(ep => Number(ep.season_id) === Number(downloadTargetSeason)).length})` : ""}
+                    Почати {isSeries && downloadMode === "all_seasons" ? `(${details?.episodes.length})` : isSeries && downloadMode === "season" ? `(${details?.episodes.filter(ep => Number(ep.season_id) === Number(downloadTargetSeason)).length})` : isSeries && downloadMode === "custom" ? `(${selectedCustomEpisodes.size})` : ""}
                   </span>
                 </button>
               </div>
