@@ -1,8 +1,9 @@
-import React from "react";
-import { Sparkles, Download, Clock, X, ArrowRight, Package } from "lucide-react";
-import type { UpdateInfo } from "../services/updater";
+import React, { useState, useEffect } from "react";
+import { Sparkles, Download, Clock, X, ArrowRight, Package, Check } from "lucide-react";
+import type { UpdateInfo, ReleaseAsset } from "../services/updater";
 import { postponeUpdate, dismissUpdate } from "../services/updater";
 import { api } from "../services/api";
+import { cn } from "../lib/utils";
 
 interface UpdateModalProps {
   update: UpdateInfo | null;
@@ -15,10 +16,45 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
   isOpen,
   onClose,
 }) => {
+  const [selectedAsset, setSelectedAsset] = useState<ReleaseAsset | undefined>(update?.asset);
+
+  useEffect(() => {
+    if (update?.asset) {
+      setSelectedAsset(update.asset);
+    }
+  }, [update]);
+
+  // Classify available assets into user-friendly packages
+  const allAssets = update?.allAssets || (update?.asset ? [update.asset] : []);
+  const installablePackages = allAssets
+    .filter((asset) => {
+      const n = asset.name.toLowerCase();
+      return (
+        n.endsWith(".appimage") ||
+        n.endsWith(".rpm") ||
+        n.endsWith(".deb") ||
+        n.endsWith(".exe") ||
+        n.endsWith(".msi") ||
+        n.endsWith(".dmg")
+      );
+    })
+    .map((asset) => {
+      const n = asset.name.toLowerCase();
+      if (n.endsWith(".appimage")) return { id: "appimage", label: "AppImage", sub: "Універсальний", badge: "⚡", asset };
+      if (n.endsWith(".rpm")) return { id: "rpm", label: ".rpm", sub: "Fedora / RHEL", badge: "📦", asset };
+      if (n.endsWith(".deb")) return { id: "deb", label: ".deb", sub: "Ubuntu / Debian", badge: "📦", asset };
+      if (n.endsWith(".exe")) return { id: "exe", label: "Setup.exe", sub: "Windows", badge: "🪟", asset };
+      if (n.endsWith(".msi")) return { id: "msi", label: ".msi", sub: "Windows MSI", badge: "🪟", asset };
+      if (n.endsWith(".dmg")) return { id: "dmg", label: ".dmg", sub: "macOS", badge: "🍎", asset };
+      return { id: "other", label: asset.name, sub: "", badge: "📦", asset };
+    });
+
+  const activeAsset = selectedAsset || update?.asset || installablePackages[0]?.asset;
+
   if (!isOpen || !update) return null;
 
   const handleInstallNow = async () => {
-    const targetUrl = update.asset?.browser_download_url || update.releaseUrl;
+    const targetUrl = activeAsset?.browser_download_url || update.releaseUrl;
     await api.openUrl(targetUrl);
     onClose();
   };
@@ -104,8 +140,73 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
             </div>
           </div>
 
-          {/* Platform Package Info Pill if asset detected */}
-          {update.asset && (
+          {/* Platform Package Switcher or Info */}
+          {installablePackages.length > 0 ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                  Пакет для вашої системи:
+                </span>
+                <span className="text-[11px] text-zinc-500 font-mono">
+                  {installablePackages.length} доступно
+                </span>
+              </div>
+
+              {/* Distro / Package selection chips */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {installablePackages.map((pkg) => {
+                  const isSelected = activeAsset?.name === pkg.asset.name;
+                  return (
+                    <button
+                      key={pkg.asset.name}
+                      type="button"
+                      onClick={() => setSelectedAsset(pkg.asset)}
+                      className={cn(
+                        "flex items-center justify-between p-2.5 rounded-xl border text-left transition-all cursor-pointer select-none",
+                        isSelected
+                          ? "bg-rose-500/20 border-rose-500/60 shadow-lg shadow-rose-950/40 text-white"
+                          : "bg-white/5 border-white/10 hover:bg-white/10 text-zinc-300 hover:border-white/20"
+                      )}
+                    >
+                      <div className="min-w-0 pr-1">
+                        <div className="flex items-center gap-1.5 font-bold text-xs">
+                          <span>{pkg.badge}</span>
+                          <span className="truncate">{pkg.label}</span>
+                        </div>
+                        {pkg.sub && (
+                          <div className="text-[10px] text-zinc-400 truncate mt-0.5 font-sans">
+                            {pkg.sub}
+                          </div>
+                        )}
+                      </div>
+                      {isSelected && (
+                        <div className="w-4 h-4 rounded-full bg-rose-500 flex items-center justify-center shrink-0">
+                          <Check className="w-2.5 h-2.5 text-white stroke-[3]" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Active Asset Info Pill */}
+              {activeAsset && (
+                <div className="flex items-center justify-between gap-3 p-2.5 px-3 rounded-xl bg-zinc-900/80 border border-white/10 text-xs text-zinc-300 mt-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Package className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                    <span className="truncate font-mono text-[11px] text-zinc-300">
+                      {activeAsset.name}
+                    </span>
+                  </div>
+                  {activeAsset.size > 0 && (
+                    <span className="text-zinc-400 font-mono text-[11px] shrink-0 font-medium">
+                      {formatFileSize(activeAsset.size)}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : update.asset ? (
             <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-white/5 border border-white/10 text-xs text-zinc-300">
               <div className="flex items-center gap-2.5 min-w-0">
                 <Package className="w-4 h-4 text-rose-400 shrink-0" />
@@ -119,7 +220,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
                 </span>
               )}
             </div>
-          )}
+          ) : null}
 
           {/* Changelog Section */}
           <div className="space-y-1.5">

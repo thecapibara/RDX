@@ -12,6 +12,7 @@ export interface UpdateInfo {
   publishedAt: string;
   releaseUrl: string;
   asset?: ReleaseAsset;
+  allAssets: ReleaseAsset[];
 }
 
 const GITHUB_REPO = "thecapibara/RDX";
@@ -112,7 +113,13 @@ export async function checkForUpdates(
       }
     }
 
-    const platformAsset = detectPlatformAsset(data.assets || []);
+    const rawAssets: any[] = Array.isArray(data.assets) ? data.assets : [];
+    const allAssets: ReleaseAsset[] = rawAssets.map((a) => ({
+      name: a.name,
+      size: a.size,
+      browser_download_url: a.browser_download_url,
+    }));
+    const platformAsset = detectPlatformAsset(rawAssets);
 
     return {
       version: latestTag,
@@ -122,6 +129,7 @@ export async function checkForUpdates(
       publishedAt: data.published_at ? new Date(data.published_at).toLocaleDateString("uk-UA") : "",
       releaseUrl: data.html_url || `https://github.com/${GITHUB_REPO}/releases/latest`,
       asset: platformAsset,
+      allAssets,
     };
   } catch (err) {
     console.warn("OTA update check failed:", err);
