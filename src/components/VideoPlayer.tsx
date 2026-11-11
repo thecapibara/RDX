@@ -190,6 +190,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onEpisodeChange,
   onTranslatorChange,
 }) => {
+  const isMiniMode = mode === "os_pip" || mode === "docked";
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -356,6 +357,25 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (miniRippleTimerRef.current) clearTimeout(miniRippleTimerRef.current);
     miniRippleTimerRef.current = setTimeout(() => setMiniSeekRipple(null), 500);
   };
+
+  // Mini-player controls auto-hide state & timer
+  const [miniControlsVisible, setMiniControlsVisible] = useState(false);
+  const miniHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleMiniMouseMove = useCallback(() => {
+    setMiniControlsVisible(true);
+    if (miniHideTimerRef.current) clearTimeout(miniHideTimerRef.current);
+    if (isPlaying) {
+      miniHideTimerRef.current = setTimeout(() => {
+        setMiniControlsVisible(false);
+      }, 2500);
+    }
+  }, [isPlaying]);
+
+  const handleMiniMouseLeave = useCallback(() => {
+    if (miniHideTimerRef.current) clearTimeout(miniHideTimerRef.current);
+    setMiniControlsVisible(false);
+  }, []);
 
   // Vayou-inspired Features: Aspect Ratio, A-B Loop, Screenshot, Sleep Timer, Media Info
   const [aspectRatioMode, setAspectRatioMode] = useState<
@@ -965,6 +985,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+
+    // Disable heavy player context menu in mini-player (PiP / docked)
+    if (isMiniMode) {
+      return;
+    }
 
     const pad = 12;
     const menuWidth = 260;
@@ -1634,93 +1659,123 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         return;
       }
 
-      triggerActivity();
+      if (isMiniMode) {
+        handleMiniMouseMove();
+      } else {
+        triggerActivity();
+      }
 
-      switch (e.key) {
-        case " ":
-        case "k":
-          e.preventDefault();
-          togglePlay();
-          break;
-        case "ArrowLeft":
-          e.preventDefault();
-          seekDelta(e.shiftKey ? -30 : -5);
-          break;
-        case "ArrowRight":
-          e.preventDefault();
-          seekDelta(e.shiftKey ? 30 : 5);
-          break;
-        case "s":
-        case "S":
-          e.preventDefault();
-          handleScreenshot();
-          break;
-        case "l":
-        case "L":
-          e.preventDefault();
-          handleCycleAbLoop();
-          break;
-        case "i":
-        case "I":
-          e.preventDefault();
-          setShowMediaInfo((prev) => !prev);
-          break;
-        case "ArrowUp":
-          e.preventDefault();
-          adjustVolume(0.05);
-          break;
-        case "ArrowDown":
-          e.preventDefault();
-          adjustVolume(-0.05);
-          break;
-        case "m":
-        case "M":
-          e.preventDefault();
-          toggleMute();
-          break;
-        case "f":
-        case "F":
-        case "F11":
-          e.preventDefault();
-          if (mode === "full") {
-            toggleFullscreen();
-          } else {
-            if (mode === "os_pip") {
-              handleSetOsPip(false);
-            }
-            onModeChange("full");
-          }
-          break;
-        case "Escape":
-          e.preventDefault();
-          if (contextMenu?.open) {
-            if (contextMenu.page !== "main") {
-              setContextMenu({ ...contextMenu, page: "main" });
-            } else {
-              setContextMenu(null);
-            }
-          } else if (showMediaInfo) {
-            setShowMediaInfo(false);
-          } else if (showEpisodesDrawer) {
-            setShowEpisodesDrawer(false);
-          } else if (showQualityMenu || showTranslatorMenu || showSubtitleMenu || showSpeedMenu) {
-            setShowQualityMenu(false);
-            setShowTranslatorMenu(false);
-            setShowSubtitleMenu(false);
-            setShowSpeedMenu(false);
-          } else if (mode === "full" && (isFullscreen || (typeof document !== "undefined" && Boolean(document.fullscreenElement)))) {
-            toggleFullscreen(false);
-          } else if (mode === "os_pip") {
+      const code = e.code;
+      const key = (e.key || "").toLowerCase();
+
+      // Play / Pause (Space, K)
+      if (code === "Space" || code === "KeyK" || key === " " || key === "k" || key === "л") {
+        e.preventDefault();
+        togglePlay();
+        return;
+      }
+
+      // Seek backward (ArrowLeft)
+      if (code === "ArrowLeft" || key === "arrowleft") {
+        e.preventDefault();
+        seekDelta(e.shiftKey ? -30 : -5);
+        return;
+      }
+
+      // Seek forward (ArrowRight)
+      if (code === "ArrowRight" || key === "arrowright") {
+        e.preventDefault();
+        seekDelta(e.shiftKey ? 30 : 5);
+        return;
+      }
+
+      // Screenshot (S)
+      if (code === "KeyS" || key === "s" || key === "і" || key === "ы") {
+        e.preventDefault();
+        handleScreenshot();
+        return;
+      }
+
+      // A-B Loop (L)
+      if (code === "KeyL" || key === "l" || key === "д") {
+        e.preventDefault();
+        handleCycleAbLoop();
+        return;
+      }
+
+      // Stream info statistics (I)
+      if (code === "KeyI" || key === "i" || key === "ш") {
+        e.preventDefault();
+        setShowMediaInfo((prev) => !prev);
+        return;
+      }
+
+      // Volume Up (ArrowUp)
+      if (code === "ArrowUp" || key === "arrowup") {
+        e.preventDefault();
+        adjustVolume(0.05);
+        return;
+      }
+
+      // Volume Down (ArrowDown)
+      if (code === "ArrowDown" || key === "arrowdown") {
+        e.preventDefault();
+        adjustVolume(-0.05);
+        return;
+      }
+
+      // Mute (M)
+      if (code === "KeyM" || key === "m" || key === "ь") {
+        e.preventDefault();
+        toggleMute();
+        return;
+      }
+
+      // Fullscreen (F / F11)
+      if (code === "KeyF" || key === "f" || key === "а" || key === "f11") {
+        e.preventDefault();
+        if (mode === "full") {
+          toggleFullscreen();
+        } else {
+          if (mode === "os_pip") {
             handleSetOsPip(false);
-          } else if (mode === "docked") {
-            const isPlayerFocused = containerRef.current?.contains(document.activeElement);
-            if (isPlayerFocused) {
-              handleTeardownAndClose();
-            }
+          }
+          onModeChange("full");
+        }
+        return;
+      }
+
+      // Escape
+      if (code === "Escape" || key === "escape") {
+        e.preventDefault();
+        if (contextMenu?.open) {
+          if (contextMenu.page !== "main") {
+            setContextMenu({ ...contextMenu, page: "main" });
           } else {
+            setContextMenu(null);
+          }
+        } else if (showMediaInfo) {
+          setShowMediaInfo(false);
+        } else if (showEpisodesDrawer) {
+          setShowEpisodesDrawer(false);
+        } else if (showQualityMenu || showTranslatorMenu || showSubtitleMenu || showSpeedMenu) {
+          setShowQualityMenu(false);
+          setShowTranslatorMenu(false);
+          setShowSubtitleMenu(false);
+          setShowSpeedMenu(false);
+        } else if (mode === "full" && (isFullscreen || (typeof document !== "undefined" && Boolean(document.fullscreenElement)))) {
+          toggleFullscreen(false);
+        } else if (mode === "os_pip") {
+          handleSetOsPip(false);
+        } else if (mode === "docked") {
+          const isPlayerFocused = containerRef.current?.contains(document.activeElement);
+          if (isPlayerFocused) {
             handleTeardownAndClose();
           }
-          break;
+        } else {
+          handleTeardownAndClose();
+        }
+        return;
       }
     };
 
@@ -2120,8 +2175,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [isSeries, seasons, drawerSeason, drawerSeasonEpisodes.length]);
 
-  const isMiniMode = mode === "os_pip" || mode === "docked";
-
   // ==================== RENDERING (UNIFIED SINGLE VIDEO TREE) ====================
   return (
     <motion.div
@@ -2134,17 +2187,25 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       onMouseMove={(e) => {
         if (mode === "full") {
           triggerActivity();
-        } else if (mode === "os_pip" && pipDragStartRef.current?.isDown) {
-          const dx = Math.abs(e.clientX - pipDragStartRef.current.x);
-          const dy = Math.abs(e.clientY - pipDragStartRef.current.y);
-          if (dx > 4 || dy > 4) {
-            pipDragStartRef.current = null;
-            if (clickTimerRef.current) {
-              clearTimeout(clickTimerRef.current);
-              clickTimerRef.current = null;
+        } else {
+          handleMiniMouseMove();
+          if (mode === "os_pip" && pipDragStartRef.current?.isDown) {
+            const dx = Math.abs(e.clientX - pipDragStartRef.current.x);
+            const dy = Math.abs(e.clientY - pipDragStartRef.current.y);
+            if (dx > 4 || dy > 4) {
+              pipDragStartRef.current = null;
+              if (clickTimerRef.current) {
+                clearTimeout(clickTimerRef.current);
+                clickTimerRef.current = null;
+              }
+              api.startDragWindow().catch(() => {});
             }
-            api.startDragWindow().catch(() => {});
           }
+        }
+      }}
+      onMouseLeave={() => {
+        if (isMiniMode) {
+          handleMiniMouseLeave();
         }
       }}
       onMouseUp={() => {
@@ -2299,7 +2360,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
         {/* ================= UNIFIED MINI-PLAYER OVERLAY (OS PiP & Docked) ================= */}
         {isMiniMode && (
-          <div className="absolute inset-0 z-20 flex flex-col justify-between transition-opacity duration-200 opacity-0 group-hover:opacity-100 pointer-events-none">
+          <div
+            className={cn(
+              "absolute inset-0 z-20 flex flex-col justify-between transition-opacity duration-200 pointer-events-none",
+              miniControlsVisible ? "opacity-100" : "opacity-0"
+            )}
+          >
             {/* Top Shadow Gradient */}
             <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/85 via-black/40 to-transparent pointer-events-none" />
 
@@ -3375,40 +3441,40 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {showMediaInfo && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className="absolute top-16 left-6 z-50 w-72 bg-zinc-950/95 border border-white/15 rounded-2xl p-4 text-xs font-mono text-zinc-300 shadow-2xl space-y-2 select-none animate-in fade-in duration-150"
+            className="absolute top-16 left-6 z-50 w-[380px] max-w-[calc(100vw-3rem)] bg-zinc-950/80 backdrop-blur-xl border border-white/10 rounded-2xl p-4.5 text-xs font-mono text-zinc-300 shadow-2xl shadow-black/80 space-y-2.5 select-none animate-in fade-in duration-150"
           >
-            <div className="flex items-center justify-between border-b border-white/10 pb-2">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
               <div className="flex items-center gap-2 text-white font-bold text-xs">
                 <Info className="w-4 h-4 text-rose-500" />
                 <span>Статистика потоку</span>
               </div>
               <button
                 onClick={() => setShowMediaInfo(false)}
-                className="p-1 rounded-md hover:bg-white/10 text-zinc-400 hover:text-white cursor-pointer"
+                className="p-1 rounded-lg hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
 
-            <div className="space-y-1.5 text-[11px]">
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Назва:</span>
-                <span className="text-right truncate ml-2 max-w-[170px] text-white font-sans">{details.title}</span>
+            <div className="space-y-2 text-[11px]">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-zinc-500 shrink-0">Назва:</span>
+                <span className="text-right truncate ml-2 max-w-[220px] text-white font-sans">{details.title}</span>
               </div>
               {isSeries && (
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">Серія:</span>
-                  <span className="text-white font-bold">S{activeSeason}E{activeEpisode}</span>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-zinc-500 shrink-0">Серія:</span>
+                  <span className="text-white font-bold font-mono">S{activeSeason}E{activeEpisode}</span>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Роздільність:</span>
-                <span className="text-emerald-400 font-bold">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-zinc-500 shrink-0">Роздільність:</span>
+                <span className="text-emerald-400 font-bold font-mono">
                   {videoRef.current ? `${videoRef.current.videoWidth}×${videoRef.current.videoHeight}` : "—"}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Частота кадрів:</span>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-zinc-500 shrink-0">Частота кадрів:</span>
                 <span
                   className={cn(
                     "font-bold font-mono",
@@ -3428,11 +3494,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   )}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Покращення:</span>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-zinc-500 shrink-0">Покращення:</span>
                 <span
                   className={cn(
-                    "font-medium",
+                    "font-medium text-right truncate max-w-[220px]",
                     videoEnhanceMode === "off"
                       ? "text-zinc-400"
                       : videoEnhanceMode === "max"
@@ -3449,45 +3515,45 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     : "Макс (Deband + CAS)"}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Якість:</span>
-                <span className="text-white">{selectedQuality?.label || "Auto"}</span>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-zinc-500 shrink-0">Якість:</span>
+                <span className="text-white font-mono">{selectedQuality?.label || "Auto"}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Тип потоку:</span>
-                <span className="text-rose-400 truncate ml-2">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-zinc-500 shrink-0">Тип потоку:</span>
+                <span className="text-rose-400 truncate ml-2 font-medium">
                   {selectedQuality?.mp4_url ? "Прямий MP4 (Voidboost)" : "HLS Manifest"}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Smart CDN:</span>
-                <span className="text-emerald-400 font-mono font-medium truncate ml-2 max-w-[170px]" title={streamData?.cdn_host || "Voidboost Edge"}>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-zinc-500 shrink-0">Smart CDN:</span>
+                <span className="text-emerald-400 font-mono font-medium truncate ml-2 max-w-[220px]" title={streamData?.cdn_host || "Voidboost Edge"}>
                   {streamData?.cdn_host || "Voidboost Edge"} {streamData?.cdn_ping_ms ? `(${streamData.cdn_ping_ms} мс)` : ""}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Turbo-буфер:</span>
-                <span className={cn("font-medium", turboBufferEnabled ? "text-amber-400 font-bold" : "text-zinc-400")}>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-zinc-500 shrink-0">Turbo-буфер:</span>
+                <span className={cn("font-medium shrink-0", turboBufferEnabled ? "text-amber-400 font-bold" : "text-zinc-400")}>
                   {turboBufferEnabled ? "⚡ Активний (Multi-segment)" : "Вимкнено"}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Буфер:</span>
-                <span className="text-white">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-zinc-500 shrink-0">Буфер:</span>
+                <span className="text-white font-mono">
                   {videoRef.current ? `${Math.max(0, getBufferedEnd() - currentTime).toFixed(1)} сек` : "—"}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Швидкість:</span>
-                <span className="text-white">{playbackSpeed}x</span>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-zinc-500 shrink-0">Швидкість:</span>
+                <span className="text-white font-mono">{playbackSpeed}x</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Пропорції:</span>
-                <span className="text-white uppercase">{aspectRatioMode}</span>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-zinc-500 shrink-0">Пропорції:</span>
+                <span className="text-white font-mono uppercase">{aspectRatioMode}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Озвучка:</span>
-                <span className="text-right truncate ml-2 max-w-[160px] text-white">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-zinc-500 shrink-0">Озвучка:</span>
+                <span className="text-right truncate ml-2 max-w-[200px] text-white">
                   {currentTranslator?.name || "Оригінал"}
                 </span>
               </div>
