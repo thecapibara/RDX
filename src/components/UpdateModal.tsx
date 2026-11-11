@@ -75,18 +75,43 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
     return `${mb.toFixed(1)} MB`;
   };
 
+  // Parse markdown changelog into clean formatted lines
+  const cleanChangelogItems = React.useMemo(() => {
+    if (!update.changelog) return [];
+
+    let text = update.changelog;
+
+    // If bilingual release notes, prioritize Ukrainian section
+    if (text.includes("### 🇺🇦")) {
+      const parts = text.split("### 🇬🇧");
+      text = parts[0];
+    }
+
+    // Split and filter out raw markdown table, headers, hr
+    return text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => {
+        if (!l) return false;
+        if (l.startsWith("##") || l.startsWith("###") || l.startsWith("---") || l.startsWith("|")) return false;
+        if (l.toLowerCase().includes("cross-platform native desktop")) return false;
+        return true;
+      })
+      .map((line) => line.replace(/^[•\-\*]\s*/, ""));
+  }, [update.changelog]);
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
       <div
         className="relative w-full max-w-xl overflow-hidden rounded-3xl bg-zinc-950 border border-rose-500/30 shadow-2xl shadow-rose-950/60 flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Banner Hero with Gradient Overlay */}
-        <div className="relative h-44 sm:h-48 w-full overflow-hidden shrink-0 select-none">
+        {/* Banner Hero: Clean Graphic Without Text Clutter */}
+        <div className="relative h-36 sm:h-40 w-full overflow-hidden shrink-0 select-none">
           <img
             src="/banner.jpg"
             alt="RDX"
-            className="w-full h-full object-cover object-center filter brightness-90"
+            className="w-full h-full object-cover object-center filter brightness-95"
             onError={(e) => {
               (e.currentTarget as HTMLElement).style.display = "none";
             }}
@@ -96,42 +121,39 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
           {/* Close button top right */}
           <button
             onClick={onClose}
-            className="absolute top-3.5 right-3.5 p-2 rounded-full bg-black/50 hover:bg-black/80 text-zinc-400 hover:text-white transition-all cursor-pointer backdrop-blur-sm border border-white/10"
+            className="absolute top-3.5 right-3.5 p-2 rounded-full bg-black/60 hover:bg-black/90 text-zinc-400 hover:text-white transition-all cursor-pointer backdrop-blur-md border border-white/10 active:scale-95 shadow-lg"
             title="Закрити"
           >
             <X className="w-4 h-4" />
           </button>
-
-          {/* Hero Content */}
-          <div className="absolute bottom-3 left-6 right-6 flex items-end justify-between gap-3">
-            <div className="space-y-1">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/40 text-[11px] font-bold text-rose-300 backdrop-blur-sm">
-                <Sparkles className="w-3 h-3 text-rose-400" />
-                <span>Доступне оновлення RDX</span>
-              </div>
-              <div className="flex items-center gap-2 pt-0.5">
-                <span className="text-xs font-mono text-zinc-400">v{update.currentVersion}</span>
-                <ArrowRight className="w-3.5 h-3.5 text-rose-400" />
-                <span className="text-base sm:text-lg font-black text-rose-300 font-mono tracking-tight bg-rose-950/60 px-2 py-0.5 rounded-lg border border-rose-500/40">
-                  v{update.version}
-                </span>
-              </div>
-            </div>
-
-            {update.publishedAt && (
-              <span className="text-[11px] text-zinc-400 font-medium">
-                {update.publishedAt}
-              </span>
-            )}
-          </div>
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 space-y-4 overflow-y-auto flex-1 text-sm text-zinc-300">
-          {/* Release Name */}
-          <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-3">
+        <div className="p-6 pt-3 space-y-4 overflow-y-auto flex-1 text-sm text-zinc-300">
+          {/* Header Info Bar: Uncluttered & Proportional */}
+          <div className="space-y-2 border-b border-white/10 pb-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-500/15 border border-rose-500/35 text-[11px] font-bold text-rose-300">
+                  <Sparkles className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Доступне оновлення</span>
+                </div>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] font-mono">
+                  <span className="text-zinc-400">v{update.currentVersion}</span>
+                  <ArrowRight className="w-3 h-3 text-rose-400" />
+                  <span className="font-bold text-rose-300">v{update.version}</span>
+                </div>
+              </div>
+
+              {update.publishedAt && (
+                <span className="text-xs text-zinc-400 font-medium">
+                  {update.publishedAt}
+                </span>
+              )}
+            </div>
+
             <div>
-              <h3 className="font-bold text-white text-base">
+              <h3 className="font-black text-white text-lg tracking-tight">
                 {update.releaseName}
               </h3>
               <p className="text-xs text-zinc-400 mt-0.5">
@@ -222,13 +244,36 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
             </div>
           ) : null}
 
-          {/* Changelog Section */}
-          <div className="space-y-1.5">
+          {/* Changelog Section: Formatted & Styled */}
+          <div className="space-y-2">
             <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
               Що нового:
             </span>
-            <div className="p-3.5 rounded-2xl bg-zinc-900/90 border border-white/10 text-xs sm:text-sm text-zinc-300 leading-relaxed font-sans max-h-48 overflow-y-auto whitespace-pre-line space-y-1 select-text">
-              {update.changelog}
+            <div className="p-4 rounded-2xl bg-zinc-900/90 border border-white/10 max-h-48 overflow-y-auto space-y-2.5 select-text">
+              {cleanChangelogItems.length > 0 ? (
+                cleanChangelogItems.map((line, idx) => {
+                  const parts = line.split(/\*\*(.*?)\*\*/);
+                  return (
+                    <div key={idx} className="flex items-start gap-2.5 text-xs text-zinc-300 leading-relaxed">
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1.5 shrink-0 shadow-sm shadow-rose-500/50" />
+                      <div className="flex-1">
+                        {parts.length >= 3 ? (
+                          <>
+                            <span className="font-bold text-rose-200">{parts[1]}</span>
+                            <span>{parts.slice(2).join("")}</span>
+                          </>
+                        ) : (
+                          <span>{line}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-xs text-zinc-400 leading-relaxed">
+                  {update.changelog}
+                </div>
+              )}
             </div>
           </div>
         </div>
