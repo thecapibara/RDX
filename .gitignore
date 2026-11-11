@@ -35,5 +35,9 @@ Thumbs.db
 *.sln
 *.sw?
 
+# Private signing keys (NEVER commit)
+*.key
+*.key.pub
+
 # Internal task tracker
 docs/TASKS.md

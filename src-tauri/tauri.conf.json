@@ -46,5 +46,13 @@
       "icons/icon.png",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYyNUMxMzJERkFDQ0IwNDAKUldSQXNNejZMUk5jOHJucnFTOHo3dmU2c0R0RHdNTEVMRjdTVEx6WkQ1c2d2WW01Q0F4bUVFWjUK",
+      "endpoints": [
+        "https://github.com/thecapibara/RDX/releases/latest/download/latest.json"
+      ]
+    }
   }
 }
