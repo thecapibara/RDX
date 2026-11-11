@@ -146,29 +146,16 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
           </div>
         </div>
 
-        {/* Bottom Time & Translator */}
-        <div className="absolute bottom-2.5 left-2.5 right-2.5 flex flex-col gap-0.5 z-10 pointer-events-none">
-          {item.translator_name && (
-            <span className="truncate text-zinc-300 text-[10px] font-medium drop-shadow-sm">
-              {item.translator_name}
-            </span>
-          )}
-          <div className="flex items-center justify-between text-[10px] font-mono font-medium text-zinc-300">
-            <span>{formatDuration(item.position_sec)}</span>
-            <span className="text-zinc-400">/ {formatDuration(item.duration_sec)}</span>
-          </div>
-        </div>
-
         {/* Progress Bar at the bottom edge */}
-        <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-zinc-800/90 overflow-hidden pointer-events-none">
+        <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-zinc-950/80 overflow-hidden pointer-events-none z-10">
           <div
-            className="h-full bg-gradient-to-r from-rose-600 via-rose-500 to-amber-400"
+            className="h-full bg-gradient-to-r from-rose-600 via-rose-500 to-amber-400 transition-all duration-200"
             style={{ width: `${progressPercent}%` }}
           />
         </div>
       </div>
 
-      {/* Title */}
+      {/* Title & Info */}
       <div
         onClick={(e) => {
           e.stopPropagation();
@@ -186,11 +173,19 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
           }
         }}
         title={`Відкрити «${item.title}»`}
-        className="mt-2 px-1 cursor-pointer group/title"
+        className="mt-2 px-0.5 space-y-1 cursor-pointer group/title"
       >
         <h4 className="text-sm font-semibold text-zinc-100 truncate group-hover/title:text-rose-400 group-hover:text-rose-400 transition-colors duration-150">
           {item.title}
         </h4>
+        <div className="flex items-center justify-between text-xs text-zinc-400">
+          <span className="truncate max-w-[55%]">
+            {item.translator_name || (item.season !== null ? `Сезон ${item.season}` : "Фільм")}
+          </span>
+          <span className="font-mono text-[11px] text-zinc-400 shrink-0">
+            {formatDuration(item.position_sec)} / {formatDuration(item.duration_sec)}
+          </span>
+        </div>
       </div>
     </div>
   );

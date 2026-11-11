@@ -957,11 +957,13 @@ export default function App() {
       />
 
       {/* OTA GitHub Release Auto-Updater Modal */}
-      <UpdateModal
-        update={availableUpdate}
-        isOpen={isUpdateModalOpen}
-        onClose={() => setIsUpdateModalOpen(false)}
-      />
+      {availableUpdate && (
+        <UpdateModal
+          update={availableUpdate}
+          isOpen={isUpdateModalOpen}
+          onClose={() => setIsUpdateModalOpen(false)}
+        />
+      )}
 
       {/* Custom Cinema Video Player (Overlay / Docked Mini-Player / OS PiP) */}
       {activePlayerDetails && (

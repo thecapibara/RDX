@@ -24,6 +24,31 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
     }
   }, [update]);
 
+  // Parse markdown changelog into clean formatted lines (Hook called unconditionally at top)
+  const cleanChangelogItems = React.useMemo(() => {
+    if (!update?.changelog) return [];
+
+    let text = update.changelog;
+
+    // If bilingual release notes, prioritize Ukrainian section
+    if (text.includes("### 🇺🇦")) {
+      const parts = text.split("### 🇬🇧");
+      text = parts[0];
+    }
+
+    // Split and filter out raw markdown table, headers, hr
+    return text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => {
+        if (!l) return false;
+        if (l.startsWith("##") || l.startsWith("###") || l.startsWith("---") || l.startsWith("|")) return false;
+        if (l.toLowerCase().includes("cross-platform native desktop")) return false;
+        return true;
+      })
+      .map((line) => line.replace(/^[•\-\*]\s*/, ""));
+  }, [update?.changelog]);
+
   // Classify available assets into user-friendly packages
   const allAssets = update?.allAssets || (update?.asset ? [update.asset] : []);
   const installablePackages = allAssets
@@ -74,31 +99,6 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
     const mb = bytes / (1024 * 1024);
     return `${mb.toFixed(1)} MB`;
   };
-
-  // Parse markdown changelog into clean formatted lines
-  const cleanChangelogItems = React.useMemo(() => {
-    if (!update.changelog) return [];
-
-    let text = update.changelog;
-
-    // If bilingual release notes, prioritize Ukrainian section
-    if (text.includes("### 🇺🇦")) {
-      const parts = text.split("### 🇬🇧");
-      text = parts[0];
-    }
-
-    // Split and filter out raw markdown table, headers, hr
-    return text
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => {
-        if (!l) return false;
-        if (l.startsWith("##") || l.startsWith("###") || l.startsWith("---") || l.startsWith("|")) return false;
-        if (l.toLowerCase().includes("cross-platform native desktop")) return false;
-        return true;
-      })
-      .map((line) => line.replace(/^[•\-\*]\s*/, ""));
-  }, [update.changelog]);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">

@@ -92,6 +92,10 @@ jobs:
               - Збільшено ширину віконця до 380px для запобігання переносу тексту в рядках Turbo-буфера (Multi-segment) та CDN.
               - Застосовано стильний напівпрозорий скляний фон із розмиттям (`bg-zinc-950/80 backdrop-blur-xl border border-white/10`).
 
+            - **✨ Виправлення інтерфейсу та стабільності (UI Polish & Stability)**:
+              - **Картки продовження перегляду:** вирівняно таймлайни та мітки озвучки в акуратний підпис під постером, а прогрес-бар закріплено на нижньому краї постера.
+              - **Модальне вікно оновлень:** оптимізовано рендеринг списку змін та стабільність діалогу ОТА.
+
             - **📥 Усі можливості версії 1.0.6 збережено та вдосконалено**:
               - Гнучкий вибір серій та сезонів у завантажувачі.
               - Інтерактивний вибір формату пакета (.rpm, .deb, AppImage, .exe, .dmg) у вікні оновлень.
@@ -111,6 +115,10 @@ jobs:
             - **📊 Polished Stream Diagnostics Overlay (`I`)**:
               - Widened statistics overlay to 380px to eliminate awkward text line-breaks in Turbo-buffer (Multi-segment) and CDN rows.
               - Modernized with a sleek translucent dark glassmorphism aesthetic (`backdrop-blur-xl`).
+
+            - **✨ UI Polish & Stability**:
+              - **Continue Watching Cards:** Harmonized timeline and translation metadata underneath posters with a clean bottom-edge progress bar.
+              - **Update Modal:** Fortified changelog rendering and hook lifecycle in OTA dialog.
 
             - **📥 Inherited v1.0.6 Capabilities**:
               - Custom multi-episode & multi-season selection downloader.
