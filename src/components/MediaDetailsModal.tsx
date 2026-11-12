@@ -181,13 +181,26 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
       setLoading(true);
       setFetchError(null);
       try {
-        const [det, progress, epProgress] = await Promise.all([
+        const [det, initialProgress, initialEpProgress] = await Promise.all([
           api.getMediaDetails(media.url),
-          api.getWatchProgress(media.id).catch(() => null),
-          api.getEpisodeProgress(media.id).catch(() => []),
+          media.id ? api.getWatchProgress(media.id).catch(() => null) : Promise.resolve(null),
+          media.id ? api.getEpisodeProgress(media.id).catch(() => []) : Promise.resolve([]),
         ]);
 
         if (!isMounted) return;
+
+        // Fall back to det.id (parsed from canonical page URL) if media.id was empty or differed
+        let progress = initialProgress;
+        let epProgress = initialEpProgress || [];
+        if (det.id && det.id !== media.id) {
+          if (!progress) {
+            progress = await api.getWatchProgress(det.id).catch(() => null);
+          }
+          if (epProgress.length === 0) {
+            epProgress = await api.getEpisodeProgress(det.id).catch(() => []);
+          }
+          if (!isMounted) return;
+        }
 
         // Check if media.series_info hints at higher season count (e.g. "8 сезон 10 серія" or "S08E10")
         let hintedMax = det.seasons.length;

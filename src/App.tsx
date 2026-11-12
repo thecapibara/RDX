@@ -501,7 +501,12 @@ export default function App() {
   const handleDirectPlay = useCallback(async (card: MediaCardType) => {
     try {
       let details = await api.getMediaDetails(card.url);
-      const saved = await api.getWatchProgress(card.id).catch(() => null);
+      let saved = details.id
+        ? await api.getWatchProgress(details.id).catch(() => null)
+        : null;
+      if (!saved && card.id && card.id !== details.id) {
+        saved = await api.getWatchProgress(card.id).catch(() => null);
+      }
 
       const isSeries = Boolean(
         (details.seasons && details.seasons.length > 0) || saved?.season

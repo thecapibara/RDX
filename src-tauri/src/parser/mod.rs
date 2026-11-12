@@ -78,12 +78,6 @@ impl RezkaParser {
         let mut cards = Vec::new();
 
         for element in document.select(&ITEM_SEL) {
-            let id = element
-                .value()
-                .attr("data-id")
-                .map(|s| s.to_string())
-                .unwrap_or_default();
-
             let data_url = element.value().attr("data-url");
 
             let (title, url) = if let Some(link_elem) = element.select(&LINK_SEL).next() {
@@ -99,6 +93,19 @@ impl RezkaParser {
             if title.is_empty() && url.is_empty() {
                 continue;
             }
+
+            let id = element
+                .value()
+                .attr("data-id")
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    ID_RE
+                        .captures(&url)
+                        .and_then(|c| c.get(1))
+                        .map(|m| m.as_str().to_string())
+                })
+                .unwrap_or_default();
 
             let poster = element
                 .select(&COVER_IMG_SEL)
