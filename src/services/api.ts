@@ -804,4 +804,19 @@ export const api = {
     }
     return null;
   },
+
+  getSystemTime: async (): Promise<string> => {
+    if (isTauri) {
+      try {
+        return await invoke<string>("get_system_time");
+      } catch {
+        // Fall back to JS clock if invocation fails
+      }
+    }
+    const now = new Date();
+    return now.toLocaleTimeString("uk-UA", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  },
 };

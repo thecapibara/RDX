@@ -3,6 +3,7 @@ import { Search, Maximize, Minimize, ChevronDown, Settings, Download } from "luc
 import type { MirrorStatus } from "../types";
 import { cn } from "../lib/utils";
 import { playButtonClickSound } from "../services/sound";
+import { api } from "../services/api";
 
 export type NavTab =
   | "home"
@@ -53,21 +54,34 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Live TV Clock (HH:MM e.g. 23:47)
+  // Live TV Clock (HH:MM e.g. 23:47) with host system time synchronization
   useEffect(() => {
+    let isMounted = true;
     const updateTime = () => {
-      const now = new Date();
-      setTimeString(
-        now.toLocaleTimeString("uk-UA", {
-          hour: "2-digit",
-          minute: "2-digit",
+      api
+        .getSystemTime()
+        .then((time) => {
+          if (isMounted && time) setTimeString(time);
         })
-      );
+        .catch(() => {
+          const now = new Date();
+          if (isMounted) {
+            setTimeString(
+              now.toLocaleTimeString("uk-UA", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            );
+          }
+        });
     };
 
     updateTime();
     const interval = setInterval(updateTime, 10000);
-    return () => clearInterval(interval);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   // Fullscreen state listener

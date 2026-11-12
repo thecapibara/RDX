@@ -134,6 +134,7 @@ pub fn run() {
             commands::get_turbo_stats,
             commands::select_fastest_cdn,
             commands::get_backdrop,
+            commands::get_system_time,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -944,4 +944,12 @@ pub async fn get_backdrop(
     Ok(state.tmdb.get_backdrop(&title, orig_title.as_deref(), year.as_deref()).await)
 }
 
+// ==================== System & Clock Commands ====================
+
+#[tauri::command]
+pub fn get_system_time() -> String {
+    chrono::Local::now().format("%H:%M").to_string()
+}
+
+
 

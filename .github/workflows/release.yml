@@ -59,7 +59,16 @@ jobs:
             curl \
             wget \
             file \
-            libxdo-dev
+            libxdo-dev \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-plugins-ugly \
+            gstreamer1.0-libav \
+            gstreamer1.0-tools \
+            gstreamer1.0-vaapi
 
       - name: Install frontend dependencies
         run: npm ci
@@ -73,7 +82,7 @@ jobs:
           tagName: v__VERSION__
           releaseName: 'RDX v__VERSION__'
           releaseBody: |
-            ## RDX v__VERSION__ — Mini-Player Autohide, Universal Shortcuts & Glassmorphism Stats
+            ## RDX v__VERSION__ — Linux AppImage Codecs Fix, Native Host Clock & Playback Hardening
 
             Cross-platform native desktop streaming client (Linux, Windows, macOS) built with **Rust (Tauri v2)**, **React 19**, **Tailwind CSS v4**, and **HLS.js**, inspired by modern Android TV & Smart TV interfaces with an *Obsidian Crimson* aesthetic.
 
@@ -81,39 +90,37 @@ jobs:
 
             ### 🇺🇦 Що нового у версії __VERSION__:
 
-            - **📺 Покращення міні-плеєра (Mini-Player Autohide & Clean Context)**:
-              - **Автозникання кнопок:** додано миттєве приховування контролерів керування при відведенні миші за межі міні-вікна та 2.5-секундний таймер неактивності курсора під час відтворення.
-              - **Чистий контекст:** вимкнено громіздке повноекранне контекстне меню плеєра по правому кліку (ПКМ) у режимі міні-плеєра (PiP / docked), щоб меню більше не перекривало відео.
+            - **🎬 Виправлення відтворення відео в Linux AppImage (H.264/AVC Codecs Bundle)**:
+              - У збірку Linux AppImage додано повний набір мультимедійних кодеків GStreamer (`gstreamer1.0-libav`, `gst-plugins-bad`, `gst-plugins-ugly`, `vaapi`).
+              - Вирішено проблему нескінченного завантаження та буфера `0.0 сек` — усі H.264 MP4 та HLS стріми відтворюються гладко на будь-яких дистрибутивах (Ubuntu, Arch, Fedora, Debian, Mint).
 
-            - **⌨️ Універсальні гарячі клавіші (Universal Shortcuts)**:
-              - Шорткати переведено на фізичні сканкоди клавіш (`e.code`): `F` (повний екран), `Space` / `K` (пауза), `M` (звук), `S` (скриншот), `L` (повтор відрізка A-B), `I` (статистика потоку) тепер стабільно працюють **як на українській, так і на англійській розкладці клавіатури**.
+            - **🕒 Точна синхронізація локального часу (Native Clock Sync)**:
+              - Годинник верхньої панелі переведено на пряме опитування Rust-бекенду (`chrono::Local`), усуваючи скидання часу в UTC (+00:00) всередині пісочниці WebKitGTK.
 
-            - **📊 Оновлений оверлей статистики потоку (`I`)**:
-              - Збільшено ширину віконця до 380px для запобігання переносу тексту в рядках Turbo-буфера (Multi-segment) та CDN.
-              - Застосовано стильний напівпрозорий скляний фон із розмиттям (`bg-zinc-950/80 backdrop-blur-xl border border-white/10`).
-
-            - **📥 Усі можливості версії 1.0.6 збережено та вдосконалено**:
-              - Гнучкий вибір серій та сезонів у завантажувачі.
-              - Інтерактивний вибір формату пакета (.rpm, .deb, AppImage, .exe, .dmg) у вікні оновлень.
-              - Криптографічний підпис оновлень Minisign ED25519.
+            - **📥 Усі можливості версії 1.0.7 збережено та вдосконалено**:
+              - Розумне автозникання контролерів міні-плеєра (Mini-Player Autohide).
+              - Універсальні клавіатурні шорткати (`F`, `Space`, `M`, `S`, `L`, `I`) незалежно від мовної розкладки.
+              - Оверлей діагностики та статистики потоку (`I`).
+              - Мультивибір серій та сезонів у завантажувачі.
+              - Автооновлення Minisign ED25519.
 
             ---
 
             ### 🇬🇧 What's New in v__VERSION__:
 
-            - **📺 Mini-Player Experience Improvements**:
-              - **Smart Autohide:** Instant hiding of playback controls upon mouse leaving the mini-player window, with a 2.5s inactivity fade-out while playing.
-              - **Clean Context:** Disabled heavy full-player right-click context menu in mini-player mode (PiP / docked) to keep the video unobstructed.
+            - **🎬 Linux AppImage Video Playback & H.264/AVC Codecs Fix**:
+              - Bundled complete GStreamer multimedia codec suite (`gstreamer1.0-libav`, `bad`, `ugly`, `vaapi`) inside the universal Linux AppImage.
+              - Fixes infinite loading spinner and `0.0s buffer` stall on Linux — all H.264 MP4 and HLS streams now decode natively across all distributions.
 
-            - **⌨️ Universal Layout-Independent Keyboard Shortcuts**:
-              - Upgraded all player hotkeys to physical key scancodes (`e.code`): `F` (Fullscreen), `Space` / `K` (Play/Pause), `M` (Mute), `S` (Screenshot), `L` (A-B Loop), `I` (Stats overlay) now work seamlessly across Ukrainian, English, and any international keyboard layout.
+            - **🕒 Native Host Clock Synchronization**:
+              - Top navigation TV clock is now synchronized directly via native Rust backend (`chrono::Local`), preventing WebKitGTK sandbox UTC (+00:00) fallback.
 
-            - **📊 Polished Stream Diagnostics Overlay (`I`)**:
-              - Widened statistics overlay to 380px to eliminate awkward text line-breaks in Turbo-buffer (Multi-segment) and CDN rows.
-              - Modernized with a sleek translucent dark glassmorphism aesthetic (`backdrop-blur-xl`).
-
-            - **📥 Inherited v1.0.6 Capabilities**:
-              - Custom multi-episode & multi-season selection downloader.
+            - **📥 Inherited v1.0.7 Capabilities**:
+              - Mini-Player smart controls autohide & clean context.
+              - Layout-independent physical scancode keyboard shortcuts (`F`, `Space`, `M`, `S`, `L`, `I`).
+              - Stream diagnostics overlay (`I`).
+              - Batch downloader with multi-episode/season picker.
+              - Secure cryptographic Minisign OTA updates.
               - Direct package format switcher (.rpm, .deb, AppImage, .exe, .dmg) in updater modal.
               - Secure cryptographic Minisign ED25519 signed OTA updates.
 
