@@ -152,7 +152,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
             {/* Cinematic Edge Blends */}
             <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/85 via-40% to-transparent w-full" />
             <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-transparent to-[var(--bg-base,#000000)]/30 pointer-events-none" />
-            <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/90 to-transparent pointer-events-none" />
+            <div className="absolute inset-x-0 -bottom-px h-44 bg-gradient-to-t from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/90 to-transparent pointer-events-none" />
           </motion.div>
         ) : (
           /* 2. Fallback: Ambient Aurora Glow from poster (ZERO pixelation, smooth cinematic glow) */
@@ -179,7 +179,9 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
 
       {/* 3. Text Backdrop Gradient Layer (Ensures maximum legibility on left) */}
       <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/90 via-35% md:via-45% to-transparent w-full md:w-4/5 pointer-events-none z-[5]" />
-      <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-transparent to-transparent pointer-events-none z-[5]" />
+      <div className="absolute inset-x-0 top-0 -bottom-px bg-gradient-to-t from-[var(--bg-base,#000000)] via-transparent to-transparent pointer-events-none z-[5]" />
+      {/* Solid 2px bottom seam cover prevents subpixel GPU-layer bleed from transform-gpu backdrop during scroll */}
+      <div className="absolute inset-x-0 -bottom-px h-[3px] bg-[var(--bg-base,#000000)] pointer-events-none z-[6]" />
 
       {/* Content Container (Left-aligned text & actions) */}
       <div className="relative z-10 h-full flex flex-col justify-end px-[clamp(1.5rem,5vw,5rem)] pb-12 max-w-5xl space-y-4">
