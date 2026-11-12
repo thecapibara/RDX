@@ -939,9 +939,18 @@ pub async fn get_backdrop(
     title: String,
     orig_title: Option<String>,
     year: Option<String>,
+    media_type: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Option<String>, String> {
-    Ok(state.tmdb.get_backdrop(&title, orig_title.as_deref(), year.as_deref()).await)
+    Ok(state
+        .tmdb
+        .get_backdrop(
+            &title,
+            orig_title.as_deref(),
+            year.as_deref(),
+            media_type.as_deref(),
+        )
+        .await)
 }
 
 // ==================== System & Clock Commands ====================

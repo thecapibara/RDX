@@ -17,6 +17,7 @@ struct TmdbSearchResponse {
 #[derive(Debug, Deserialize)]
 struct TmdbSearchResult {
     backdrop_path: Option<String>,
+    media_type: Option<String>,
     #[serde(default)]
     vote_count: u32,
     #[serde(default)]
@@ -51,9 +52,11 @@ impl TmdbService {
         let mut candidates = Vec::new();
 
         if let Some(orig) = orig_title {
-            let trimmed = orig.trim();
-            if !trimmed.is_empty() {
-                candidates.push(trimmed.to_string());
+            for part in orig.split('/').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                let cleaned = part.to_string();
+                if !candidates.contains(&cleaned) {
+                    candidates.push(cleaned);
+                }
             }
         }
 
@@ -77,12 +80,19 @@ impl TmdbService {
         candidates
     }
 
-    pub async fn get_backdrop(&self, title: &str, orig_title: Option<&str>, year: Option<&str>) -> Option<String> {
+    pub async fn get_backdrop(
+        &self,
+        title: &str,
+        orig_title: Option<&str>,
+        year: Option<&str>,
+        media_type: Option<&str>,
+    ) -> Option<String> {
         let cache_key = format!(
-            "{}:{}:{}",
+            "{}:{}:{}:{}",
             title.trim(),
             orig_title.unwrap_or("").trim(),
-            year.unwrap_or("").trim()
+            year.unwrap_or("").trim(),
+            media_type.unwrap_or("").trim()
         );
 
         // Fast in-memory cache lookup
@@ -95,6 +105,7 @@ impl TmdbService {
 
         let candidates = Self::generate_candidates(title, orig_title);
         let mut best_match: Option<(f64, String)> = None;
+        let expected_year: Option<i32> = year.and_then(|y| y.trim().get(..4)).and_then(|y| y.parse().ok());
 
         for candidate in candidates {
             let encoded_query = urlencoding::encode(&candidate);
@@ -106,42 +117,58 @@ impl TmdbService {
             if let Ok(resp) = self.client.get(&url).send().await {
                 if let Ok(data) = resp.json::<TmdbSearchResponse>().await {
                     for item in data.results {
-                        if let Some(path) = item.backdrop_path {
-                            if !path.is_empty() {
-                                let mut score = (item.vote_count as f64) * 2.0 + item.popularity;
-                                if let Some(y) = year {
-                                    let rel_date = item
-                                        .release_date
-                                        .as_deref()
-                                        .or(item.first_air_date.as_deref())
-                                        .unwrap_or("");
-                                    if rel_date.contains(y) {
-                                        score += 1500.0;
-                                    }
-                                }
+                        let Some(path) = item.backdrop_path else { continue };
+                        if path.is_empty() {
+                            continue;
+                        }
 
-                                if let Some((best_score, _)) = &best_match {
-                                    if score > *best_score {
-                                        best_match = Some((
-                                            score,
-                                            format!("https://image.tmdb.org/t/p/original{}", path),
-                                        ));
-                                    }
+                        // Strictly filter out wrong media_type (e.g. TV series for a movie)
+                        let item_type = item.media_type.as_deref().unwrap_or("");
+                        if let Some(exp) = media_type {
+                            if (item_type == "movie" || item_type == "tv") && item_type != exp {
+                                continue;
+                            }
+                        } else if item_type == "person" {
+                            continue;
+                        }
+
+                        let mut score = (item.vote_count as f64) * 2.0 + item.popularity;
+
+                        if media_type.is_some() && item_type == media_type.unwrap_or("") {
+                            score += 20_000.0;
+                        }
+
+                        if let Some(exp_y) = expected_year {
+                            let rel_date = item
+                                .release_date
+                                .as_deref()
+                                .or(item.first_air_date.as_deref())
+                                .unwrap_or("");
+                            if let Some(item_y) = rel_date.get(..4).and_then(|y| y.parse::<i32>().ok()) {
+                                let diff = (item_y - exp_y).abs();
+                                if diff == 0 {
+                                    score += 100_000.0;
+                                } else if diff == 1 {
+                                    score += 40_000.0;
                                 } else {
-                                    best_match = Some((
-                                        score,
-                                        format!("https://image.tmdb.org/t/p/original{}", path),
-                                    ));
+                                    score -= 50_000.0;
                                 }
                             }
+                        }
+
+                        let full_url = format!("https://image.tmdb.org/t/p/original{}", path);
+                        match &best_match {
+                            Some((best_score, _)) if score <= *best_score => {}
+                            _ => best_match = Some((score, full_url)),
                         }
                     }
                 }
             }
 
-            // High-confidence match found (e.g. popular title with many votes)
+            // Early-exit only when we have a strong year+type match (or no year constraint)
             if let Some((score, _)) = &best_match {
-                if *score > 100.0 {
+                let threshold = if expected_year.is_some() { 100_000.0 } else { 100.0 };
+                if *score >= threshold {
                     break;
                 }
             }

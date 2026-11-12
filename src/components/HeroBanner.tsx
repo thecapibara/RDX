@@ -53,7 +53,9 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
       if (backdrops[key] !== undefined) return;
 
       const yearMatch = slide.misc_info?.match(/\b(19\d\d|20\d\d)\b/)?.[0];
-      api.getBackdrop(slide.title, (slide as any).orig_title, yearMatch).then((url) => {
+      const slideMediaType: "movie" | "tv" =
+        slide.entity_type === "series" || slide.url.includes("/series/") ? "tv" : "movie";
+      api.getBackdrop(slide.title, (slide as any).orig_title, yearMatch, slideMediaType).then((url) => {
         if (isMounted) {
           setBackdrops((prev) => ({ ...prev, [key]: url || null }));
         }

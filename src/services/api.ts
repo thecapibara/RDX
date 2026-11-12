@@ -793,10 +793,20 @@ export const api = {
     return ["auto", 0];
   },
 
-  getBackdrop: async (title: string, origTitle?: string, year?: string): Promise<string | null> => {
+  getBackdrop: async (
+    title: string,
+    origTitle?: string,
+    year?: string,
+    mediaType?: "movie" | "tv"
+  ): Promise<string | null> => {
     if (isTauri) {
       try {
-        return await invoke<string | null>("get_backdrop", { title, origTitle, year });
+        return await invoke<string | null>("get_backdrop", {
+          title,
+          origTitle,
+          year,
+          mediaType,
+        });
       } catch (e) {
         console.warn("[TMDB] Failed to get backdrop:", e);
         return null;
