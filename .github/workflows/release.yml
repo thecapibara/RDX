@@ -80,7 +80,7 @@ jobs:
           tagName: v__VERSION__
           releaseName: 'RDX v__VERSION__'
           releaseBody: |
-            ## RDX v__VERSION__ — Linux AppImage Codecs Fix, Native Host Clock & Playback Hardening
+            ## RDX v__VERSION__ — AppImage Host Codecs Fix, Movie Resume & Scroll Seam Polish
 
             Cross-platform native desktop streaming client (Linux, Windows, macOS) built with **Rust (Tauri v2)**, **React 19**, **Tailwind CSS v4**, and **HLS.js**, inspired by modern Android TV & Smart TV interfaces with an *Obsidian Crimson* aesthetic.
 
@@ -88,39 +88,34 @@ jobs:
 
             ### 🇺🇦 Що нового у версії __VERSION__:
 
-            - **🎬 Виправлення відтворення відео в Linux AppImage (H.264/AVC Codecs Bundle)**:
-              - У збірку Linux AppImage додано повний набір мультимедійних кодеків GStreamer (`gstreamer1.0-libav`, `gst-plugins-bad`, `gst-plugins-ugly`, `vaapi`).
-              - Вирішено проблему нескінченного завантаження та буфера `0.0 сек` — усі H.264 MP4 та HLS стріми відтворюються гладко на будь-яких дистрибутивах (Ubuntu, Arch, Fedora, Debian, Mint).
+            - **🐧 Виправлення відтворення відео в Linux AppImage (Host GStreamer Codecs)**:
+              - Вимкнено ізоляцію `bundleMediaFramework` всередині AppImage, щоб додаток без конфліктів ABI використовував системні кодеки GStreamer (H.264/AAC) на Linux Mint, Ubuntu, Fedora та Arch.
 
-            - **🕒 Точна синхронізація локального часу (Native Clock Sync)**:
-              - Годинник верхньої панелі переведено на пряме опитування Rust-бекенду (`chrono::Local`), усуваючи скидання часу в UTC (+00:00) всередині пісочниці WebKitGTK.
+            - **🎬 Відновлення прогресу фільмів із картки каталогу**:
+              - Виправлено проблему, коли фільм починався з `0:00` при відкритті через картку фільму та модалку деталей (`MediaDetailsModal`), якщо `data-id` картки був відсутній або відрізнявся від канонічного ID сторінки.
 
-            - **📥 Усі можливості версії 1.0.7 збережено та вдосконалено**:
-              - Розумне автозникання контролерів міні-плеєра (Mini-Player Autohide).
-              - Універсальні клавіатурні шорткати (`F`, `Space`, `M`, `S`, `L`, `I`) незалежно від мовної розкладки.
-              - Оверлей діагностики та статистики потоку (`I`).
-              - Мультивибір серій та сезонів у завантажувачі.
-              - Автооновлення Minisign ED25519.
+            - **✨ Візуальне полірування інтерфейсу (UI Polish)**:
+              - Усунуто тонку 1px горизонтальну смужку на нижній межі `HeroBanner` над секцією «Продовжити перегляд» під час скролу.
+              - Покращено синхронізацію метаданих медіасесії під час відтворення.
+
+            - **📥 Усі можливості попередніх версій збережено та вдосконалено**:
+              - Точна синхронізація локального часу з системним годинником (`chrono::Local`).
+              - Розумне автозникання контролерів міні-плеєра (Mini-Player Autohide) та універсальні шорткати (`F`, `Space`, `M`, `S`, `L`, `I`).
+              - Оверлей статистики потоку (`I`), мультивибір серій у завантажувачі та автооновлення Minisign ED25519.
 
             ---
 
             ### 🇬🇧 What's New in v__VERSION__:
 
-            - **🎬 Linux AppImage Video Playback & H.264/AVC Codecs Fix**:
-              - Bundled complete GStreamer multimedia codec suite (`gstreamer1.0-libav`, `bad`, `ugly`, `vaapi`) inside the universal Linux AppImage.
-              - Fixes infinite loading spinner and `0.0s buffer` stall on Linux — all H.264 MP4 and HLS streams now decode natively across all distributions.
+            - **🐧 Linux AppImage Video Playback Fix (Host GStreamer Codecs)**:
+              - Disabled `bundleMediaFramework` isolation in AppImage so it uses the host system's native GStreamer 1.0 codecs (H.264/AAC) without ABI mismatches across Linux Mint, Ubuntu, Fedora, and Arch.
 
-            - **🕒 Native Host Clock Synchronization**:
-              - Top navigation TV clock is now synchronized directly via native Rust backend (`chrono::Local`), preventing WebKitGTK sandbox UTC (+00:00) fallback.
+            - **🎬 Movie Resume from Catalog Cards**:
+              - Fixed an issue where movies started from `0:00` when launched via a catalog `MediaCard` / `MediaDetailsModal` instead of "Continue Watching" due to missing or mismatched `data-id` vs canonical page ID.
 
-            - **📥 Inherited v1.0.7 Capabilities**:
-              - Mini-Player smart controls autohide & clean context.
-              - Layout-independent physical scancode keyboard shortcuts (`F`, `Space`, `M`, `S`, `L`, `I`).
-              - Stream diagnostics overlay (`I`).
-              - Batch downloader with multi-episode/season picker.
-              - Secure cryptographic Minisign OTA updates.
-              - Direct package format switcher (.rpm, .deb, AppImage, .exe, .dmg) in updater modal.
-              - Secure cryptographic Minisign ED25519 signed OTA updates.
+            - **✨ UI & Playback Polish**:
+              - Eliminated the 1px subpixel seam at the bottom edge of `HeroBanner` above "Continue Watching" during scroll.
+              - Improved `MediaSession` metadata synchronization during playback.
 
             ---
 
