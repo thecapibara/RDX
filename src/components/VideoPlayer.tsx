@@ -1452,6 +1452,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // References to keep MPRIS in sync without recreating listeners
   const lastMprisSyncRef = useRef<number>(0);
+  const lastMediaSessionKeyRef = useRef<string>("");
 
   const syncMprisState = useCallback(
     (force = false, overridePlaying?: boolean, overrideTime?: number) => {
@@ -1474,6 +1475,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       const liveTime = videoRef.current?.currentTime ?? 0;
       const currentPos = overrideTime !== undefined ? overrideTime : liveTime;
       const playing = overridePlaying !== undefined ? overridePlaying : isPlaying;
+
+      // Sync WebKitGTK MediaSession metadata so its built-in MPRIS never falls back to "localhost"
+      if (typeof navigator !== "undefined" && "mediaSession" in navigator && navigator.mediaSession) {
+        try {
+          const metaKey = `${details.title}|${artist}|${album}|${details.poster || ""}`;
+          if (lastMediaSessionKeyRef.current !== metaKey) {
+            lastMediaSessionKeyRef.current = metaKey;
+            navigator.mediaSession.metadata = new MediaMetadata({
+              title: details.title,
+              artist,
+              album,
+              artwork: details.poster ? [{ src: details.poster }] : [],
+            });
+          }
+          navigator.mediaSession.playbackState = playing ? "playing" : "paused";
+        } catch {}
+      }
 
       api
         .updateMprisState({
