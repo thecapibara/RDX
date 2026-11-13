@@ -64,4 +64,4 @@ jobs:
             gstreamer1.0-vaapi
 
       - name: Cargo Check & Unit Tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        run: cargo test --lib --manifest-path src-tauri/Cargo.toml
