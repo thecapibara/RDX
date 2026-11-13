@@ -310,6 +310,11 @@ pub async fn open_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub async fn restart_app(app_handle: tauri::AppHandle) -> Result<(), String> {
+    app_handle.restart();
+}
+
 // ==================== Mirror Commands ====================
 
 #[tauri::command]

@@ -80,7 +80,7 @@ jobs:
           tagName: v__VERSION__
           releaseName: 'RDX v__VERSION__'
           releaseBody: |
-            ## RDX v__VERSION__ — AppImage Host Codecs Fix, Movie Resume & Scroll Seam Polish
+            ## RDX v__VERSION__ — Silent In-App OTA Updates, Smart TMDB Backdrops & Codecs Hardening
 
             Cross-platform native desktop streaming client (Linux, Windows, macOS) built with **Rust (Tauri v2)**, **React 19**, **Tailwind CSS v4**, and **HLS.js**, inspired by modern Android TV & Smart TV interfaces with an *Obsidian Crimson* aesthetic.
 
@@ -88,34 +88,35 @@ jobs:
 
             ### 🇺🇦 Що нового у версії __VERSION__:
 
-            - **🐧 Виправлення відтворення відео в Linux AppImage (Host GStreamer Codecs)**:
-              - Вимкнено ізоляцію `bundleMediaFramework` всередині AppImage, щоб додаток без конфліктів ABI використовував системні кодеки GStreamer (H.264/AAC) на Linux Mint, Ubuntu, Fedora та Arch.
+            - **⚡ Повноцінне тихе In-App автооновлення (Silent OTA Updater & Progress Bar)**:
+              - Реалізовано безшовне автооновлення через офіційний `tauri-plugin-updater` із підписом Minisign.
+              - Додаток завантажує оновлення прямо у вікні оновлень з плавним прогрес-баром (`0% → 100%`, швидкість та розмір у MB) та виконує оновлення без відкриття стороннього браузера чи діалогів файлової системи.
+              - Кнопка швидкого перезапуску («Перезапустити зараз») для миттєвого переходу на нову версію.
+
+            - **🖼️ Розумний алгоритм фонів TMDB (Smart Backdrop Disambiguation)**:
+              - Бекдропи тепер точно підбираються за типом контенту (`movie` або `tv`), усуваючи показ шпалер серіалів для однойменних фільмів.
+              - Додано перевірку року випуску (різниця у роках суворо штрафується) та підтримку розбиття складених назв (`orig_title`) через `/`.
+
+            - **🐧 Стабільні кодеки Linux AppImage (Host GStreamer Codecs)**:
+              - Вимкнено конфліктну ізоляцію `bundleMediaFramework` в AppImage для прямої роботи з системними кодеками (H.264/AAC) на Linux Mint, Ubuntu, Fedora та Arch.
 
             - **🎬 Відновлення прогресу фільмів із картки каталогу**:
-              - Виправлено проблему, коли фільм починався з `0:00` при відкритті через картку фільму та модалку деталей (`MediaDetailsModal`), якщо `data-id` картки був відсутній або відрізнявся від канонічного ID сторінки.
-
-            - **✨ Візуальне полірування інтерфейсу (UI Polish)**:
-              - Усунуто тонку 1px горизонтальну смужку на нижній межі `HeroBanner` над секцією «Продовжити перегляд» під час скролу.
-              - Покращено синхронізацію метаданих медіасесії під час відтворення.
-
-            - **📥 Усі можливості попередніх версій збережено та вдосконалено**:
-              - Точна синхронізація локального часу з системним годинником (`chrono::Local`).
-              - Розумне автозникання контролерів міні-плеєра (Mini-Player Autohide) та універсальні шорткати (`F`, `Space`, `M`, `S`, `L`, `I`).
-              - Оверлей статистики потоку (`I`), мультивибір серій у завантажувачі та автооновлення Minisign ED25519.
+              - Виправлено проблему, коли фільм починався з `0:00` при відкритті через модалку деталей (`MediaDetailsModal`).
 
             ---
 
             ### 🇬🇧 What's New in v__VERSION__:
 
-            - **🐧 Linux AppImage Video Playback Fix (Host GStreamer Codecs)**:
-              - Disabled `bundleMediaFramework` isolation in AppImage so it uses the host system's native GStreamer 1.0 codecs (H.264/AAC) without ABI mismatches across Linux Mint, Ubuntu, Fedora, and Arch.
+            - **⚡ True Silent In-App OTA Updates (Tauri Plugin Updater & Progress Bar)**:
+              - Seamless cryptographic in-app self-updates powered by `tauri-plugin-updater` and Minisign verification.
+              - Real-time download progress bar (`0% → 100%`, downloaded MBs) and instant one-click restart without browser redirections.
 
-            - **🎬 Movie Resume from Catalog Cards**:
-              - Fixed an issue where movies started from `0:00` when launched via a catalog `MediaCard` / `MediaDetailsModal` instead of "Continue Watching" due to missing or mismatched `data-id` vs canonical page ID.
+            - **🖼️ Smart TMDB Backdrop Disambiguation**:
+              - Search accurately discriminates between `movie` and `tv` media types, preventing TV series backdrops from displaying on same-named movies.
+              - Strict release-year matching bonus/penalty and multi-title parsing for slashed original titles.
 
-            - **✨ UI & Playback Polish**:
-              - Eliminated the 1px subpixel seam at the bottom edge of `HeroBanner` above "Continue Watching" during scroll.
-              - Improved `MediaSession` metadata synchronization during playback.
+            - **🐧 Linux AppImage Host Codecs**:
+              - Native unbundled GStreamer playback integration across all Linux distributions.
 
             ---
 

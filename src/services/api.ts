@@ -772,6 +772,18 @@ export const api = {
     window.open(url, "_blank");
   },
 
+  restartApp: async (): Promise<void> => {
+    if (isTauri) {
+      try {
+        await invoke<void>("restart_app");
+        return;
+      } catch (err) {
+        console.warn("Native restart_app failed:", err);
+      }
+    }
+    window.location.reload();
+  },
+
   getTurboStreamUrl: async (rawUrl: string): Promise<string> => {
     if (isTauri) {
       return invoke<string>("get_turbo_stream_url", { rawUrl });

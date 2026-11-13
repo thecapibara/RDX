@@ -51,6 +51,7 @@ pub fn run() {
     let state = AppState { storage, client, mpris, downloader, turbo, tmdb };
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
         .setup(|app| {
             use tauri::Manager;
@@ -106,6 +107,7 @@ pub fn run() {
             commands::clear_completed_downloads,
             commands::show_in_folder,
             commands::open_url,
+            commands::restart_app,
             commands::toggle_bookmark,
             commands::get_bookmarks,
             commands::is_bookmarked,
