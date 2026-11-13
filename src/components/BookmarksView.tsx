@@ -137,6 +137,8 @@ export const BookmarksView: React.FC<BookmarksViewProps> = ({
             <p className="text-xs text-zinc-400 max-w-sm">
               {activeCategory === "all"
                 ? "Натисніть на значок закладки на сторінці фільму чи серіалу, щоб додати його сюди."
+                : activeCategory === "planned"
+                ? "Додайте фільм або серіал у закладки до початку перегляду, і він автоматично з'явиться в планах."
                 : "Фільми та серіали, які ви переглядаєте, автоматично з'являються тут."}
             </p>
           </div>

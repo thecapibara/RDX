@@ -137,6 +137,7 @@ pub fn run() {
             commands::select_fastest_cdn,
             commands::get_backdrop,
             commands::get_system_time,
+            commands::is_tiling_wm,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

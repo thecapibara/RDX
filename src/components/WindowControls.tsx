@@ -1,7 +1,18 @@
 import React, { useState, useEffect } from "react";
 import { Minus, Square, Copy, X } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { cn } from "../lib/utils";
+
+export type WindowControlsMode = "auto" | "always" | "never";
+
+let tilingWmPromise: Promise<boolean> | null = null;
+function detectTilingWm(): Promise<boolean> {
+  if (!tilingWmPromise) {
+    tilingWmPromise = invoke<boolean>("is_tiling_wm").catch(() => false);
+  }
+  return tilingWmPromise;
+}
 
 interface WindowControlsProps {
   className?: string;
@@ -9,10 +20,41 @@ interface WindowControlsProps {
 
 export const WindowControls: React.FC<WindowControlsProps> = ({ className }) => {
   const [isMaximized, setIsMaximized] = useState(false);
+  const [isTiling, setIsTiling] = useState(false);
+  const [mode, setMode] = useState<WindowControlsMode>(() => {
+    try {
+      const saved = localStorage.getItem("rdx_window_controls");
+      if (saved === "always" || saved === "never" || saved === "auto") {
+        return saved;
+      }
+    } catch {}
+    return "auto";
+  });
 
   const isTauri =
     typeof window !== "undefined" &&
     ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
+
+  useEffect(() => {
+    const onModeChanged = () => {
+      try {
+        const saved = localStorage.getItem("rdx_window_controls");
+        setMode(
+          saved === "always" || saved === "never" || saved === "auto"
+            ? saved
+            : "auto"
+        );
+      } catch {}
+    };
+    window.addEventListener("rdx:window-controls-changed", onModeChanged);
+    return () =>
+      window.removeEventListener("rdx:window-controls-changed", onModeChanged);
+  }, []);
+
+  useEffect(() => {
+    if (!isTauri) return;
+    detectTilingWm().then(setIsTiling);
+  }, [isTauri]);
 
   useEffect(() => {
     if (!isTauri) return;
@@ -35,6 +77,7 @@ export const WindowControls: React.FC<WindowControlsProps> = ({ className }) => 
   }, [isTauri]);
 
   if (!isTauri) return null;
+  if (mode === "never" || (mode === "auto" && isTiling)) return null;
 
   const handleMinimize = () => {
     getCurrentWindow().minimize().catch(() => {});

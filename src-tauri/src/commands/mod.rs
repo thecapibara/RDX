@@ -965,5 +965,55 @@ pub fn get_system_time() -> String {
     chrono::Local::now().format("%H:%M").to_string()
 }
 
+/// Detects whether the app is running under a Linux tiling window manager
+/// (e.g. Hyprland, Sway, i3, bspwm, dwm, awesome, niri, river, qtile).
+#[tauri::command]
+pub fn is_tiling_wm() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        for env_var in [
+            "HYPRLAND_INSTANCE_SIGNATURE",
+            "SWAYSOCK",
+            "I3SOCK",
+            "BSPWM_SOCKET",
+        ] {
+            if std::env::var(env_var).map(|v| !v.is_empty()).unwrap_or(false) {
+                return true;
+            }
+        }
+
+        let desktop = format!(
+            "{} {}",
+            std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default(),
+            std::env::var("DESKTOP_SESSION").unwrap_or_default()
+        )
+        .to_lowercase();
+
+        const TILING_WMS: &[&str] = &[
+            "hyprland",
+            "sway",
+            "i3",
+            "bspwm",
+            "dwm",
+            "awesome",
+            "xmonad",
+            "qtile",
+            "river",
+            "niri",
+            "wayfire",
+            "herbstluftwm",
+            "leftwm",
+            "spectrwm",
+        ];
+
+        TILING_WMS.iter().any(|wm| desktop.contains(wm))
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
 
 

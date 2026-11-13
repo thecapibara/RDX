@@ -18,6 +18,10 @@ struct TmdbSearchResponse {
 struct TmdbSearchResult {
     backdrop_path: Option<String>,
     media_type: Option<String>,
+    title: Option<String>,
+    original_title: Option<String>,
+    name: Option<String>,
+    original_name: Option<String>,
     #[serde(default)]
     vote_count: u32,
     #[serde(default)]
@@ -80,6 +84,78 @@ impl TmdbService {
         candidates
     }
 
+    fn normalize_title(s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        let mut prev_space = true;
+        for ch in s.chars() {
+            if ch.is_alphanumeric() {
+                for lc in ch.to_lowercase() {
+                    out.push(lc);
+                }
+                prev_space = false;
+            } else if !prev_space {
+                out.push(' ');
+                prev_space = true;
+            }
+        }
+        out.trim().to_string()
+    }
+
+    fn best_title_match_score(candidates: &[String], item: &TmdbSearchResult) -> Option<f64> {
+        let item_titles: Vec<String> = [
+            item.title.as_deref(),
+            item.original_title.as_deref(),
+            item.name.as_deref(),
+            item.original_name.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .map(Self::normalize_title)
+        .filter(|s| !s.is_empty())
+        .collect();
+
+        if item_titles.is_empty() {
+            return None;
+        }
+
+        let mut best: Option<f64> = None;
+
+        for cand in candidates {
+            let norm_cand = Self::normalize_title(cand);
+            if norm_cand.is_empty() {
+                continue;
+            }
+            let cand_words: Vec<&str> = norm_cand.split_whitespace().collect();
+
+            for norm_item in &item_titles {
+                if norm_item == &norm_cand {
+                    return Some(150_000.0);
+                }
+
+                let item_words: Vec<&str> = norm_item.split_whitespace().collect();
+                if cand_words.is_empty() || item_words.is_empty() {
+                    continue;
+                }
+
+                let shared = cand_words
+                    .iter()
+                    .filter(|w| item_words.contains(w))
+                    .count();
+                let max_len = cand_words.len().max(item_words.len());
+                let ratio = shared as f64 / max_len as f64;
+
+                // Allow close multi-word matches (e.g. subtitle/season suffix) but reject unrelated franchises
+                // such as "Castlevania: Nocturne" when searching for "Nocturne".
+                if max_len >= 2 && ratio >= 0.75 {
+                    let score = 50_000.0 * ratio;
+                    best = Some(best.map_or(score, |b| b.max(score)));
+                }
+            }
+        }
+
+        best
+    }
+
     pub async fn get_backdrop(
         &self,
         title: &str,
@@ -107,8 +183,8 @@ impl TmdbService {
         let mut best_match: Option<(f64, String)> = None;
         let expected_year: Option<i32> = year.and_then(|y| y.trim().get(..4)).and_then(|y| y.parse().ok());
 
-        for candidate in candidates {
-            let encoded_query = urlencoding::encode(&candidate);
+        for candidate in &candidates {
+            let encoded_query = urlencoding::encode(candidate);
             let url = format!(
                 "{}?api_key={}&query={}&include_adult=false&language=uk-UA",
                 TMDB_SEARCH_URL, self.api_key, encoded_query
@@ -117,7 +193,7 @@ impl TmdbService {
             if let Ok(resp) = self.client.get(&url).send().await {
                 if let Ok(data) = resp.json::<TmdbSearchResponse>().await {
                     for item in data.results {
-                        let Some(path) = item.backdrop_path else { continue };
+                        let Some(path) = item.backdrop_path.as_ref() else { continue };
                         if path.is_empty() {
                             continue;
                         }
@@ -132,12 +208,13 @@ impl TmdbService {
                             continue;
                         }
 
-                        let mut score = (item.vote_count as f64) * 2.0 + item.popularity;
+                        // Require title similarity so TMDB never substitutes an unrelated franchise
+                        let Some(title_score) = Self::best_title_match_score(&candidates, &item) else {
+                            continue;
+                        };
 
-                        if media_type.is_some() && item_type == media_type.unwrap_or("") {
-                            score += 20_000.0;
-                        }
-
+                        // Reject results whose release year is off by >= 2 years
+                        let mut year_score = 0.0;
                         if let Some(exp_y) = expected_year {
                             let rel_date = item
                                 .release_date
@@ -147,13 +224,19 @@ impl TmdbService {
                             if let Some(item_y) = rel_date.get(..4).and_then(|y| y.parse::<i32>().ok()) {
                                 let diff = (item_y - exp_y).abs();
                                 if diff == 0 {
-                                    score += 100_000.0;
+                                    year_score = 100_000.0;
                                 } else if diff == 1 {
-                                    score += 40_000.0;
+                                    year_score = 40_000.0;
                                 } else {
-                                    score -= 50_000.0;
+                                    continue;
                                 }
                             }
+                        }
+
+                        let mut score = title_score + year_score + (item.vote_count as f64) * 2.0 + item.popularity;
+
+                        if media_type.is_some() && item_type == media_type.unwrap_or("") {
+                            score += 20_000.0;
                         }
 
                         let full_url = format!("https://image.tmdb.org/t/p/original{}", path);
@@ -165,9 +248,9 @@ impl TmdbService {
                 }
             }
 
-            // Early-exit only when we have a strong year+type match (or no year constraint)
+            // Early-exit only when we have an exact title + strong year match
             if let Some((score, _)) = &best_match {
-                let threshold = if expected_year.is_some() { 100_000.0 } else { 100.0 };
+                let threshold = if expected_year.is_some() { 250_000.0 } else { 150_000.0 };
                 if *score >= threshold {
                     break;
                 }

@@ -81,7 +81,7 @@ jobs:
           tagName: v__VERSION__
           releaseName: 'RDX v__VERSION__'
           releaseBody: |
-            ## RDX v__VERSION__ — Frameless Header, Crisp TMDB Details Backdrop & Player UX Polish
+            ## RDX v__VERSION__ — Smart Tiling WM Controls, Accurate TMDB Matching & Planned Bookmarks
 
             Cross-platform native desktop streaming client (Linux, Windows, macOS) built with **Rust (Tauri v2)**, **React 19**, **Tailwind CSS v4**, and **HLS.js**, inspired by modern Android TV & Smart TV interfaces with an *Obsidian Crimson* aesthetic.
 
@@ -89,33 +89,29 @@ jobs:
 
             ### 🇺🇦 Що нового у версії __VERSION__:
 
-            - **🪟 Безрамковий кастомний заголовок вікна (Frameless Titlebar & Clean TopBar)**:
-              - Прибрано зайву системну панель вікна Windows/OS — кнопки керування вікном (згорнути, розгорнути, закрити) та перетягування інтегровано прямо у верхню панель програми (`TopBar` та екран деталей).
-              - Очищено верхню панель від годинника та індикатора дзеркала (усі налаштування дзеркал залишаються доступними через кнопку шестерні).
+            - **🪟 Розумні кнопки вікна для Linux / Tiling WM**:
+              - Додано автоматичне визначення тайлінгових віконних менеджерів (Hyprland, Sway, i3, bspwm, niri, river тощо) на Linux — кнопки згортання/розгортання/закриття автоматично приховуються там, де вони не потрібні.
+              - У налаштуваннях інтерфейсу з'явився вибір режиму кнопок вікна (**Авто** / **Завжди** / **Приховати**).
 
-            - **🖼️ Чіткий широкоформатний TMDB-бекдроп на картці фільму (`MediaDetailsModal`)**:
-              - Шапка сторінки фільму/серіалу тепер підтягує якісний широкоформатний фон із TMDB замість розмитого темного постера, із м'яким кінематографічним віньєтуванням без надмірного затемнення.
+            - **🎯 Точний підбір фонів TMDB**:
+              - Покращено алгоритм зіставлення назви та року в TMDB: результати з невідповідним роком (відмінність >= 2 років) або чужими франшизами тепер відсіюються, щоб замість хибного фону показувався рідний постер тайтла.
 
-            - **🎮 Поліпшення інтерфейсу плеєра та пошуку**:
-              - Прибрано спливаючі бульбашки `▶ Відтворення` / `⏸ Пауза` при перемиканні відтворення.
-              - Клік мишкою по плеєру або кнопці Play при відкритому меню (якість, озвучка, швидкість, субтитри) тепер коректно закриває відкриті випадайки, як у сучасних плеєрах.
-              - У вікні пошуку розділено кнопки: замість двох однакових хрестиків тепер є окрема зрозуміла кнопка **«Очистити»** та кнопка закриття (`Esc`).
+            - **📌 Виправлено вкладку закладок «В планах»**:
+              - Непереглянуті фільми та серіали при додаванні в закладки тепер потрапляють у **«В планах»**, а після початку перегляду автоматично переходять у **«Дивлюсь»** та **«Переглянуто»**.
 
             ---
 
             ### 🇬🇧 What's New in v__VERSION__:
 
-            - **🪟 Custom Frameless Window Titlebar & Minimal TopBar**:
-              - Removed native OS window titlebars (`decorations: false`) and integrated native-style Minimize / Maximize / Close controls and window drag regions directly into `TopBar` and `MediaDetailsModal`.
-              - Decluttered `TopBar` by removing the redundant clock and mirror hostname indicator.
+            - **🪟 Smart Window Controls for Linux / Tiling WMs**:
+              - Added automatic tiling WM detection on Linux (Hyprland, Sway, i3, bspwm, niri, river, etc.) so custom window buttons hide automatically when running in a tiling environment.
+              - Added a **Window Controls** preference (**Auto** / **Always** / **Hide**) in Appearance settings.
 
-            - **🖼️ Crisp Widescreen TMDB Backdrop in Details View**:
-              - `MediaDetailsModal` now fetches widescreen TMDB backdrops (`movie`/`tv` + year disambiguation) with balanced vignette gradients instead of an overly darkened blurred poster.
+            - **🎯 Accurate TMDB Backdrop Matching**:
+              - Tightened TMDB title similarity scoring and year filtering (rejecting >= 2 year mismatches and unrelated franchises) so cards fall back to their own poster rather than showing an unrelated title's backdrop.
 
-            - **🎮 Player & Search UX Polish**:
-              - Removed intrusive Play/Pause HUD pill overlays on playback toggle.
-              - Clicking on the video canvas or Play button while a player dropdown/menu is open now cleanly dismisses open menus first.
-              - Replaced duplicate `X` icons in `SearchModal` with an explicit **Clear** button and a **Close (`Esc`)** button.
+            - **📌 Fixed "Planned" Bookmarks Workflow**:
+              - Unwatched titles added to bookmarks now land in **Planned** («В планах») and automatically transition to **Watching** («Дивлюсь») and **Completed** («Переглянуто») as playback progresses.
 
             ---
 

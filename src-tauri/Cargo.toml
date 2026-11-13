@@ -1,6 +1,6 @@
 [package]
 name = "rdx"
-version = "1.1.1"
+version = "1.1.2"
 description = "RDX Cinema Streaming Desktop Client"
 authors = ["justgl"]
 edition = "2021"

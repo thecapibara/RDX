@@ -82,7 +82,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
     if (savedProgress && savedProgress.position_sec > 15) {
       return "watching";
     }
-    return "favorites";
+    return "planned";
   };
   const [maxKnownSeasons, setMaxKnownSeasons] = useState<number>(1);
 

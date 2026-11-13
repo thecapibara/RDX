@@ -27,6 +27,7 @@ import {
 import type { AppSettings, MirrorStatus } from "../types";
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
+import type { WindowControlsMode } from "./WindowControls";
 import {
   getUiSoundsEnabled,
   setUiSoundsEnabled,
@@ -87,7 +88,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
         if (found) {
           setUpdateCheckResult("Знайдено оновлення! Відкрито вікно встановлення.");
         } else {
-          setUpdateCheckResult("У вас встановлено найновішу версію (v1.1.1)");
+          setUpdateCheckResult("У вас встановлено найновішу версію (v1.1.2)");
         }
       }
     } catch {
@@ -149,6 +150,13 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
   });
   const [accentColor, setAccentColorState] = useState<AccentColor>(() => getAccentColor());
   const [bgTheme, setBgThemeState] = useState<BgTheme>(() => getBgTheme());
+  const [windowControlsMode, setWindowControlsMode] = useState<WindowControlsMode>(() => {
+    try {
+      const saved = localStorage.getItem("rdx_window_controls");
+      if (saved === "always" || saved === "never" || saved === "auto") return saved;
+    } catch {}
+    return "auto";
+  });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -433,6 +441,15 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
     playHoverSound();
   };
 
+  const handleSelectWindowControlsMode = (mode: WindowControlsMode) => {
+    setWindowControlsMode(mode);
+    try {
+      localStorage.setItem("rdx_window_controls", mode);
+    } catch {}
+    window.dispatchEvent(new Event("rdx:window-controls-changed"));
+    playHoverSound();
+  };
+
   const allMirrors = useMemo(() => {
     const raw = Array.from(
       new Set([
@@ -518,7 +535,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                   Налаштування RDX<span className="text-rose-500 text-lg leading-none">.</span>
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-white/5 border border-white/10 text-zinc-400">
-                  v1.1.1
+                  v1.1.2
                 </span>
               </div>
               <p className="text-xs text-zinc-400">
@@ -1475,6 +1492,47 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                     </label>
                   </div>
                 </div>
+
+                {/* Window Controls Visibility */}
+                <div className="p-4.5 rounded-2xl bg-[var(--bg-elevated,#1e1f2b)]/60 border border-[var(--border-subtle,rgba(255,255,255,0.08))] space-y-3 transition-colors duration-250">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0 mt-0.5">
+                        <Monitor className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Кнопки керування вікном</h4>
+                        <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
+                          У режимі «Авто» кнопки згортання/закриття автоматично ховаються на тайлінгових WM (Hyprland, Sway, i3)
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 p-1 rounded-xl bg-black/40 border border-white/10 flex-shrink-0 self-start sm:self-center">
+                      {(
+                        [
+                          { id: "auto", label: "Авто" },
+                          { id: "always", label: "Завжди" },
+                          { id: "never", label: "Приховати" },
+                        ] as const
+                      ).map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => handleSelectWindowControlsMode(opt.id)}
+                          className={cn(
+                            "px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer",
+                            windowControlsMode === opt.id
+                              ? "bg-rose-600 text-white shadow-sm"
+                              : "text-zinc-400 hover:text-white hover:bg-white/5"
+                          )}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1497,7 +1555,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                       <h3 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-baseline">
                         RDX<span className="text-rose-500">.</span>
                         <span className="text-xs font-mono font-bold text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-full ml-2.5">
-                          v1.1.1
+                          v1.1.2
                         </span>
                       </h3>
                       <p className="text-xs text-zinc-300 mt-1 max-w-lg leading-relaxed">
