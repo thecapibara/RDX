@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Search, X, Loader2 } from "lucide-react";
+import { Search, X, Loader2, Delete } from "lucide-react";
 import type { MediaCard } from "../types";
 import { api } from "../services/api";
 import { MediaCard as MediaCardComponent } from "./MediaCard";
@@ -115,17 +115,23 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           {loading && <Loader2 className="w-5 h-5 text-rose-500 animate-spin" />}
           {query && !loading && (
             <button
-              onClick={() => setQuery("")}
-              className="p-2 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+              onClick={() => {
+                setQuery("");
+                inputRef.current?.focus();
+              }}
+              title="Очистити поле пошуку"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/15 border border-white/10 text-xs font-medium text-zinc-300 hover:text-white transition-colors cursor-pointer"
             >
-              <X className="w-5 h-5" />
+              <Delete className="w-3.5 h-3.5" />
+              <span>Очистити</span>
             </button>
           )}
           <button
             onClick={onClose}
+            title="Закрити пошук (Esc)"
             className="p-2 rounded-full bg-white/5 hover:bg-white/15 text-zinc-300 hover:text-white transition-colors cursor-pointer"
           >
-            <X className="w-6 h-6" />
+            <X className="w-5 h-5" />
           </button>
         </div>
       </div>

@@ -3,7 +3,7 @@ import { Search, Maximize, Minimize, ChevronDown, Settings, Download } from "luc
 import type { MirrorStatus } from "../types";
 import { cn } from "../lib/utils";
 import { playButtonClickSound } from "../services/sound";
-import { api } from "../services/api";
+import { WindowControls } from "./WindowControls";
 
 export type NavTab =
   | "home"
@@ -45,44 +45,11 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenSearch,
   onOpenMirrorModal,
   onOpenSettings,
-  mirrorStatus,
-  activeMirrorUrl,
   activeDownloadsCount = 0,
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [timeString, setTimeString] = useState("");
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Live TV Clock (HH:MM e.g. 23:47) with host system time synchronization
-  useEffect(() => {
-    let isMounted = true;
-    const updateTime = () => {
-      api
-        .getSystemTime()
-        .then((time) => {
-          if (isMounted && time) setTimeString(time);
-        })
-        .catch(() => {
-          const now = new Date();
-          if (isMounted) {
-            setTimeString(
-              now.toLocaleTimeString("uk-UA", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })
-            );
-          }
-        });
-    };
-
-    updateTime();
-    const interval = setInterval(updateTime, 10000);
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, []);
 
   // Fullscreen state listener
   useEffect(() => {
@@ -137,19 +104,14 @@ export const TopBar: React.FC<TopBarProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onOpenSearch]);
 
-  const mirrorHost = (() => {
-    try {
-      return new URL(activeMirrorUrl).hostname;
-    } catch {
-      return activeMirrorUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
-    }
-  })();
-
   const isSecondaryActive = SECONDARY_TABS.some((t) => t.id === activeTab);
   const activeSecondaryLabel = SECONDARY_TABS.find((t) => t.id === activeTab)?.label;
 
   return (
-    <header className="sticky top-0 z-40 w-full px-4 sm:px-6 lg:px-10 py-3.5 bg-[var(--bg-base,#000000)] border-b border-white/[0.06] flex items-center justify-between gap-4 sm:gap-6 select-none">
+    <header
+      data-tauri-drag-region
+      className="sticky top-0 z-40 w-full px-4 sm:px-6 lg:px-10 py-3.5 bg-[var(--bg-base,#000000)] border-b border-white/[0.06] flex items-center justify-between gap-4 sm:gap-6 select-none"
+    >
       {/* Left: Brand Wordmark & Responsive Android TV Navigation */}
       <div className="flex items-center gap-4 sm:gap-7 lg:gap-8 min-w-0">
         {/* Brand Wordmark */}
@@ -320,25 +282,6 @@ export const TopBar: React.FC<TopBarProps> = ({
           <Search className="w-5 h-5" />
         </button>
 
-        {/* Minimal Mirror Status Button */}
-        <button
-          onClick={onOpenMirrorModal}
-          title="Дзеркало HDRezka / Налаштування мережі"
-          className="flex items-center gap-2 text-xs font-mono text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer p-1"
-        >
-          <span
-            className={cn(
-              "w-2 h-2 rounded-full flex-shrink-0",
-              mirrorStatus?.online
-                ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"
-                : mirrorStatus
-                ? "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]"
-                : "bg-emerald-400"
-            )}
-          />
-          <span className="hidden xl:inline text-[13px]">{mirrorHost}</span>
-        </button>
-
         {/* Settings Gear Button */}
         <button
           onClick={onOpenSettings || onOpenMirrorModal}
@@ -361,10 +304,9 @@ export const TopBar: React.FC<TopBarProps> = ({
           )}
         </button>
 
-        {/* Android TV Clock */}
-        <span className="hidden lg:inline text-base sm:text-lg font-medium text-zinc-100 tracking-tight tabular-nums font-mono pl-1">
-          {timeString}
-        </span>
+        {/* Native-Style Frameless Window Controls */}
+        <div className="h-5 w-px bg-white/10 hidden sm:block" />
+        <WindowControls />
       </div>
     </header>
   );

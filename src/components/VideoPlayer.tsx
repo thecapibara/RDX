@@ -1821,7 +1821,32 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   ]);
 
   // Single click vs Double click on video
+  const hasOpenMenu =
+    showQualityMenu ||
+    showTranslatorMenu ||
+    showSubtitleMenu ||
+    showSpeedMenu ||
+    showEpisodesDrawer ||
+    Boolean(contextMenu);
+
+  const closeAllMenus = () => {
+    setShowQualityMenu(false);
+    setShowTranslatorMenu(false);
+    setShowSubtitleMenu(false);
+    setShowSpeedMenu(false);
+    setShowEpisodesDrawer(false);
+    setContextMenu(null);
+  };
+
   const handleVideoClick = (e: React.MouseEvent) => {
+    if (hasOpenMenu) {
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = null;
+      }
+      closeAllMenus();
+      return;
+    }
     if (clickTimerRef.current) {
       clearTimeout(clickTimerRef.current);
       clickTimerRef.current = null;
@@ -1868,16 +1893,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Playback control helpers
   const togglePlay = () => {
+    closeAllMenus();
     if (!videoRef.current) return;
     if (videoRef.current.paused) {
       videoRef.current.play().catch(() => {});
       setIsPlaying(true);
-      showHud("▶ Відтворення");
       syncMprisState(true, true);
     } else {
       videoRef.current.pause();
       setIsPlaying(false);
-      showHud("⏸ Пауза");
       syncMprisState(true, false);
     }
   };
@@ -2123,25 +2147,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         case "play":
           video.play().catch(() => {});
           setIsPlaying(true);
-          showHud("▶ Відтворення");
           syncMprisRef.current(true, true);
           break;
         case "pause":
           video.pause();
           setIsPlaying(false);
-          showHud("⏸ Пауза");
           syncMprisRef.current(true, false);
           break;
         case "toggle":
           if (video.paused) {
             video.play().catch(() => {});
             setIsPlaying(true);
-            showHud("▶ Відтворення");
             syncMprisRef.current(true, true);
           } else {
             video.pause();
             setIsPlaying(false);
-            showHud("⏸ Пауза");
             syncMprisRef.current(true, false);
           }
           break;

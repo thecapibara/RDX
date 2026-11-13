@@ -81,7 +81,7 @@ jobs:
           tagName: v__VERSION__
           releaseName: 'RDX v__VERSION__'
           releaseBody: |
-            ## RDX v__VERSION__ — Silent In-App OTA Updates, Smart TMDB Backdrops & Codecs Hardening
+            ## RDX v__VERSION__ — Frameless Header, Crisp TMDB Details Backdrop & Player UX Polish
 
             Cross-platform native desktop streaming client (Linux, Windows, macOS) built with **Rust (Tauri v2)**, **React 19**, **Tailwind CSS v4**, and **HLS.js**, inspired by modern Android TV & Smart TV interfaces with an *Obsidian Crimson* aesthetic.
 
@@ -89,35 +89,33 @@ jobs:
 
             ### 🇺🇦 Що нового у версії __VERSION__:
 
-            - **⚡ Повноцінне тихе In-App автооновлення (Silent OTA Updater & Progress Bar)**:
-              - Реалізовано безшовне автооновлення через офіційний `tauri-plugin-updater` із підписом Minisign.
-              - Додаток завантажує оновлення прямо у вікні оновлень з плавним прогрес-баром (`0% → 100%`, швидкість та розмір у MB) та виконує оновлення без відкриття стороннього браузера чи діалогів файлової системи.
-              - Кнопка швидкого перезапуску («Перезапустити зараз») для миттєвого переходу на нову версію.
+            - **🪟 Безрамковий кастомний заголовок вікна (Frameless Titlebar & Clean TopBar)**:
+              - Прибрано зайву системну панель вікна Windows/OS — кнопки керування вікном (згорнути, розгорнути, закрити) та перетягування інтегровано прямо у верхню панель програми (`TopBar` та екран деталей).
+              - Очищено верхню панель від годинника та індикатора дзеркала (усі налаштування дзеркал залишаються доступними через кнопку шестерні).
 
-            - **🖼️ Розумний алгоритм фонів TMDB (Smart Backdrop Disambiguation)**:
-              - Бекдропи тепер точно підбираються за типом контенту (`movie` або `tv`), усуваючи показ шпалер серіалів для однойменних фільмів.
-              - Додано перевірку року випуску (різниця у роках суворо штрафується) та підтримку розбиття складених назв (`orig_title`) через `/`.
+            - **🖼️ Чіткий широкоформатний TMDB-бекдроп на картці фільму (`MediaDetailsModal`)**:
+              - Шапка сторінки фільму/серіалу тепер підтягує якісний широкоформатний фон із TMDB замість розмитого темного постера, із м'яким кінематографічним віньєтуванням без надмірного затемнення.
 
-            - **🐧 Стабільні кодеки Linux AppImage (Host GStreamer Codecs)**:
-              - Вимкнено конфліктну ізоляцію `bundleMediaFramework` в AppImage для прямої роботи з системними кодеками (H.264/AAC) на Linux Mint, Ubuntu, Fedora та Arch.
-
-            - **🎬 Відновлення прогресу фільмів із картки каталогу**:
-              - Виправлено проблему, коли фільм починався з `0:00` при відкритті через модалку деталей (`MediaDetailsModal`).
+            - **🎮 Поліпшення інтерфейсу плеєра та пошуку**:
+              - Прибрано спливаючі бульбашки `▶ Відтворення` / `⏸ Пауза` при перемиканні відтворення.
+              - Клік мишкою по плеєру або кнопці Play при відкритому меню (якість, озвучка, швидкість, субтитри) тепер коректно закриває відкриті випадайки, як у сучасних плеєрах.
+              - У вікні пошуку розділено кнопки: замість двох однакових хрестиків тепер є окрема зрозуміла кнопка **«Очистити»** та кнопка закриття (`Esc`).
 
             ---
 
             ### 🇬🇧 What's New in v__VERSION__:
 
-            - **⚡ True Silent In-App OTA Updates (Tauri Plugin Updater & Progress Bar)**:
-              - Seamless cryptographic in-app self-updates powered by `tauri-plugin-updater` and Minisign verification.
-              - Real-time download progress bar (`0% → 100%`, downloaded MBs) and instant one-click restart without browser redirections.
+            - **🪟 Custom Frameless Window Titlebar & Minimal TopBar**:
+              - Removed native OS window titlebars (`decorations: false`) and integrated native-style Minimize / Maximize / Close controls and window drag regions directly into `TopBar` and `MediaDetailsModal`.
+              - Decluttered `TopBar` by removing the redundant clock and mirror hostname indicator.
 
-            - **🖼️ Smart TMDB Backdrop Disambiguation**:
-              - Search accurately discriminates between `movie` and `tv` media types, preventing TV series backdrops from displaying on same-named movies.
-              - Strict release-year matching bonus/penalty and multi-title parsing for slashed original titles.
+            - **🖼️ Crisp Widescreen TMDB Backdrop in Details View**:
+              - `MediaDetailsModal` now fetches widescreen TMDB backdrops (`movie`/`tv` + year disambiguation) with balanced vignette gradients instead of an overly darkened blurred poster.
 
-            - **🐧 Linux AppImage Host Codecs**:
-              - Native unbundled GStreamer playback integration across all Linux distributions.
+            - **🎮 Player & Search UX Polish**:
+              - Removed intrusive Play/Pause HUD pill overlays on playback toggle.
+              - Clicking on the video canvas or Play button while a player dropdown/menu is open now cleanly dismisses open menus first.
+              - Replaced duplicate `X` icons in `SearchModal` with an explicit **Clear** button and a **Close (`Esc`)** button.
 
             ---
 

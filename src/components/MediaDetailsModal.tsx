@@ -21,6 +21,7 @@ import { api } from "../services/api";
 import { cn } from "../lib/utils";
 import { playModalOpenSound, suppressHoverSound } from "../services/sound";
 import { openDownloadsTab } from "../services/downloadsStore";
+import { WindowControls } from "./WindowControls";
 
 interface MediaDetailsModalProps {
   media: MediaCard | null;
@@ -67,6 +68,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
   const [selectedSeason, setSelectedSeason] = useState<number>(1);
   const [selectedEpisode, setSelectedEpisode] = useState<number>(1);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
+  const [tmdbBackdrop, setTmdbBackdrop] = useState<string | null>(null);
 
   // Helper to determine effective bookmark category based on watch progress
   const getBookmarkCategory = (): string => {
@@ -137,6 +139,37 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
     suppressHoverSound(400);
     onClose();
   };
+
+  // Fetch crisp widescreen TMDB backdrop for the header
+  useEffect(() => {
+    if (!isOpen || !media) {
+      setTmdbBackdrop(null);
+      return;
+    }
+    let mounted = true;
+    const title = details?.title || media.title;
+    const origTitle = details?.orig_title || (media as any).orig_title;
+    const yearFromTable = details?.info_table?.find(([k]) => {
+      const lower = k.toLowerCase();
+      return lower.includes("рік") || lower.includes("год");
+    })?.[1];
+    const yearMatch = (yearFromTable || media.misc_info || "").match(/\b(19\d\d|20\d\d)\b/)?.[0];
+    const isSer =
+      Boolean(details?.seasons && details.seasons.length > 0) ||
+      Boolean(media.entity_type?.toLowerCase().includes("серіал")) ||
+      Boolean(media.entity_type?.toLowerCase().includes("сериал")) ||
+      media.url.includes("/series/");
+    const mediaType: "movie" | "tv" = isSer ? "tv" : "movie";
+
+    api.getBackdrop(title, origTitle, yearMatch, mediaType).then((url) => {
+      if (mounted && url) {
+        setTmdbBackdrop(url);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [isOpen, media?.id, media?.url, details?.title, details?.orig_title, details?.seasons?.length]);
 
   useEffect(() => {
     if (isOpen) {
@@ -646,29 +679,45 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
       data-modal-open="true"
       className="fixed inset-0 z-50 bg-[var(--bg-base,#000000)] overflow-y-auto overflow-x-hidden select-none transition-colors duration-250"
     >
+      {/* Top Window Drag Strip */}
+      <div
+        data-tauri-drag-region
+        className="fixed top-0 left-0 right-0 h-14 z-30 pointer-events-auto"
+      />
+
       {/* Top Floating Back Button */}
       <button
         onClick={handleClose}
-        className="fixed top-6 left-6 sm:left-10 lg:left-14 z-40 flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-950/80 hover:bg-zinc-900 text-zinc-300 hover:text-white border border-white/15 backdrop-blur-md transition-all shadow-2xl active:scale-95 cursor-pointer"
+        className="fixed top-5 left-6 sm:left-10 lg:left-14 z-40 flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-950/75 hover:bg-zinc-900 text-zinc-300 hover:text-white border border-white/15 backdrop-blur-md transition-all shadow-2xl active:scale-95 cursor-pointer"
       >
         <ArrowLeft className="w-4 h-4" />
         <span className="text-xs font-semibold">Назад</span>
       </button>
 
+      {/* Top Right Frameless Window Controls */}
+      <div className="fixed top-5 right-6 sm:right-8 z-40 px-1.5 py-1 rounded-xl bg-zinc-950/70 border border-white/10 backdrop-blur-md shadow-2xl">
+        <WindowControls />
+      </div>
+
       {/* Full Modal Layout (Rendered INSTANTLY with ambient backdrop and poster) */}
       <div className="relative w-full">
-        {/* Full-Bleed Atmospheric Backdrop with Ambient Soft-Focus Blur */}
+        {/* Full-Bleed Atmospheric Backdrop (Crisp TMDB Widescreen or Soft Poster Fallback) */}
         <div className="relative w-full h-[55vh] min-h-[420px] max-h-[620px] overflow-hidden pointer-events-none transform-gpu [isolation:isolate]">
           <img
-            src={details?.high_res_poster || details?.poster || media.poster}
+            src={tmdbBackdrop || details?.high_res_poster || details?.poster || media.poster}
             alt={details?.title || media.title}
             decoding="async"
-            className="w-full h-full object-cover object-[center_20%] sm:object-[75%_20%] opacity-35 sm:opacity-40 scale-110 blur-[12px] sm:blur-[18px] saturate-125 transform-gpu"
+            className={cn(
+              "w-full h-full object-cover transform-gpu transition-all duration-500",
+              tmdbBackdrop
+                ? "object-center opacity-80 sm:opacity-85"
+                : "object-[center_20%] sm:object-[75%_20%] opacity-55 sm:opacity-60 scale-105 blur-[6px] sm:blur-[10px] saturate-125"
+            )}
           />
-          {/* Smooth seamless multi-stop gradients for cinematic vignette */}
-          <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/80 to-transparent transition-colors duration-250" />
-          <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/70 to-transparent transition-colors duration-250" />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-[var(--bg-base,#000000)] transition-colors duration-250" />
+          {/* Balanced cinematic vignette gradients (preserving backdrop visibility) */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/45 to-transparent transition-colors duration-250" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)]/80 via-[var(--bg-base,#000000)]/20 to-transparent transition-colors duration-250" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-transparent transition-colors duration-250" />
         </div>
 
         {/* Fluid Full-Width Details Content Container */}
