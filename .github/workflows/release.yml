@@ -76,6 +76,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__
           releaseName: 'RDX v__VERSION__'
@@ -124,12 +125,6 @@ jobs:
 
             | Platform | Package | Description |
             | :--- | :--- | :--- |
-            | **Windows** | `RDX___VERSION___x64-setup.exe` | Recommended installer for Windows 10 & 11 |
-            | **Windows** | `RDX___VERSION___x64_en-US.msi` | Windows Installer package |
-            | **Linux (Universal)** | `RDX___VERSION___amd64.AppImage` | Portable binary with bundled GStreamer codecs (Arch, Ubuntu, Fedora, Debian) |
-            | **Linux (Debian/Ubuntu)** | `RDX___VERSION___amd64.deb` | Standard package for Ubuntu / Debian / Linux Mint |
-            | **Linux (RPM)** | `RDX-__VERSION__-1.x86_64.rpm` | Package for Fedora / openSUSE / RHEL |
-            | **macOS** | `RDX___VERSION___aarch64.dmg` | Disk Image for Apple Silicon Mac (M1/M2/M3/M4) |
             | **Windows** | `RDX___VERSION___x64-setup.exe` | Recommended installer for Windows 10 & 11 |
             | **Windows** | `RDX___VERSION___x64_en-US.msi` | Windows Installer package |
             | **Linux (Universal)** | `RDX___VERSION___amd64.AppImage` | Portable binary with bundled GStreamer codecs (Arch, Ubuntu, Fedora, Debian) |
