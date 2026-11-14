@@ -22,6 +22,7 @@ import { cn } from "../lib/utils";
 import { playModalOpenSound, suppressHoverSound } from "../services/sound";
 import { openDownloadsTab } from "../services/downloadsStore";
 import { WindowControls } from "./WindowControls";
+import { UaFlag } from "./UaFlag";
 
 interface MediaDetailsModalProps {
   media: MediaCard | null;
@@ -69,6 +70,8 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
   const [selectedEpisode, setSelectedEpisode] = useState<number>(1);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
   const [tmdbBackdrop, setTmdbBackdrop] = useState<string | null>(null);
+  const [backdropResolved, setBackdropResolved] = useState(false);
+  const [backdropImgLoaded, setBackdropImgLoaded] = useState(false);
 
   // Helper to determine effective bookmark category based on watch progress
   const getBookmarkCategory = (): string => {
@@ -140,10 +143,12 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
     onClose();
   };
 
-  // Fetch crisp widescreen TMDB backdrop for the header
+  // Fetch crisp widescreen TMDB backdrop for the header (keep dark until TMDB resolves or details finish)
   useEffect(() => {
     if (!isOpen || !media) {
       setTmdbBackdrop(null);
+      setBackdropResolved(false);
+      setBackdropImgLoaded(false);
       return;
     }
     let mounted = true;
@@ -162,14 +167,21 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
     const mediaType: "movie" | "tv" = isSer ? "tv" : "movie";
 
     api.getBackdrop(title, origTitle, yearMatch, mediaType).then((url) => {
-      if (mounted && url) {
-        setTmdbBackdrop(url);
+      if (!mounted) return;
+      if (url) {
+        setTmdbBackdrop((prev) => {
+          if (prev !== url) setBackdropImgLoaded(false);
+          return url;
+        });
+        setBackdropResolved(true);
+      } else if (details || fetchError) {
+        setBackdropResolved(true);
       }
     });
     return () => {
       mounted = false;
     };
-  }, [isOpen, media?.id, media?.url, details?.title, details?.orig_title, details?.seasons?.length]);
+  }, [isOpen, media?.id, media?.url, details?.title, details?.orig_title, details?.seasons?.length, fetchError]);
 
   useEffect(() => {
     if (isOpen) {
@@ -535,7 +547,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
         const targetQ = downloadQualities.find((q) => q.label === selectedDownloadQuality) || downloadQualities[0];
         const streamUrl = targetQ?.mp4_url || targetQ?.hls_url;
         if (!streamUrl) {
-          setDownloadNotification("⚠️ Не вдалося отримати посилання на відео");
+          setDownloadNotification("Не вдалося отримати посилання на відео");
           setTimeout(() => setDownloadNotification(null), 3000);
           return;
         }
@@ -578,7 +590,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
         }
 
         if (episodesToDownload.length === 0) {
-          setDownloadNotification("⚠️ Не вибрано жодної серії для завантаження");
+          setDownloadNotification("Не вибрано жодної серії для завантаження");
           setTimeout(() => setDownloadNotification(null), 3000);
           return;
         }
@@ -699,19 +711,24 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
 
       {/* Full Modal Layout (Rendered INSTANTLY with ambient backdrop and poster) */}
       <div className="relative w-full">
-        {/* Full-Bleed Atmospheric Backdrop (Crisp TMDB Widescreen or Soft Poster Fallback) */}
-        <div className="relative w-full h-[55vh] min-h-[420px] max-h-[620px] overflow-hidden pointer-events-none transform-gpu [isolation:isolate]">
-          <img
-            src={tmdbBackdrop || details?.high_res_poster || details?.poster || media.poster}
-            alt={details?.title || media.title}
-            decoding="async"
-            className={cn(
-              "w-full h-full object-cover transform-gpu transition-opacity duration-500",
-              tmdbBackdrop
-                ? "object-center opacity-80 sm:opacity-85"
-                : "object-[center_20%] sm:object-[75%_20%] opacity-55 sm:opacity-60 scale-105 blur-[6px] sm:blur-[10px] saturate-125"
-            )}
-          />
+        {/* Full-Bleed Atmospheric Backdrop (Dark while loading, then smooth fade-in to TMDB or Poster Fallback) */}
+        <div className="relative w-full h-[55vh] min-h-[420px] max-h-[620px] overflow-hidden pointer-events-none transform-gpu [isolation:isolate] bg-zinc-950">
+          {(tmdbBackdrop || (backdropResolved && (details?.high_res_poster || details?.poster || media.poster))) && (
+            <img
+              src={tmdbBackdrop || details?.high_res_poster || details?.poster || media.poster}
+              alt={details?.title || media.title}
+              decoding="async"
+              onLoad={() => setBackdropImgLoaded(true)}
+              className={cn(
+                "w-full h-full object-cover transform-gpu transition-opacity duration-500",
+                !backdropImgLoaded
+                  ? "opacity-0"
+                  : tmdbBackdrop
+                  ? "object-center opacity-80 sm:opacity-85"
+                  : "object-[center_20%] sm:object-[75%_20%] opacity-55 sm:opacity-60 scale-105 blur-[6px] sm:blur-[10px] saturate-125"
+              )}
+            />
+          )}
           {/* Balanced cinematic vignette gradients (preserving backdrop visibility) */}
           <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/45 to-transparent transition-colors duration-250" />
           <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)]/80 via-[var(--bg-base,#000000)]/20 to-transparent transition-colors duration-250" />
@@ -864,7 +881,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                           <Mic className="w-4 h-4 text-rose-400 shrink-0" />
                           {selectedTranslator?.language?.toLowerCase().includes("украин") ||
                           selectedTranslator?.language?.toLowerCase().includes("україн") ? (
-                            <span className="text-sm shrink-0">🇺🇦</span>
+                            <UaFlag />
                           ) : null}
                           <span className="truncate max-w-[130px] sm:max-w-[170px]">
                             {selectedTranslator?.name || "Озвучення"}
@@ -924,7 +941,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                                       : "text-zinc-400 hover:text-white"
                                   )}
                                 >
-                                  <span>🇺🇦</span>
+                                  <UaFlag />
                                   <span>Українські ({ukrTranslators.length})</span>
                                 </button>
                               )}
@@ -950,7 +967,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                                     )}
                                   >
                                     <div className="flex items-center gap-2 truncate">
-                                      {isUkr && <span>🇺🇦</span>}
+                                      {isUkr && <UaFlag />}
                                       <span className="truncate">{t.name}</span>
                                       {t.is_premium && (
                                         <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-0.5 shrink-0">
@@ -1257,7 +1274,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                     </span>
                     {downloadTranslator && (downloadTranslator.language?.toLowerCase().includes("украин") || downloadTranslator.language?.toLowerCase().includes("україн") || downloadTranslator.name.toLowerCase().includes("украин") || downloadTranslator.name.toLowerCase().includes("україн")) && (
                       <span className="text-[10px] font-bold text-amber-300 bg-amber-400/15 border border-amber-400/30 px-2 py-0.5 rounded-full flex items-center gap-1">
-                        <span>🇺🇦</span>
+                        <UaFlag />
                         <span>Українська</span>
                       </span>
                     )}
@@ -1270,7 +1287,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                     >
                       <div className="flex items-center gap-2 truncate">
                         {(downloadTranslator?.language?.toLowerCase().includes("украин") || downloadTranslator?.language?.toLowerCase().includes("україн") || downloadTranslator?.name.toLowerCase().includes("украин") || downloadTranslator?.name.toLowerCase().includes("україн")) ? (
-                          <span className="text-sm">🇺🇦</span>
+                          <UaFlag />
                         ) : (
                           <span className="w-2 h-2 rounded-full bg-rose-500" />
                         )}
@@ -1301,7 +1318,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                               )}
                             >
                               <div className="flex items-center gap-2 truncate">
-                                {isUkr ? <span>🇺🇦</span> : <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />}
+                                {isUkr ? <UaFlag /> : <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />}
                                 <span className="truncate">{t.name}</span>
                               </div>
                               {isSelected && <Check className="w-4 h-4 text-white flex-shrink-0" />}
@@ -1413,7 +1430,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                   {/* If 'all_seasons' is selected: show summary info */}
                   {downloadMode === "all_seasons" && (
                     <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">
-                      <span className="text-base">📦</span>
+                      <Layers className="w-4 h-4 shrink-0 text-rose-400" />
                       <span>
                         Буде додано до черги <strong>{details.episodes.length} серій</strong> із усіх <strong>{details.seasons.length} сезонів</strong>.
                       </span>

@@ -48,6 +48,7 @@ import { VideoEnhanceMode, VideoShaderRenderer } from "../utils/videoShaders";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { UaFlag } from "./UaFlag";
 
 export interface ThumbnailCue {
   start: number;
@@ -3198,7 +3199,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                   )}
                                 >
                                   <span className="truncate flex items-center gap-1.5">
-                                    {isUkr && <span>🇺🇦</span>}
+                                    {isUkr && <UaFlag />}
                                     <span>{t.name}</span>
                                     {t.is_premium && (
                                       <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-0.5 shrink-0">
@@ -3940,7 +3941,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       )}
                     >
                       <span className="truncate flex items-center gap-1.5">
-                        {isUkr && <span>🇺🇦</span>}
+                        {isUkr && <UaFlag />}
                         <span>{t.name}</span>
                         {t.is_premium && (
                           <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-0.5 shrink-0">
