@@ -88,7 +88,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
         if (found) {
           setUpdateCheckResult("Знайдено оновлення! Відкрито вікно встановлення.");
         } else {
-          setUpdateCheckResult("У вас встановлено найновішу версію (v1.1.2)");
+          setUpdateCheckResult("У вас встановлено найновішу версію (v1.1.3)");
         }
       }
     } catch {
@@ -535,7 +535,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                   Налаштування RDX<span className="text-rose-500 text-lg leading-none">.</span>
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-white/5 border border-white/10 text-zinc-400">
-                  v1.1.2
+                  v1.1.3
                 </span>
               </div>
               <p className="text-xs text-zinc-400">
@@ -1555,7 +1555,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                       <h3 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-baseline">
                         RDX<span className="text-rose-500">.</span>
                         <span className="text-xs font-mono font-bold text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-full ml-2.5">
-                          v1.1.2
+                          v1.1.3
                         </span>
                       </h3>
                       <p className="text-xs text-zinc-300 mt-1 max-w-lg leading-relaxed">
