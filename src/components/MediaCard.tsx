@@ -87,26 +87,22 @@ export const MediaCard: React.FC<MediaCardProps> = React.memo(({
           }}
         />
 
-        {/* Top-Left Badge: Entity Type */}
-        <div className="absolute top-2.5 left-2.5 z-10 pointer-events-none">
+        {/* Top Badges Row: Entity Type + Series Info (never overlap) */}
+        <div className="absolute top-2.5 left-2.5 right-2.5 z-10 pointer-events-none flex items-start justify-between gap-1.5">
           <span
             className={cn(
-              "px-2 py-0.5 rounded-md text-[11px] font-bold tracking-wide uppercase shadow-sm",
+              "px-2 py-0.5 rounded-md text-[11px] font-bold tracking-wide uppercase shadow-sm shrink-0",
               typeBadgeClass
             )}
           >
             {typeLabel}
           </span>
-        </div>
-
-        {/* Top-Right Badges: Series info */}
-        {card.series_info && (
-          <div className="absolute top-2.5 right-2.5 z-10 pointer-events-none">
-            <span className="bg-zinc-950/90 px-2 py-0.5 rounded-md text-[11px] font-semibold text-zinc-200 border border-white/10 max-w-[120px] truncate block shadow-sm">
+          {card.series_info && (
+            <span className="bg-zinc-950/90 px-2 py-0.5 rounded-md text-[11px] font-semibold text-zinc-200 border border-white/10 truncate min-w-0 shadow-sm">
               {card.series_info}
             </span>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Center Hover Action */}
         <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10 pointer-events-none">

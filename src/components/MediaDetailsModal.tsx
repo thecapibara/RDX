@@ -23,6 +23,7 @@ import { playModalOpenSound, suppressHoverSound } from "../services/sound";
 import { openDownloadsTab } from "../services/downloadsStore";
 import { WindowControls } from "./WindowControls";
 import { UaFlag } from "./UaFlag";
+import { Swimlane } from "./Swimlane";
 
 interface MediaDetailsModalProps {
   media: MediaCard | null;
@@ -35,6 +36,7 @@ interface MediaDetailsModalProps {
     episode?: number,
     initialPositionSec?: number
   ) => void;
+  onSelectMedia?: (media: MediaCard) => void;
   isBookmarked: boolean;
   onToggleBookmark: (bookmark: Bookmark) => void;
 }
@@ -57,12 +59,15 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
   isOpen,
   onClose,
   onPlay,
+  onSelectMedia,
   isBookmarked,
   onToggleBookmark,
 }) => {
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [details, setDetails] = useState<MediaDetails | null>(null);
+  const [bottomTab, setBottomTab] = useState<"related" | "info">("related");
+  const [tmdbRelated, setTmdbRelated] = useState<MediaCard[] | null>(null);
   const [savedProgress, setSavedProgress] = useState<WatchProgress | null>(null);
   const [episodeProgressList, setEpisodeProgressList] = useState<EpisodeProgress[]>([]);
   const [selectedTranslator, setSelectedTranslator] = useState<Translator | null>(null);
@@ -149,6 +154,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
       setTmdbBackdrop(null);
       setBackdropResolved(false);
       setBackdropImgLoaded(false);
+      setTmdbRelated(null);
       return;
     }
     let mounted = true;
@@ -182,6 +188,45 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
       mounted = false;
     };
   }, [isOpen, media?.id, media?.url, details?.title, details?.orig_title, details?.seasons?.length, fetchError]);
+
+  // Fetch relevant TMDB recommendations asynchronously without blocking card load
+  useEffect(() => {
+    if (!isOpen || !details) {
+      setTmdbRelated(null);
+      return;
+    }
+    let mounted = true;
+    const yearFromTable = details.info_table?.find(([k]) => {
+      const lower = k.toLowerCase();
+      return lower.includes("рік") || lower.includes("год");
+    })?.[1];
+    const yearMatch = (yearFromTable || media?.misc_info || "").match(/\b(19\d\d|20\d\d)\b/)?.[0];
+    const isSer =
+      Boolean(details.seasons && details.seasons.length > 0) ||
+      Boolean(media?.entity_type?.toLowerCase().includes("серіал")) ||
+      Boolean(media?.entity_type?.toLowerCase().includes("сериал")) ||
+      details.url.includes("/series/");
+    const mediaType: "movie" | "tv" = isSer ? "tv" : "movie";
+
+    api
+      .getTmdbRecommendations(
+        details.title,
+        details.orig_title || undefined,
+        yearMatch,
+        mediaType,
+        details.id
+      )
+      .then((cards) => {
+        if (mounted && cards.length >= 3) {
+          setTmdbRelated(cards);
+          setBottomTab((prev) => (prev === "info" && !(details.related && details.related.length > 0) ? "related" : prev));
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [isOpen, details?.id, details?.title, details?.orig_title]);
 
   useEffect(() => {
     if (isOpen) {
@@ -275,6 +320,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
 
         // Display details immediately (cuts initial load wait in half)
         setDetails(det);
+        setBottomTab(det.related && det.related.length > 0 ? "related" : "info");
         setSavedProgress(progress);
         setEpisodeProgressList(epProgress || []);
         setLoading(false);
@@ -1216,27 +1262,138 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
               </div>
             )}
 
-            {/* Information Table (Metadata) */}
-            {details && details.info_table && details.info_table.length > 0 && (
-              <div className="space-y-3 pt-6 border-t border-white/10">
-                <h3 className="text-sm font-bold text-zinc-300 uppercase tracking-wider">
-                  Інформація про фільм
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-xs">
-                  {details.info_table.map(([key, val], idx) => (
-                    <div
-                      key={idx}
-                      className="flex py-1.5 border-b border-white/5"
+            {/* Bottom Tabs: "Схожі" (default) & "Інформація" */}
+            {details && (() => {
+              const effectiveRelated =
+                tmdbRelated && tmdbRelated.length >= 3 ? tmdbRelated : details.related || [];
+              const hasRelated = effectiveRelated.length > 0;
+              const hasInfo = Boolean(details.info_table && details.info_table.length > 0);
+              if (!hasRelated && !hasInfo) return null;
+
+              return (
+              <div className="space-y-5 pt-6 border-t border-white/10">
+                <div className="flex items-center gap-2">
+                  {hasRelated && (
+                    <button
+                      type="button"
+                      onClick={() => setBottomTab("related")}
+                      className={cn(
+                        "flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer border",
+                        bottomTab === "related"
+                          ? "bg-white text-black border-white shadow-lg"
+                          : "bg-white/5 text-zinc-400 hover:text-white border-white/10 hover:bg-white/10"
+                      )}
                     >
-                      <span className="w-1/3 text-zinc-400 font-medium">
-                        {key.replace(/:+$/, "")}:
+                      <span>Схожі</span>
+                      <span
+                        className={cn(
+                          "px-1.5 py-0.5 rounded-md text-[10px] font-extrabold",
+                          bottomTab === "related" ? "bg-black/15 text-black" : "bg-white/10 text-zinc-300"
+                        )}
+                      >
+                        {effectiveRelated.length}
                       </span>
-                      <span className="w-2/3 text-zinc-200">{val}</span>
-                    </div>
-                  ))}
+                    </button>
+                  )}
+                  {hasInfo && (
+                    <button
+                      type="button"
+                      onClick={() => setBottomTab("info")}
+                      className={cn(
+                        "flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer border",
+                        bottomTab === "info" || !hasRelated
+                          ? "bg-white text-black border-white shadow-lg"
+                          : "bg-white/5 text-zinc-400 hover:text-white border-white/10 hover:bg-white/10"
+                      )}
+                    >
+                      <Info className="w-3.5 h-3.5" />
+                      <span>{isSeries ? "Інформація про серіал" : "Інформація про фільм"}</span>
+                    </button>
+                  )}
                 </div>
+
+                {/* Tab 1: Related Movies / Series Row (same Swimlane carousel as Home) */}
+                {bottomTab === "related" && hasRelated && (
+                  <div className="-mx-[clamp(1.5rem,5vw,5rem)]">
+                    <Swimlane
+                      title="Схожі"
+                      hideHeader
+                      className="py-1"
+                      items={effectiveRelated}
+                      onSelectCard={(selected) => {
+                        if (onSelectMedia) {
+                          onSelectMedia(selected);
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* Tab 2: Modern Bento Cards for Metadata */}
+                {(bottomTab === "info" || !hasRelated) &&
+                  hasInfo && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {details.info_table.map(([rawKey, rawVal], idx) => {
+                        const cleanKey = rawKey.replace(/:+$/, "").trim();
+                        const cleanVal = rawVal
+                          .replace(/\s+,/g, ",")
+                          .replace(/\s+:/g, ":")
+                          .replace(/\s{2,}/g, " ")
+                          .trim();
+                        const lowerKey = cleanKey.toLowerCase();
+                        const isWide =
+                          cleanVal.length > 70 ||
+                          lowerKey.includes("списк") ||
+                          lowerKey.includes("перевод") ||
+                          lowerKey.includes("ролях");
+                        const isChipList =
+                          lowerKey.includes("жанр") ||
+                          lowerKey.includes("страна") ||
+                          lowerKey.includes("країн") ||
+                          lowerKey.includes("серии") ||
+                          lowerKey.includes("сері");
+                        const chips = isChipList
+                          ? cleanVal
+                              .split(",")
+                              .map((s) => s.trim())
+                              .filter(Boolean)
+                          : [];
+
+                        return (
+                          <div
+                            key={idx}
+                            className={cn(
+                              "rounded-2xl bg-white/[0.03] border border-white/[0.08] p-4 space-y-2 hover:bg-white/[0.05] transition-colors",
+                              isWide && "sm:col-span-2"
+                            )}
+                          >
+                            <div className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                              {cleanKey}
+                            </div>
+                            {chips.length > 1 ? (
+                              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                {chips.map((chip, cIdx) => (
+                                  <span
+                                    key={cIdx}
+                                    className="px-2.5 py-1 rounded-lg bg-white/[0.06] border border-white/10 text-xs font-medium text-zinc-100"
+                                  >
+                                    {chip}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="text-xs sm:text-sm font-medium text-zinc-100 leading-relaxed">
+                                {cleanVal}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
               </div>
-            )}
+              );
+            })()}
           </div>
         </div>
 

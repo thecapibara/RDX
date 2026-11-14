@@ -16,6 +16,7 @@ struct TmdbSearchResponse {
 
 #[derive(Debug, Deserialize)]
 struct TmdbSearchResult {
+    id: Option<u64>,
     backdrop_path: Option<String>,
     media_type: Option<String>,
     title: Option<String>,
@@ -30,10 +31,19 @@ struct TmdbSearchResult {
     first_air_date: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct TmdbRecommendation {
+    pub title: String,
+    pub orig_title: Option<String>,
+    pub year: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct TmdbService {
     client: Client,
     cache: Arc<RwLock<HashMap<String, Option<String>>>>,
+    id_cache: Arc<RwLock<HashMap<String, Option<(String, u64)>>>>,
+    rec_cache: Arc<RwLock<HashMap<String, Vec<crate::parser::MediaCard>>>>,
     api_key: String,
 }
 
@@ -49,6 +59,8 @@ impl TmdbService {
         Self {
             client,
             cache: Arc::new(RwLock::new(HashMap::new())),
+            id_cache: Arc::new(RwLock::new(HashMap::new())),
+            rec_cache: Arc::new(RwLock::new(HashMap::new())),
             api_key: DEFAULT_TMDB_KEY.to_string(),
         }
     }
@@ -181,7 +193,7 @@ impl TmdbService {
         }
 
         let candidates = Self::generate_candidates(title, orig_title);
-        let mut best_match: Option<(f64, String)> = None;
+        let mut best_match: Option<(f64, String, Option<(String, u64)>)> = None;
         let expected_year: Option<i32> = year.and_then(|y| y.trim().get(..4)).and_then(|y| y.parse().ok());
 
         for lang in ["uk-UA", "ru-RU"] {
@@ -242,16 +254,24 @@ impl TmdbService {
                             }
 
                             let full_url = format!("https://image.tmdb.org/t/p/original{}", path);
+                            let tmdb_identity = item.id.and_then(|tid| {
+                                let t = if item_type == "movie" || item_type == "tv" {
+                                    item_type
+                                } else {
+                                    media_type.unwrap_or("movie")
+                                };
+                                Some((t.to_string(), tid))
+                            });
                             match &best_match {
-                                Some((best_score, _)) if score <= *best_score => {}
-                                _ => best_match = Some((score, full_url)),
+                                Some((best_score, _, _)) if score <= *best_score => {}
+                                _ => best_match = Some((score, full_url, tmdb_identity)),
                             }
                         }
                     }
                 }
 
                 // Early-exit only when we have an exact title + strong year match
-                if let Some((score, _)) = &best_match {
+                if let Some((score, _, _)) = &best_match {
                     let threshold = if expected_year.is_some() { 250_000.0 } else { 150_000.0 };
                     if *score >= threshold {
                         break;
@@ -264,12 +284,100 @@ impl TmdbService {
             }
         }
 
-        let found_backdrop = best_match.map(|(_, url)| url);
+        let found_identity = best_match.as_ref().and_then(|(_, _, id)| id.clone());
+        let found_backdrop = best_match.map(|(_, url, _)| url);
 
         // Write to cache (even if None, to prevent spamming failed queries)
-        let mut cache = self.cache.write().await;
-        cache.insert(cache_key, found_backdrop.clone());
+        {
+            let mut cache = self.cache.write().await;
+            cache.insert(cache_key.clone(), found_backdrop.clone());
+        }
+        {
+            let mut id_cache = self.id_cache.write().await;
+            id_cache.insert(cache_key, found_identity);
+        }
 
         found_backdrop
+    }
+
+    pub async fn get_cached_recommendations(&self, key: &str) -> Option<Vec<crate::parser::MediaCard>> {
+        let cache = self.rec_cache.read().await;
+        cache.get(key).cloned()
+    }
+
+    pub async fn cache_recommendations(&self, key: String, items: Vec<crate::parser::MediaCard>) {
+        let mut cache = self.rec_cache.write().await;
+        cache.insert(key, items);
+    }
+
+    pub async fn get_recommendations_list(
+        &self,
+        title: &str,
+        orig_title: Option<&str>,
+        year: Option<&str>,
+        media_type: Option<&str>,
+    ) -> Vec<TmdbRecommendation> {
+        let cache_key = format!(
+            "{}:{}:{}:{}",
+            title.trim(),
+            orig_title.unwrap_or("").trim(),
+            year.unwrap_or("").trim(),
+            media_type.unwrap_or("").trim()
+        );
+
+        let identity = {
+            let id_cache = self.id_cache.read().await;
+            id_cache.get(&cache_key).cloned().flatten()
+        };
+
+        let (mtype, tmdb_id) = match identity {
+            Some(pair) => pair,
+            None => {
+                // Ensure search runs once to populate id_cache
+                let _ = self.get_backdrop(title, orig_title, year, media_type).await;
+                let id_cache = self.id_cache.read().await;
+                match id_cache.get(&cache_key).cloned().flatten() {
+                    Some(pair) => pair,
+                    None => return vec![],
+                }
+            }
+        };
+
+        let url = format!(
+            "https://api.themoviedb.org/3/{}/{}/recommendations?api_key={}&language=ru-RU&page=1",
+            mtype, tmdb_id, self.api_key
+        );
+
+        let Ok(resp) = self.client.get(&url).send().await else {
+            return vec![];
+        };
+        let Ok(data) = resp.json::<TmdbSearchResponse>().await else {
+            return vec![];
+        };
+
+        data.results
+            .into_iter()
+            .filter_map(|item| {
+                let rec_title = item.title.or(item.name)?.trim().to_string();
+                if rec_title.is_empty() {
+                    return None;
+                }
+                let rec_orig = item
+                    .original_title
+                    .or(item.original_name)
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty());
+                let rec_year = item
+                    .release_date
+                    .or(item.first_air_date)
+                    .and_then(|d| d.get(..4).map(|y| y.to_string()));
+                Some(TmdbRecommendation {
+                    title: rec_title,
+                    orig_title: rec_orig,
+                    year: rec_year,
+                })
+            })
+            .take(10)
+            .collect()
     }
 }

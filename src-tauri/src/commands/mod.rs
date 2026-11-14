@@ -958,6 +958,116 @@ pub async fn get_backdrop(
         .await)
 }
 
+#[tauri::command]
+pub async fn get_tmdb_recommendations(
+    title: String,
+    orig_title: Option<String>,
+    year: Option<String>,
+    media_type: Option<String>,
+    exclude_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<MediaCard>, String> {
+    let mirror = state
+        .storage
+        .get_settings()
+        .map_err(|e| e.to_string())?
+        .active_mirror;
+
+    let cache_key = format!(
+        "{}:{}:{}:{}:{}",
+        mirror,
+        title.trim(),
+        orig_title.as_deref().unwrap_or("").trim(),
+        year.as_deref().unwrap_or("").trim(),
+        media_type.as_deref().unwrap_or("").trim()
+    );
+
+    if let Some(cached) = state.tmdb.get_cached_recommendations(&cache_key).await {
+        return Ok(cached);
+    }
+
+    let recs = state
+        .tmdb
+        .get_recommendations_list(
+            &title,
+            orig_title.as_deref(),
+            year.as_deref(),
+            media_type.as_deref(),
+        )
+        .await;
+
+    if recs.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let mut join_set = tokio::task::JoinSet::new();
+    let exclude = exclude_id.unwrap_or_default();
+
+    for (idx, rec) in recs.into_iter().enumerate() {
+        let client = state.client.clone();
+        let mirror_clone = mirror.clone();
+        let exclude_clone = exclude.clone();
+        let expected_type = media_type.clone();
+
+        join_set.spawn(async move {
+            let mut results = RezkaParser::search_media(&client, &mirror_clone, &rec.title)
+                .await
+                .unwrap_or_default();
+            if results.is_empty() {
+                if let Some(ref orig) = rec.orig_title {
+                    results = RezkaParser::search_media(&client, &mirror_clone, orig)
+                        .await
+                        .unwrap_or_default();
+                }
+            }
+
+            let best = results.into_iter().find(|card| {
+                if !exclude_clone.is_empty() && card.id == exclude_clone {
+                    return false;
+                }
+                if let Some(ref exp_t) = expected_type {
+                    let is_card_series = card.entity_type.to_lowercase().contains("сериал")
+                        || card.entity_type.to_lowercase().contains("серіал")
+                        || card.url.contains("/series/");
+                    if exp_t == "tv" && !is_card_series {
+                        return false;
+                    }
+                    if exp_t == "movie" && is_card_series {
+                        return false;
+                    }
+                }
+                if let Some(ref rec_y) = rec.year {
+                    if card.misc_info.contains(rec_y) {
+                        return true;
+                    }
+                }
+                true
+            });
+
+            best.map(|card| (idx, card))
+        });
+    }
+
+    let mut matched: Vec<(usize, MediaCard)> = Vec::new();
+    let mut seen_ids = std::collections::HashSet::new();
+    while let Some(res) = join_set.join_next().await {
+        if let Ok(Some((idx, card))) = res {
+            if seen_ids.insert(card.id.clone()) {
+                matched.push((idx, card));
+            }
+        }
+    }
+
+    matched.sort_by_key(|(idx, _)| *idx);
+    let cards: Vec<MediaCard> = matched.into_iter().map(|(_, c)| c).collect();
+
+    if !cards.is_empty() {
+        state.tmdb.cache_recommendations(cache_key, cards.clone()).await;
+    }
+
+    Ok(cards)
+}
+
 // ==================== System & Clock Commands ====================
 
 #[tauri::command]

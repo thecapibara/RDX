@@ -827,6 +827,30 @@ export const api = {
     return null;
   },
 
+  getTmdbRecommendations: async (
+    title: string,
+    origTitle?: string,
+    year?: string,
+    mediaType?: "movie" | "tv",
+    excludeId?: string
+  ): Promise<MediaCard[]> => {
+    if (isTauri) {
+      try {
+        return await invoke<MediaCard[]>("get_tmdb_recommendations", {
+          title,
+          origTitle,
+          year,
+          mediaType,
+          excludeId,
+        });
+      } catch (e) {
+        console.warn("[TMDB] Failed to get recommendations:", e);
+        return [];
+      }
+    }
+    return [];
+  },
+
   getSystemTime: async (): Promise<string> => {
     if (isTauri) {
       try {

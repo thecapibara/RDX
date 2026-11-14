@@ -939,6 +939,7 @@ export default function App() {
         isOpen={isDetailsOpen}
         onClose={() => setIsDetailsOpen(false)}
         onPlay={handleStartPlayback}
+        onSelectMedia={handleOpenDetails}
         isBookmarked={isCurrentBookmarked}
         onToggleBookmark={handleToggleBookmark}
       />

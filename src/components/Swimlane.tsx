@@ -16,6 +16,7 @@ interface SwimlaneProps {
   onMoreClick?: () => void;
   className?: string;
   loading?: boolean;
+  hideHeader?: boolean;
 }
 
 export const Swimlane: React.FC<SwimlaneProps> = React.memo(({
@@ -29,6 +30,7 @@ export const Swimlane: React.FC<SwimlaneProps> = React.memo(({
   onMoreClick,
   className,
   loading,
+  hideHeader,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const startSentinelRef = useRef<HTMLDivElement>(null);
@@ -198,36 +200,38 @@ export const Swimlane: React.FC<SwimlaneProps> = React.memo(({
   return (
     <div className={cn("relative py-4 space-y-3 group/swimlane [contain:layout_style]", className)}>
       {/* Swimlane Header */}
-      <div className="flex items-center justify-between px-[clamp(1.25rem,4vw,4rem)]">
-        <div className="flex items-center gap-3">
-          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-            {title}
-            {badge && (
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30">
-                {badge}
+      {!hideHeader && (
+        <div className="flex items-center justify-between px-[clamp(1.25rem,4vw,4rem)]">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+              {title}
+              {badge && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                  {badge}
+                </span>
+              )}
+            </h2>
+            {subtitle && (
+              <span className="hidden sm:inline-block text-xs text-zinc-400 font-medium">
+                • {subtitle}
               </span>
             )}
-          </h2>
-          {subtitle && (
-            <span className="hidden sm:inline-block text-xs text-zinc-400 font-medium">
-              • {subtitle}
-            </span>
+          </div>
+
+          {onMoreClick && (
+            <button
+              onClick={() => {
+                playButtonClickSound();
+                onMoreClick();
+              }}
+              className="text-xs font-semibold text-zinc-400 hover:text-white flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
+            >
+              <span>Більше</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           )}
         </div>
-
-        {onMoreClick && (
-          <button
-            onClick={() => {
-              playButtonClickSound();
-              onMoreClick();
-            }}
-            className="text-xs font-semibold text-zinc-400 hover:text-white flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
-          >
-            <span>Більше</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        )}
-      </div>
+      )}
 
       {/* Horizontal Carousel Track with Spotify/Netflix style Floating Navigation & Edge Vignettes */}
       <div className="relative group/track">

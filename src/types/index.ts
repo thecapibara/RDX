@@ -150,6 +150,7 @@ export interface MediaDetails {
   seasons: SeasonTab[];
   episodes: EpisodeTab[];
   initial_streams: StreamData | null;
+  related?: MediaCard[];
   is_offline?: boolean;
 }
 

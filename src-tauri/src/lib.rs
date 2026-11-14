@@ -136,6 +136,7 @@ pub fn run() {
             commands::get_turbo_stats,
             commands::select_fastest_cdn,
             commands::get_backdrop,
+            commands::get_tmdb_recommendations,
             commands::get_system_time,
             commands::is_tiling_wm,
         ])

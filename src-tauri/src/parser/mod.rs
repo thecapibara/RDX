@@ -41,6 +41,7 @@ static TRANS_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse("#transl
 static IMG_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse("img").unwrap());
 static SEASON_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".b-simple_season__item").unwrap());
 static EPISODE_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".b-simple_episode__item").unwrap());
+static RELATED_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".b-sidelist .b-content__inline_item, .b-content__inline_items .b-content__inline_item").unwrap());
 static INIT_CDN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"sof\.tv\.initCDN(?:Movies|Series)Events\(\s*(\d+)\s*,\s*(\d+)").unwrap());
 static ID_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"/(\d+)-[^/]+\.html").unwrap());
 
@@ -72,87 +73,89 @@ impl RezkaParser {
         }
     }
 
+    /// Parses a single `.b-content__inline_item` element into a `MediaCard`
+    fn parse_card_element(element: scraper::ElementRef, base_url: &str) -> Option<MediaCard> {
+        let data_url = element.value().attr("data-url");
+
+        let (title, url) = if let Some(link_elem) = element.select(&LINK_SEL).next() {
+            let t = link_elem.text().collect::<Vec<_>>().join(" ").trim().to_string();
+            let u = data_url
+                .or_else(|| link_elem.value().attr("href"))
+                .unwrap_or_default();
+            (t, u.to_string())
+        } else {
+            (String::new(), data_url.unwrap_or_default().to_string())
+        };
+
+        if title.is_empty() && url.is_empty() {
+            return None;
+        }
+
+        let id = element
+            .value()
+            .attr("data-id")
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                ID_RE
+                    .captures(&url)
+                    .and_then(|c| c.get(1))
+                    .map(|m| m.as_str().to_string())
+            })
+            .unwrap_or_default();
+
+        let poster = element
+            .select(&COVER_IMG_SEL)
+            .next()
+            .and_then(|img| img.value().attr("src").or_else(|| img.value().attr("data-src")))
+            .map(|s| Self::normalize_link(s, base_url))
+            .unwrap_or_default();
+
+        let entity_type = element
+            .select(&CAT_SEL)
+            .next()
+            .map(|e| e.text().collect::<Vec<_>>().join(" ").trim().to_string())
+            .unwrap_or_else(|| "Фильм".to_string());
+
+        let series_info = element
+            .select(&INFO_SEL)
+            .next()
+            .map(|e| e.text().collect::<Vec<_>>().join(" ").trim().to_string())
+            .filter(|s| !s.is_empty());
+
+        let misc_info = element
+            .select(&MISC_SEL)
+            .next()
+            .map(|e| e.text().collect::<Vec<_>>().join(" ").trim().to_string())
+            .unwrap_or_default();
+
+        let rating = element
+            .select(&RATING_SEL)
+            .next()
+            .map(|e| e.text().collect::<Vec<_>>().join(" ").trim().to_string())
+            .filter(|s| !s.is_empty());
+
+        let full_url = Self::normalize_link(&url, base_url);
+
+        Some(MediaCard {
+            id,
+            url: full_url,
+            title,
+            poster,
+            entity_type,
+            series_info,
+            misc_info,
+            rating,
+        })
+    }
+
     /// Parses catalog items list from HTML (Home, Category, Search pages)
     pub fn parse_catalog_html(html: &str, base_url: &str) -> Vec<MediaCard> {
         let document = Html::parse_document(html);
-        let mut cards = Vec::new();
-
-        for element in document.select(&ITEM_SEL) {
-            let data_url = element.value().attr("data-url");
-
-            let (title, url) = if let Some(link_elem) = element.select(&LINK_SEL).next() {
-                let t = link_elem.text().collect::<Vec<_>>().join(" ").trim().to_string();
-                let u = data_url
-                    .or_else(|| link_elem.value().attr("href"))
-                    .unwrap_or_default();
-                (t, u.to_string())
-            } else {
-                (String::new(), data_url.unwrap_or_default().to_string())
-            };
-
-            if title.is_empty() && url.is_empty() {
-                continue;
-            }
-
-            let id = element
-                .value()
-                .attr("data-id")
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .or_else(|| {
-                    ID_RE
-                        .captures(&url)
-                        .and_then(|c| c.get(1))
-                        .map(|m| m.as_str().to_string())
-                })
-                .unwrap_or_default();
-
-            let poster = element
-                .select(&COVER_IMG_SEL)
-                .next()
-                .and_then(|img| img.value().attr("src").or_else(|| img.value().attr("data-src")))
-                .map(|s| Self::normalize_link(s, base_url))
-                .unwrap_or_default();
-
-            let entity_type = element
-                .select(&CAT_SEL)
-                .next()
-                .map(|e| e.text().collect::<Vec<_>>().join(" ").trim().to_string())
-                .unwrap_or_else(|| "Фильм".to_string());
-
-            let series_info = element
-                .select(&INFO_SEL)
-                .next()
-                .map(|e| e.text().collect::<Vec<_>>().join(" ").trim().to_string())
-                .filter(|s| !s.is_empty());
-
-            let misc_info = element
-                .select(&MISC_SEL)
-                .next()
-                .map(|e| e.text().collect::<Vec<_>>().join(" ").trim().to_string())
-                .unwrap_or_default();
-
-            let rating = element
-                .select(&RATING_SEL)
-                .next()
-                .map(|e| e.text().collect::<Vec<_>>().join(" ").trim().to_string())
-                .filter(|s| !s.is_empty());
-
-            let full_url = Self::normalize_link(&url, base_url);
-
-            cards.push(MediaCard {
-                id,
-                url: full_url,
-                title,
-                poster,
-                entity_type,
-                series_info,
-                misc_info,
-                rating,
-            });
-        }
-
-        cards
+        document
+            .select(&ITEM_SEL)
+            .filter_map(|el| Self::parse_card_element(el, base_url))
+            .collect()
     }
 
     /// Fetches and parses Home page catalog rows
@@ -498,6 +501,20 @@ impl RezkaParser {
         // Extract initial embedded player streams from inline script
         let initial_streams = Self::extract_inline_player_info(html);
 
+        // Extract "Similar / Watch Also" cards from the details page
+        let mut related: Vec<MediaCard> = document
+            .select(&RELATED_SEL)
+            .filter_map(|el| Self::parse_card_element(el, base_url))
+            .filter(|c| c.id != media_id && !c.url.is_empty())
+            .collect();
+        if related.is_empty() {
+            related = document
+                .select(&ITEM_SEL)
+                .filter_map(|el| Self::parse_card_element(el, base_url))
+                .filter(|c| c.id != media_id && !c.url.is_empty())
+                .collect();
+        }
+
         Ok(MediaDetails {
             id: media_id,
             url: page_url.to_string(),
@@ -513,6 +530,7 @@ impl RezkaParser {
             seasons,
             episodes,
             initial_streams,
+            related,
         })
     }
 

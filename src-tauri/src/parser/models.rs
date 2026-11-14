@@ -88,4 +88,6 @@ pub struct MediaDetails {
     pub seasons: Vec<SeasonTab>,
     pub episodes: Vec<EpisodeTab>,
     pub initial_streams: Option<StreamData>,
+    #[serde(default)]
+    pub related: Vec<MediaCard>,
 }
