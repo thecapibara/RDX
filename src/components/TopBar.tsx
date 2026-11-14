@@ -110,7 +110,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   return (
     <header
       data-tauri-drag-region
-      className="sticky top-0 z-40 w-full px-4 sm:px-6 lg:px-10 py-3.5 bg-[var(--bg-base,#000000)] border-b border-white/[0.06] flex items-center justify-between gap-4 sm:gap-6 select-none"
+      className="sticky top-0 z-40 w-full px-4 sm:px-6 lg:px-10 py-3.5 bg-[var(--bg-base,#000000)] border-b border-white/[0.06] flex items-center justify-between gap-4 sm:gap-6 select-none transform-gpu [isolation:isolate]"
     >
       {/* Left: Brand Wordmark & Responsive Android TV Navigation */}
       <div className="flex items-center gap-4 sm:gap-7 lg:gap-8 min-w-0">

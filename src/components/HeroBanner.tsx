@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import type { MediaCard } from "../types";
 import { cn } from "../lib/utils";
 import { api } from "../services/api";
+import { ukrainizeMiscInfo, ukrainizeSeriesInfo } from "../utils/ukrainize";
 
 interface HeroBannerProps {
   items?: MediaCard[];
@@ -203,7 +204,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
 
             {currentMedia.series_info && (
               <span className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-white/10 text-zinc-200 border border-white/15">
-                {currentMedia.series_info}
+                {ukrainizeSeriesInfo(currentMedia.series_info)}
               </span>
             )}
 
@@ -216,7 +217,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
 
             {currentMedia.misc_info && (
               <span className="text-xs text-zinc-300 font-medium">
-                {currentMedia.misc_info}
+                {ukrainizeMiscInfo(currentMedia.misc_info)}
               </span>
             )}
           </motion.div>

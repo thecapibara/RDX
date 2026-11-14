@@ -19,6 +19,7 @@ struct TmdbSearchResult {
     id: Option<u64>,
     backdrop_path: Option<String>,
     media_type: Option<String>,
+    original_language: Option<String>,
     title: Option<String>,
     original_title: Option<String>,
     name: Option<String>,
@@ -195,13 +196,36 @@ impl TmdbService {
         let candidates = Self::generate_candidates(title, orig_title);
         let mut best_match: Option<(f64, String, Option<(String, u64)>)> = None;
         let expected_year: Option<i32> = year.and_then(|y| y.trim().get(..4)).and_then(|y| y.parse().ok());
+        let orig_has_cyrillic = orig_title
+            .map(|o| o.chars().any(|c| ('\u{0400}'..='\u{04FF}').contains(&c)))
+            .unwrap_or(false);
+        let orig_is_latin_only = orig_title
+            .map(|o| {
+                let trimmed = o.trim();
+                !trimmed.is_empty()
+                    && trimmed.chars().any(|c| c.is_ascii_alphabetic())
+                    && !trimmed.chars().any(|c| ('\u{0400}'..='\u{04FF}').contains(&c))
+            })
+            .unwrap_or(false);
+
+        let (search_endpoint, year_param) = match (media_type, expected_year) {
+            (Some("movie"), Some(y)) => ("https://api.themoviedb.org/3/search/movie", Some(format!("&year={}", y))),
+            (Some("tv"), Some(y)) => ("https://api.themoviedb.org/3/search/tv", Some(format!("&first_air_date_year={}", y))),
+            (Some("movie"), None) => ("https://api.themoviedb.org/3/search/movie", None),
+            (Some("tv"), None) => ("https://api.themoviedb.org/3/search/tv", None),
+            _ => (TMDB_SEARCH_URL, None),
+        };
 
         for lang in ["uk-UA", "ru-RU"] {
             for candidate in &candidates {
                 let encoded_query = urlencoding::encode(candidate);
                 let url = format!(
-                    "{}?api_key={}&query={}&include_adult=false&language={}",
-                    TMDB_SEARCH_URL, self.api_key, encoded_query, lang
+                    "{}?api_key={}&query={}&include_adult=false&language={}{}",
+                    search_endpoint,
+                    self.api_key,
+                    encoded_query,
+                    lang,
+                    year_param.as_deref().unwrap_or("")
                 );
 
                 if let Ok(resp) = self.client.get(&url).send().await {
@@ -213,13 +237,28 @@ impl TmdbService {
                             }
 
                             // Strictly filter out wrong media_type (e.g. TV series for a movie)
-                            let item_type = item.media_type.as_deref().unwrap_or("");
+                            let item_type = item.media_type.as_deref().or(media_type).unwrap_or("");
                             if let Some(exp) = media_type {
                                 if (item_type == "movie" || item_type == "tv") && item_type != exp {
                                     continue;
                                 }
                             } else if item_type == "person" {
                                 continue;
+                            }
+
+                            // Prevent Cyrillic-original CIS titles (e.g. "Вечеринка / Вечірка") from matching
+                            // unrelated Western/Asian shows (e.g. Apple TV+ "The Afterparty"), and vice versa.
+                            if let Some(ref orig_lang) = item.original_language {
+                                let is_slavic_lang = matches!(
+                                    orig_lang.as_str(),
+                                    "uk" | "ru" | "be" | "kk" | "pl" | "cs" | "sk" | "bg" | "sr" | "hr"
+                                );
+                                if orig_has_cyrillic && !is_slavic_lang {
+                                    continue;
+                                }
+                                if orig_is_latin_only && (orig_lang == "uk" || orig_lang == "ru") {
+                                    continue;
+                                }
                             }
 
                             // Require title similarity so TMDB never substitutes an unrelated franchise

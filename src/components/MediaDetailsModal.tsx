@@ -24,6 +24,7 @@ import { openDownloadsTab } from "../services/downloadsStore";
 import { WindowControls } from "./WindowControls";
 import { UaFlag } from "./UaFlag";
 import { Swimlane } from "./Swimlane";
+import { ukrainizeInfoKey, ukrainizeInfoValue, ukrainizeMiscInfo } from "../utils/ukrainize";
 
 interface MediaDetailsModalProps {
   media: MediaCard | null;
@@ -148,13 +149,15 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
     onClose();
   };
 
-  // Fetch crisp widescreen TMDB backdrop for the header (keep dark until TMDB resolves or details finish)
+  // Fetch crisp widescreen TMDB backdrop for the header once details (orig_title + year) are known
   useEffect(() => {
     if (!isOpen || !media) {
       setTmdbBackdrop(null);
       setBackdropResolved(false);
       setBackdropImgLoaded(false);
-      setTmdbRelated(null);
+      return;
+    }
+    if (!details && !fetchError) {
       return;
     }
     let mounted = true;
@@ -162,7 +165,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
     const origTitle = details?.orig_title || (media as any).orig_title;
     const yearFromTable = details?.info_table?.find(([k]) => {
       const lower = k.toLowerCase();
-      return lower.includes("рік") || lower.includes("год");
+      return lower.includes("дата") || lower.includes("рік") || lower.includes("год") || lower.includes("прем");
     })?.[1];
     const yearMatch = (yearFromTable || media.misc_info || "").match(/\b(19\d\d|20\d\d)\b/)?.[0];
     const isSer =
@@ -179,15 +182,15 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
           if (prev !== url) setBackdropImgLoaded(false);
           return url;
         });
-        setBackdropResolved(true);
-      } else if (details || fetchError) {
-        setBackdropResolved(true);
+      } else {
+        setTmdbBackdrop(null);
       }
+      setBackdropResolved(true);
     });
     return () => {
       mounted = false;
     };
-  }, [isOpen, media?.id, media?.url, details?.title, details?.orig_title, details?.seasons?.length, fetchError]);
+  }, [isOpen, media?.id, media?.url, details, fetchError]);
 
   // Fetch relevant TMDB recommendations asynchronously without blocking card load
   useEffect(() => {
@@ -820,7 +823,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                 )}
                 {media.misc_info && (
                   <span className="text-xs text-zinc-300 font-medium px-1">
-                    {media.misc_info}
+                    {ukrainizeMiscInfo(media.misc_info)}
                   </span>
                 )}
               </div>
@@ -1334,24 +1337,18 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                   hasInfo && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {details.info_table.map(([rawKey, rawVal], idx) => {
-                        const cleanKey = rawKey.replace(/:+$/, "").trim();
-                        const cleanVal = rawVal
-                          .replace(/\s+,/g, ",")
-                          .replace(/\s+:/g, ":")
-                          .replace(/\s{2,}/g, " ")
-                          .trim();
+                        const cleanKey = ukrainizeInfoKey(rawKey);
+                        const cleanVal = ukrainizeInfoValue(rawKey, rawVal);
                         const lowerKey = cleanKey.toLowerCase();
                         const isWide =
                           cleanVal.length > 70 ||
                           lowerKey.includes("списк") ||
-                          lowerKey.includes("перевод") ||
+                          lowerKey.includes("озвуч") ||
                           lowerKey.includes("ролях");
                         const isChipList =
                           lowerKey.includes("жанр") ||
-                          lowerKey.includes("страна") ||
                           lowerKey.includes("країн") ||
-                          lowerKey.includes("серии") ||
-                          lowerKey.includes("сері");
+                          lowerKey.includes("добір");
                         const chips = isChipList
                           ? cleanVal
                               .split(",")

@@ -4,6 +4,7 @@ import type { MediaCard as MediaCardType } from "../types";
 import { cn } from "../lib/utils";
 import { playHoverSound } from "../services/sound";
 import { useMediaDownload, openDownloadsTab } from "../services/downloadsStore";
+import { ukrainizeMiscInfo, ukrainizeSeriesInfo } from "../utils/ukrainize";
 
 interface MediaCardProps {
   card: MediaCardType;
@@ -99,7 +100,7 @@ export const MediaCard: React.FC<MediaCardProps> = React.memo(({
           </span>
           {card.series_info && (
             <span className="bg-zinc-950/90 px-2 py-0.5 rounded-md text-[11px] font-semibold text-zinc-200 border border-white/10 truncate min-w-0 shadow-sm">
-              {card.series_info}
+              {ukrainizeSeriesInfo(card.series_info)}
             </span>
           )}
         </div>
@@ -184,7 +185,7 @@ export const MediaCard: React.FC<MediaCardProps> = React.memo(({
           {card.title}
         </h3>
         <p className="text-xs text-zinc-400 line-clamp-1">
-          {card.misc_info || "HDRezka"}
+          {ukrainizeMiscInfo(card.misc_info) || "HDRezka"}
         </p>
       </div>
     </div>
