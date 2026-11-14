@@ -305,8 +305,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         </button>
 
         {/* Native-Style Frameless Window Controls */}
-        <div className="h-5 w-px bg-white/10 hidden sm:block" />
-        <WindowControls />
+        <WindowControls showDivider />
       </div>
     </header>
   );

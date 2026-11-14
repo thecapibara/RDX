@@ -170,19 +170,19 @@ const GENRE_COUNTRY_MAP: Record<string, string> = {
 };
 
 const MONTH_MAP: [RegExp, string][] = [
-  [/\bянваря\b/gi, "січня"],
-  [/\bфевраля\b/gi, "лютого"],
-  [/\bмарта\b/gi, "березня"],
-  [/\bапреля\b/gi, "квітня"],
-  [/\bмая\b/gi, "травня"],
-  [/\bиюня\b/gi, "червня"],
-  [/\bиюля\b/gi, "липня"],
-  [/\bавгуста\b/gi, "серпня"],
-  [/\bсентября\b/gi, "вересня"],
-  [/\bоктября\b/gi, "жовтня"],
-  [/\bноября\b/gi, "листопада"],
-  [/\bдекабря\b/gi, "грудня"],
-  [/\bгода\b/gi, "року"],
+  [/(^|[^\p{L}])января(?=$|[^\p{L}])/giu, "$1січня"],
+  [/(^|[^\p{L}])февраля(?=$|[^\p{L}])/giu, "$1лютого"],
+  [/(^|[^\p{L}])марта(?=$|[^\p{L}])/giu, "$1березня"],
+  [/(^|[^\p{L}])апреля(?=$|[^\p{L}])/giu, "$1квітня"],
+  [/(^|[^\p{L}])мая(?=$|[^\p{L}])/giu, "$1травня"],
+  [/(^|[^\p{L}])июня(?=$|[^\p{L}])/giu, "$1червня"],
+  [/(^|[^\p{L}])июля(?=$|[^\p{L}])/giu, "$1липня"],
+  [/(^|[^\p{L}])августа(?=$|[^\p{L}])/giu, "$1серпня"],
+  [/(^|[^\p{L}])сентября(?=$|[^\p{L}])/giu, "$1вересня"],
+  [/(^|[^\p{L}])октября(?=$|[^\p{L}])/giu, "$1жовтня"],
+  [/(^|[^\p{L}])ноября(?=$|[^\p{L}])/giu, "$1листопада"],
+  [/(^|[^\p{L}])декабря(?=$|[^\p{L}])/giu, "$1грудня"],
+  [/(^|[^\p{L}])года(?=$|[^\p{L}])/giu, "$1року"],
 ];
 
 export function ukrainizeToken(token: string): string {
@@ -221,7 +221,9 @@ export function ukrainizeInfoValue(rawKey: string, rawVal: string): string {
   }
 
   if (lowerKey === "время") {
-    return cleaned.replace(/\bмин\./gi, "хв").replace(/\bчас\.|\bч\./gi, "год");
+    return cleaned
+      .replace(/(^|[^\p{L}])мин\./giu, "$1хв")
+      .replace(/(^|[^\p{L}])(час\.|ч\.)/giu, "$1год");
   }
 
   if (lowerKey === "рейтинги") {
@@ -234,7 +236,7 @@ export function ukrainizeInfoValue(rawKey: string, rawVal: string): string {
       .replace(/только для взрослых/gi, "лише для дорослих")
       .replace(/для всех возрастов/gi, "для будь-якого віку")
       .replace(/зрителям, достигшим/gi, "глядачам, які досягли")
-      .replace(/\bлет\b/gi, "років");
+      .replace(/(^|[^\p{L}])лет(?=$|[^\p{L}])/giu, "$1років");
   }
 
   return cleaned;
@@ -253,9 +255,9 @@ export function ukrainizeSeriesInfo(info?: string | null): string {
   if (!info) return "";
   return info
     .replace(/Завершен\s*\(все серии\)/gi, "Завершено (усі серії)")
-    .replace(/\bЗавершен\b/gi, "Завершено")
-    .replace(/\bвсе серии\b/gi, "усі серії")
-    .replace(/\bсерии\b/gi, "серії")
-    .replace(/\bсерия\b/gi, "серія")
-    .replace(/\bсерий\b/gi, "серій");
+    .replace(/(^|[^\p{L}])Завершен(?=$|[^\p{L}])/giu, "$1Завершено")
+    .replace(/(^|[^\p{L}])все серии(?=$|[^\p{L}])/giu, "$1усі серії")
+    .replace(/(^|[^\p{L}])серии(?=$|[^\p{L}])/giu, "$1серії")
+    .replace(/(^|[^\p{L}])серия(?=$|[^\p{L}])/giu, "$1серія")
+    .replace(/(^|[^\p{L}])серий(?=$|[^\p{L}])/giu, "$1серій");
 }

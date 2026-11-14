@@ -16,9 +16,10 @@ function detectTilingWm(): Promise<boolean> {
 
 interface WindowControlsProps {
   className?: string;
+  showDivider?: boolean;
 }
 
-export const WindowControls: React.FC<WindowControlsProps> = ({ className }) => {
+export const WindowControls: React.FC<WindowControlsProps> = ({ className, showDivider }) => {
   const [isMaximized, setIsMaximized] = useState(false);
   const [isTiling, setIsTiling] = useState(false);
   const [mode, setMode] = useState<WindowControlsMode>(() => {
@@ -92,7 +93,9 @@ export const WindowControls: React.FC<WindowControlsProps> = ({ className }) => 
   };
 
   return (
-    <div className={cn("flex items-center gap-1 flex-shrink-0", className)}>
+    <>
+      {showDivider && <div className="h-5 w-px bg-white/10 hidden sm:block" />}
+      <div className={cn("flex items-center gap-1 flex-shrink-0", className)}>
       <button
         type="button"
         onClick={handleMinimize}
@@ -121,6 +124,7 @@ export const WindowControls: React.FC<WindowControlsProps> = ({ className }) => 
       >
         <X className="w-4 h-4" />
       </button>
-    </div>
+      </div>
+    </>
   );
 };
