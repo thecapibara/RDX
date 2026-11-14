@@ -694,10 +694,8 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
         <span className="text-xs font-semibold">Назад</span>
       </button>
 
-      {/* Top Right Frameless Window Controls */}
-      <div className="fixed top-5 right-6 sm:right-8 z-40 px-1.5 py-1 rounded-xl bg-zinc-950/70 border border-white/10 backdrop-blur-md shadow-2xl">
-        <WindowControls />
-      </div>
+      {/* Top Right Frameless Window Controls (hidden automatically on tiling WMs) */}
+      <WindowControls className="fixed top-5 right-6 sm:right-8 z-40 px-1.5 py-1 rounded-xl bg-zinc-950/70 border border-white/10 backdrop-blur-md shadow-2xl" />
 
       {/* Full Modal Layout (Rendered INSTANTLY with ambient backdrop and poster) */}
       <div className="relative w-full">
@@ -708,7 +706,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
             alt={details?.title || media.title}
             decoding="async"
             className={cn(
-              "w-full h-full object-cover transform-gpu transition-all duration-500",
+              "w-full h-full object-cover transform-gpu transition-opacity duration-500",
               tmdbBackdrop
                 ? "object-center opacity-80 sm:opacity-85"
                 : "object-[center_20%] sm:object-[75%_20%] opacity-55 sm:opacity-60 scale-105 blur-[6px] sm:blur-[10px] saturate-125"

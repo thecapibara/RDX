@@ -40,7 +40,8 @@ pub struct TmdbService {
 impl TmdbService {
     pub fn new() -> Self {
         let client = Client::builder()
-            .timeout(Duration::from_secs(3))
+            .local_address(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED))
+            .timeout(Duration::from_secs(5))
             .user_agent("RDX-Cinema/1.0")
             .build()
             .unwrap_or_default();
@@ -183,77 +184,83 @@ impl TmdbService {
         let mut best_match: Option<(f64, String)> = None;
         let expected_year: Option<i32> = year.and_then(|y| y.trim().get(..4)).and_then(|y| y.parse().ok());
 
-        for candidate in &candidates {
-            let encoded_query = urlencoding::encode(candidate);
-            let url = format!(
-                "{}?api_key={}&query={}&include_adult=false&language=uk-UA",
-                TMDB_SEARCH_URL, self.api_key, encoded_query
-            );
+        for lang in ["uk-UA", "ru-RU"] {
+            for candidate in &candidates {
+                let encoded_query = urlencoding::encode(candidate);
+                let url = format!(
+                    "{}?api_key={}&query={}&include_adult=false&language={}",
+                    TMDB_SEARCH_URL, self.api_key, encoded_query, lang
+                );
 
-            if let Ok(resp) = self.client.get(&url).send().await {
-                if let Ok(data) = resp.json::<TmdbSearchResponse>().await {
-                    for item in data.results {
-                        let Some(path) = item.backdrop_path.as_ref() else { continue };
-                        if path.is_empty() {
-                            continue;
-                        }
-
-                        // Strictly filter out wrong media_type (e.g. TV series for a movie)
-                        let item_type = item.media_type.as_deref().unwrap_or("");
-                        if let Some(exp) = media_type {
-                            if (item_type == "movie" || item_type == "tv") && item_type != exp {
+                if let Ok(resp) = self.client.get(&url).send().await {
+                    if let Ok(data) = resp.json::<TmdbSearchResponse>().await {
+                        for item in data.results {
+                            let Some(path) = item.backdrop_path.as_ref() else { continue };
+                            if path.is_empty() {
                                 continue;
                             }
-                        } else if item_type == "person" {
-                            continue;
-                        }
 
-                        // Require title similarity so TMDB never substitutes an unrelated franchise
-                        let Some(title_score) = Self::best_title_match_score(&candidates, &item) else {
-                            continue;
-                        };
-
-                        // Reject results whose release year is off by >= 2 years
-                        let mut year_score = 0.0;
-                        if let Some(exp_y) = expected_year {
-                            let rel_date = item
-                                .release_date
-                                .as_deref()
-                                .or(item.first_air_date.as_deref())
-                                .unwrap_or("");
-                            if let Some(item_y) = rel_date.get(..4).and_then(|y| y.parse::<i32>().ok()) {
-                                let diff = (item_y - exp_y).abs();
-                                if diff == 0 {
-                                    year_score = 100_000.0;
-                                } else if diff == 1 {
-                                    year_score = 40_000.0;
-                                } else {
+                            // Strictly filter out wrong media_type (e.g. TV series for a movie)
+                            let item_type = item.media_type.as_deref().unwrap_or("");
+                            if let Some(exp) = media_type {
+                                if (item_type == "movie" || item_type == "tv") && item_type != exp {
                                     continue;
                                 }
+                            } else if item_type == "person" {
+                                continue;
+                            }
+
+                            // Require title similarity so TMDB never substitutes an unrelated franchise
+                            let Some(title_score) = Self::best_title_match_score(&candidates, &item) else {
+                                continue;
+                            };
+
+                            // Reject results whose release year is off by >= 2 years
+                            let mut year_score = 0.0;
+                            if let Some(exp_y) = expected_year {
+                                let rel_date = item
+                                    .release_date
+                                    .as_deref()
+                                    .or(item.first_air_date.as_deref())
+                                    .unwrap_or("");
+                                if let Some(item_y) = rel_date.get(..4).and_then(|y| y.parse::<i32>().ok()) {
+                                    let diff = (item_y - exp_y).abs();
+                                    if diff == 0 {
+                                        year_score = 100_000.0;
+                                    } else if diff == 1 {
+                                        year_score = 40_000.0;
+                                    } else {
+                                        continue;
+                                    }
+                                }
+                            }
+
+                            let mut score = title_score + year_score + (item.vote_count as f64) * 2.0 + item.popularity;
+
+                            if media_type.is_some() && item_type == media_type.unwrap_or("") {
+                                score += 20_000.0;
+                            }
+
+                            let full_url = format!("https://image.tmdb.org/t/p/original{}", path);
+                            match &best_match {
+                                Some((best_score, _)) if score <= *best_score => {}
+                                _ => best_match = Some((score, full_url)),
                             }
                         }
+                    }
+                }
 
-                        let mut score = title_score + year_score + (item.vote_count as f64) * 2.0 + item.popularity;
-
-                        if media_type.is_some() && item_type == media_type.unwrap_or("") {
-                            score += 20_000.0;
-                        }
-
-                        let full_url = format!("https://image.tmdb.org/t/p/original{}", path);
-                        match &best_match {
-                            Some((best_score, _)) if score <= *best_score => {}
-                            _ => best_match = Some((score, full_url)),
-                        }
+                // Early-exit only when we have an exact title + strong year match
+                if let Some((score, _)) = &best_match {
+                    let threshold = if expected_year.is_some() { 250_000.0 } else { 150_000.0 };
+                    if *score >= threshold {
+                        break;
                     }
                 }
             }
 
-            // Early-exit only when we have an exact title + strong year match
-            if let Some((score, _)) = &best_match {
-                let threshold = if expected_year.is_some() { 250_000.0 } else { 150_000.0 };
-                if *score >= threshold {
-                    break;
-                }
+            if best_match.is_some() {
+                break;
             }
         }
 

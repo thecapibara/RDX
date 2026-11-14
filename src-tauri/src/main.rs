@@ -14,17 +14,29 @@ fn main() {
             }
         }
 
-        // 2. Disable WebKitGTK DMA-BUF hardware renderer ONLY on proprietary NVIDIA drivers.
-        // On Intel (Iris Xe/UHD) and AMD Radeon Mesa drivers on Wayland, DMA-BUF zero-copy
-        // GPU compositing is essential for fluid 60/120 FPS scrolling without CPU bottlenecking.
-        if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-            let is_nvidia = std::path::Path::new("/dev/nvidia0").exists()
-                || std::path::Path::new("/dev/nvidiactl").exists()
-                || std::path::Path::new("/proc/driver/nvidia").exists();
-            if is_nvidia {
-                unsafe {
-                    std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-                }
+        // 2. Work around WebKitGTK DMA-BUF / Wayland crashes without sacrificing scroll FPS:
+        // - On proprietary NVIDIA drivers, always disable DMA-BUF renderer.
+        // - Inside AppImage builds (Ubuntu 22.04 libwebkit2gtk-4.1 on newer host Mesa/libstdc++),
+        //   Wayland DMA-BUF compositing can abort WebKitWebProcess (SIGABRT). Prefer XWayland
+        //   (`GDK_BACKEND=x11`) when `DISPLAY` is available so GPU acceleration & smooth scrolling
+        //   stay active; only fall back to disabling DMA-BUF on pure Wayland without XWayland.
+        let is_nvidia = std::path::Path::new("/dev/nvidia0").exists()
+            || std::path::Path::new("/dev/nvidiactl").exists()
+            || std::path::Path::new("/proc/driver/nvidia").exists();
+        let is_appimage =
+            std::env::var_os("APPIMAGE").is_some() || std::env::var_os("APPDIR").is_some();
+        let is_wayland = std::env::var_os("WAYLAND_DISPLAY").is_some();
+        let has_x11 = std::env::var_os("DISPLAY").is_some();
+
+        if is_appimage && is_wayland && has_x11 && !is_nvidia && std::env::var_os("GDK_BACKEND").is_none() {
+            unsafe {
+                std::env::set_var("GDK_BACKEND", "x11");
+            }
+        } else if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()
+            && (is_nvidia || (is_appimage && is_wayland && !has_x11))
+        {
+            unsafe {
+                std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
             }
         }
 
