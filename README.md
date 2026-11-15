@@ -45,8 +45,13 @@
 ## 📸 Скріншоти / Screenshots
 
 <p align="center">
-  <b>Головний екран (Продовжити перегляд з прогресом серій та смарт-стрічки)</b><br/>
+  <b>Головний екран (TMDB Hero-банер, Продовжити перегляд з прогресом та смарт-стрічки)</b><br/>
   <img src="assets/screenshots/home.jpg" width="100%" alt="RDX Home Screen" />
+</p>
+
+<p align="center">
+  <b>Картка релізу (TMDB-бекдроп, вибір української озвучки, завантаження та рекомендації)</b><br/>
+  <img src="assets/screenshots/details.jpg" width="100%" alt="RDX Release Details Screen" />
 </p>
 
 <p align="center">
