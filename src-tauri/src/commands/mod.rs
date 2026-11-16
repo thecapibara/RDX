@@ -1025,7 +1025,7 @@ pub async fn localize_media_cards(
     }
 
     const CACHE_TTL_SECS: i64 = 14 * 24 * 3600;
-    let keys: Vec<String> = items.iter().map(|i| i.id.clone()).collect();
+    let keys: Vec<String> = items.iter().map(|i| format!("v2:{}", i.id)).collect();
     let cached = state
         .storage
         .get_tmdb_cards_cache(&keys, CACHE_TTL_SECS)
@@ -1035,7 +1035,8 @@ pub async fn localize_media_cards(
     let mut missing = Vec::new();
 
     for item in items {
-        if let Some((uk_title, uk_poster)) = cached.get(&item.id) {
+        let cache_key = format!("v2:{}", item.id);
+        if let Some((uk_title, uk_poster)) = cached.get(&cache_key) {
             if uk_title.is_some() || uk_poster.is_some() {
                 out.insert(
                     item.id,
@@ -1077,7 +1078,7 @@ pub async fn localize_media_cards(
     let mut to_cache = Vec::new();
     while let Some(res) = set.join_next().await {
         if let Ok((id, uk_title, uk_poster)) = res {
-            to_cache.push((id.clone(), uk_title.clone(), uk_poster.clone()));
+            to_cache.push((format!("v2:{}", id), uk_title.clone(), uk_poster.clone()));
             if uk_title.is_some() || uk_poster.is_some() {
                 out.insert(
                     id,

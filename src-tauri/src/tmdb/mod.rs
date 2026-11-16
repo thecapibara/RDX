@@ -517,7 +517,7 @@ impl TmdbService {
                         }
 
                         let title_score = Self::best_title_match_score(&queries, &item).unwrap_or(1_000.0);
-                        let score = year_score + title_score + item.popularity + (item.vote_count as f64);
+                        let score = year_score + title_score + (item.popularity * 100.0) + ((item.vote_count as f64) * 10.0);
 
                         if best_match.as_ref().map_or(true, |(best_s, _)| score > *best_s) {
                             best_match = Some((score, format!("https://image.tmdb.org/t/p/w500{}", path)));
@@ -712,9 +712,7 @@ impl TmdbService {
                     }
                 }
 
-                let Some(title_score) = Self::best_title_match_score(&candidates, &item) else {
-                    continue;
-                };
+                let title_score = Self::best_title_match_score(&candidates, &item).unwrap_or(0.0);
 
                 let mut year_score = 0.0;
                 if let Some(exp_y) = expected_year {
@@ -752,7 +750,7 @@ impl TmdbService {
                     continue;
                 }
 
-                let score = year_score + title_score + item.popularity + (item.vote_count as f64);
+                let score = year_score + title_score + (item.popularity * 100.0) + ((item.vote_count as f64) * 10.0);
                 if best.as_ref().map_or(true, |(bs, _, _)| score > *bs) {
                     best = Some((score, uk_title, uk_poster));
                 }
