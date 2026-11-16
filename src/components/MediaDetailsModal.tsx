@@ -67,8 +67,9 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [details, setDetails] = useState<MediaDetails | null>(null);
-  const [bottomTab, setBottomTab] = useState<"related" | "info">("related");
+  const [bottomTab, setBottomTab] = useState<"franchise" | "related" | "info">("related");
   const [tmdbRelated, setTmdbRelated] = useState<MediaCard[] | null>(null);
+  const [franchisePosters, setFranchisePosters] = useState<Record<string, string>>({});
   const [savedProgress, setSavedProgress] = useState<WatchProgress | null>(null);
   const [episodeProgressList, setEpisodeProgressList] = useState<EpisodeProgress[]>([]);
   const [selectedTranslator, setSelectedTranslator] = useState<Translator | null>(null);
@@ -222,7 +223,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
       .then((cards) => {
         if (mounted && cards.length >= 3) {
           setTmdbRelated(cards);
-          setBottomTab((prev) => (prev === "info" && !(details.related && details.related.length > 0) ? "related" : prev));
+          setBottomTab((prev) => (prev === "info" || (prev === "franchise" && !(details.related && details.related.length > 0)) ? "related" : prev));
         }
       });
 
@@ -230,6 +231,29 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
       mounted = false;
     };
   }, [isOpen, details?.id, details?.title, details?.orig_title]);
+
+  // Fetch posters for franchise chronology cards in the background
+  useEffect(() => {
+    let mounted = true;
+    setFranchisePosters({});
+    if (!isOpen || !details?.franchise || details.franchise.length <= 1) return;
+
+    const queries = details.franchise
+      .filter((p) => !p.is_current)
+      .map((p) => ({ id: p.id, title: p.title, year: p.year }));
+
+    if (queries.length === 0) return;
+
+    api.getFranchisePosters(queries).then((posters) => {
+      if (mounted && posters) {
+        setFranchisePosters(posters);
+      }
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [isOpen, details?.id, details?.franchise]);
 
   useEffect(() => {
     if (isOpen) {
@@ -323,7 +347,13 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
 
         // Display details immediately (cuts initial load wait in half)
         setDetails(det);
-        setBottomTab(det.related && det.related.length > 0 ? "related" : "info");
+        setBottomTab(
+          det.related && det.related.length > 0
+            ? "related"
+            : det.franchise && det.franchise.length > 1
+            ? "franchise"
+            : "info"
+        );
         setSavedProgress(progress);
         setEpisodeProgressList(epProgress || []);
         setLoading(false);
@@ -1267,22 +1297,35 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
 
             {/* Bottom Tabs: "Схожі" (default) & "Інформація" */}
             {details && (() => {
+              const franchiseParts = details.franchise || [];
+              const hasFranchise = franchiseParts.length > 1;
               const effectiveRelated =
                 tmdbRelated && tmdbRelated.length >= 3 ? tmdbRelated : details.related || [];
               const hasRelated = effectiveRelated.length > 0;
               const hasInfo = Boolean(details.info_table && details.info_table.length > 0);
-              if (!hasRelated && !hasInfo) return null;
+              if (!hasFranchise && !hasRelated && !hasInfo) return null;
+
+              const activeBottomTab =
+                (bottomTab === "franchise" && hasFranchise) ||
+                (bottomTab === "related" && hasRelated) ||
+                (bottomTab === "info" && hasInfo)
+                  ? bottomTab
+                  : hasRelated
+                  ? "related"
+                  : hasFranchise
+                  ? "franchise"
+                  : "info";
 
               return (
               <div className="space-y-5 pt-6 border-t border-white/10">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {hasRelated && (
                     <button
                       type="button"
                       onClick={() => setBottomTab("related")}
                       className={cn(
                         "flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer border",
-                        bottomTab === "related"
+                        activeBottomTab === "related"
                           ? "bg-white text-black border-white shadow-lg"
                           : "bg-white/5 text-zinc-400 hover:text-white border-white/10 hover:bg-white/10"
                       )}
@@ -1291,10 +1334,33 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                       <span
                         className={cn(
                           "px-1.5 py-0.5 rounded-md text-[10px] font-extrabold",
-                          bottomTab === "related" ? "bg-black/15 text-black" : "bg-white/10 text-zinc-300"
+                          activeBottomTab === "related" ? "bg-black/15 text-black" : "bg-white/10 text-zinc-300"
                         )}
                       >
                         {effectiveRelated.length}
+                      </span>
+                    </button>
+                  )}
+                  {hasFranchise && (
+                    <button
+                      type="button"
+                      onClick={() => setBottomTab("franchise")}
+                      className={cn(
+                        "flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer border",
+                        activeBottomTab === "franchise"
+                          ? "bg-white text-black border-white shadow-lg"
+                          : "bg-white/5 text-zinc-400 hover:text-white border-white/10 hover:bg-white/10"
+                      )}
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>Хронологія</span>
+                      <span
+                        className={cn(
+                          "px-1.5 py-0.5 rounded-md text-[10px] font-extrabold",
+                          activeBottomTab === "franchise" ? "bg-black/15 text-black" : "bg-white/10 text-zinc-300"
+                        )}
+                      >
+                        {franchiseParts.length}
                       </span>
                     </button>
                   )}
@@ -1304,7 +1370,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                       onClick={() => setBottomTab("info")}
                       className={cn(
                         "flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer border",
-                        bottomTab === "info" || !hasRelated
+                        activeBottomTab === "info"
                           ? "bg-white text-black border-white shadow-lg"
                           : "bg-white/5 text-zinc-400 hover:text-white border-white/10 hover:bg-white/10"
                       )}
@@ -1315,8 +1381,39 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                   )}
                 </div>
 
+                {/* Tab: Franchise Chronology (same Swimlane cards as Related) */}
+                {activeBottomTab === "franchise" && hasFranchise && (
+                  <div className="-mx-[clamp(1.5rem,5vw,5rem)]">
+                    <Swimlane
+                      title="Хронологія"
+                      hideHeader
+                      className="py-1"
+                      items={franchiseParts.map((part) => ({
+                        id: part.id,
+                        url: part.url,
+                        title: part.title,
+                        poster: part.is_current
+                          ? details.poster
+                          : franchisePosters[part.id] || details.poster,
+                        entity_type: media?.entity_type || (isSeries ? "series" : "film"),
+                        series_info: null,
+                        misc_info: part.year || "",
+                        rating: part.rating,
+                        chronology_order: part.order,
+                        chronology_year: part.year || undefined,
+                        is_current_part: part.is_current,
+                      }))}
+                      onSelectCard={(selected) => {
+                        if (!selected.is_current_part && onSelectMedia) {
+                          onSelectMedia(selected);
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+
                 {/* Tab 1: Related Movies / Series Row (same Swimlane carousel as Home) */}
-                {bottomTab === "related" && hasRelated && (
+                {activeBottomTab === "related" && hasRelated && (
                   <div className="-mx-[clamp(1.5rem,5vw,5rem)]">
                     <Swimlane
                       title="Схожі"
@@ -1333,7 +1430,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                 )}
 
                 {/* Tab 2: Modern Bento Cards for Metadata */}
-                {(bottomTab === "info" || !hasRelated) &&
+                {activeBottomTab === "info" &&
                   hasInfo && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {details.info_table.map(([rawKey, rawVal], idx) => {

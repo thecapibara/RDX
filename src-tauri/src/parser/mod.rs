@@ -42,8 +42,14 @@ static IMG_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse("img").unw
 static SEASON_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".b-simple_season__item").unwrap());
 static EPISODE_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".b-simple_episode__item").unwrap());
 static RELATED_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".b-sidelist .b-content__inline_item, .b-content__inline_items .b-content__inline_item").unwrap());
+static PART_ITEM_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".b-post__partcontent .b-post__partcontent_item").unwrap());
+static PART_TITLE_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".title").unwrap());
+static PART_YEAR_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".year").unwrap());
+static PART_RATING_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse(".rating").unwrap());
+static PART_LINK_SEL: LazyLock<Selector> = LazyLock::new(|| Selector::parse("a[href]").unwrap());
 static INIT_CDN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"sof\.tv\.initCDN(?:Movies|Series)Events\(\s*(\d+)\s*,\s*(\d+)").unwrap());
 static ID_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"/(\d+)-[^/]+\.html").unwrap());
+static YEAR_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(19\d{2}|20\d{2})\b").unwrap());
 
 pub struct RezkaParser;
 
@@ -515,6 +521,8 @@ impl RezkaParser {
                 .collect();
         }
 
+        let franchise = Self::parse_franchise(&document, page_url, base_url);
+
         Ok(MediaDetails {
             id: media_id,
             url: page_url.to_string(),
@@ -531,7 +539,117 @@ impl RezkaParser {
             episodes,
             initial_streams,
             related,
+            franchise,
         })
+    }
+
+    /// Parses HDRezka franchise / series chronology block (`.b-post__partcontent`) sorted by release year.
+    fn parse_franchise(document: &Html, page_url: &str, base_url: &str) -> Vec<FranchisePart> {
+        let mut raw_parts: Vec<(Option<u32>, usize, FranchisePart)> = Vec::new();
+
+        for (idx, el) in document.select(&PART_ITEM_SEL).enumerate() {
+            let is_current = el.value().classes().any(|c| c == "current");
+
+            let raw_url = el
+                .value()
+                .attr("data-url")
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    el.select(&PART_LINK_SEL)
+                        .next()
+                        .and_then(|a| a.value().attr("href"))
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                })
+                .or_else(|| {
+                    if is_current {
+                        Some(page_url.to_string())
+                    } else {
+                        None
+                    }
+                });
+
+            let Some(raw_url) = raw_url else {
+                continue;
+            };
+            let url = Self::normalize_link(&raw_url, base_url);
+
+            let title = el
+                .select(&PART_TITLE_SEL)
+                .next()
+                .map(|t| t.text().collect::<String>().trim().to_string())
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    el.select(&PART_LINK_SEL)
+                        .next()
+                        .map(|a| a.text().collect::<String>().trim().to_string())
+                        .filter(|s| !s.is_empty())
+                });
+
+            let Some(title) = title else {
+                continue;
+            };
+
+            let year_text = el
+                .select(&PART_YEAR_SEL)
+                .next()
+                .map(|y| y.text().collect::<String>().trim().to_string())
+                .filter(|s| !s.is_empty());
+
+            let year_num = year_text
+                .as_deref()
+                .and_then(|y| YEAR_RE.find(y))
+                .and_then(|m| m.as_str().parse::<u32>().ok());
+
+            let year = year_num.map(|y| y.to_string()).or(year_text);
+
+            let rating = el
+                .select(&PART_RATING_SEL)
+                .next()
+                .map(|r| r.text().collect::<String>().trim().to_string())
+                .filter(|s| !s.is_empty() && s != "-" && s != "—" && s != "0");
+
+            let id = ID_RE
+                .captures(&url)
+                .and_then(|c| c.get(1))
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_else(|| format!("part-{}", idx + 1));
+
+            raw_parts.push((
+                year_num,
+                idx,
+                FranchisePart {
+                    id,
+                    url,
+                    title,
+                    year,
+                    rating,
+                    is_current,
+                    order: idx + 1,
+                },
+            ));
+        }
+
+        if raw_parts.len() <= 1 {
+            return Vec::new();
+        }
+
+        // Sort chronologically by release year (ascending), preserving source order on ties or missing years.
+        raw_parts.sort_by(|a, b| {
+            let ay = a.0.unwrap_or(u32::MAX);
+            let by = b.0.unwrap_or(u32::MAX);
+            ay.cmp(&by).then_with(|| a.1.cmp(&b.1))
+        });
+
+        raw_parts
+            .into_iter()
+            .enumerate()
+            .map(|(i, (_, _, mut part))| {
+                part.order = i + 1;
+                part
+            })
+            .collect()
     }
 
     /// Extracts initial player_info JSON object from sof.tv.initCDN*Events script
@@ -941,5 +1059,57 @@ mod tests {
                 .unwrap_or(false);
 
         assert!(is_premium);
+    }
+
+    #[test]
+    fn test_parse_franchise_chronology() {
+        let html = r#"
+        <div class="b-post__partcontent">
+          <div class="b-post__partcontent_item" data-url="/films/fantasy/103-harry-potter-3.html">
+            <div class="td num">3</div>
+            <div class="td title">Гарри Поттер и узник Азкабана</div>
+            <div class="td year">2004 год</div>
+            <div class="td rating"><i>8.2</i></div>
+          </div>
+          <div class="b-post__partcontent_item current">
+            <div class="td num">1</div>
+            <div class="td title">Гарри Поттер и философский камень</div>
+            <div class="td year">2001</div>
+            <div class="td rating">8.3</div>
+          </div>
+          <div class="b-post__partcontent_item" data-url="https://rezka-tv.org/films/fantasy/102-harry-potter-2.html">
+            <div class="td num">2</div>
+            <div class="td title">Гарри Поттер и Тайная комната</div>
+            <div class="td year">2002</div>
+            <div class="td rating">-</div>
+          </div>
+        </div>
+        "#;
+
+        let doc = Html::parse_document(html);
+        let parts = RezkaParser::parse_franchise(
+            &doc,
+            "https://rezka-tv.org/films/fantasy/101-harry-potter-1.html",
+            "https://rezka-tv.org",
+        );
+
+        assert_eq!(parts.len(), 3);
+        assert_eq!(parts[0].id, "101");
+        assert_eq!(parts[0].year.as_deref(), Some("2001"));
+        assert!(parts[0].is_current);
+        assert_eq!(parts[0].order, 1);
+        assert_eq!(parts[0].rating.as_deref(), Some("8.3"));
+
+        assert_eq!(parts[1].id, "102");
+        assert_eq!(parts[1].year.as_deref(), Some("2002"));
+        assert!(!parts[1].is_current);
+        assert_eq!(parts[1].order, 2);
+        assert_eq!(parts[1].rating, None);
+
+        assert_eq!(parts[2].id, "103");
+        assert_eq!(parts[2].url, "https://rezka-tv.org/films/fantasy/103-harry-potter-3.html");
+        assert_eq!(parts[2].year.as_deref(), Some("2004"));
+        assert_eq!(parts[2].order, 3);
+        assert_eq!(parts[2].rating.as_deref(), Some("8.2"));
     }
 }

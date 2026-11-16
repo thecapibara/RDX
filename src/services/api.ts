@@ -851,6 +851,20 @@ export const api = {
     return [];
   },
 
+  getFranchisePosters: async (
+    items: { id: string; title: string; year: string | null }[]
+  ): Promise<Record<string, string>> => {
+    if (isTauri && items.length > 0) {
+      try {
+        return await invoke<Record<string, string>>("get_franchise_posters", { items });
+      } catch (e) {
+        console.warn("[TMDB] Failed to get franchise posters:", e);
+        return {};
+      }
+    }
+    return {};
+  },
+
   getSystemTime: async (): Promise<string> => {
     if (isTauri) {
       try {

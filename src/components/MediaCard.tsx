@@ -73,7 +73,14 @@ export const MediaCard: React.FC<MediaCardProps> = React.memo(({
       )}
     >
       {/* Poster 2:3 container — flat single-layer composite on idle, hardware scale only on hover */}
-      <div className="relative aspect-[2/3] w-full overflow-hidden rounded-2xl bg-zinc-900 border border-white/10 group-hover:border-rose-500/50 transition-transform duration-150 ease-out group-hover:scale-[1.025] transform-gpu">
+      <div
+        className={cn(
+          "relative aspect-[2/3] w-full overflow-hidden rounded-2xl bg-zinc-900 border transition-transform duration-150 ease-out group-hover:scale-[1.025] transform-gpu",
+          card.is_current_part
+            ? "border-rose-500 ring-2 ring-rose-500/40"
+            : "border-white/10 group-hover:border-rose-500/50"
+        )}
+      >
         <img
           src={card.poster}
           alt={card.title}
@@ -88,20 +95,42 @@ export const MediaCard: React.FC<MediaCardProps> = React.memo(({
           }}
         />
 
-        {/* Top Badges Row: Entity Type + Series Info (never overlap) */}
+        {/* Top Badges Row: Chronology Order + Year OR Entity Type + Series Info */}
         <div className="absolute top-2.5 left-2.5 right-2.5 z-10 pointer-events-none flex items-start justify-between gap-1.5">
-          <span
-            className={cn(
-              "px-2 py-0.5 rounded-md text-[11px] font-bold tracking-wide uppercase shadow-sm shrink-0",
-              typeBadgeClass
-            )}
-          >
-            {typeLabel}
-          </span>
-          {card.series_info && (
-            <span className="bg-zinc-950/90 px-2 py-0.5 rounded-md text-[11px] font-semibold text-zinc-200 border border-white/10 truncate min-w-0 shadow-sm">
-              {ukrainizeSeriesInfo(card.series_info)}
-            </span>
+          {card.chronology_order !== undefined ? (
+            <>
+              <span
+                className={cn(
+                  "px-2 py-0.5 rounded-md text-[11px] font-extrabold tracking-wide shadow-sm shrink-0",
+                  card.is_current_part
+                    ? "bg-rose-600 text-white"
+                    : "bg-zinc-950/90 text-white border border-white/15"
+                )}
+              >
+                #{card.chronology_order}
+              </span>
+              {card.chronology_year && (
+                <span className="bg-zinc-950/90 px-2 py-0.5 rounded-md text-[11px] font-semibold text-zinc-200 border border-white/10 shrink-0 shadow-sm">
+                  {card.chronology_year}
+                </span>
+              )}
+            </>
+          ) : (
+            <>
+              <span
+                className={cn(
+                  "px-2 py-0.5 rounded-md text-[11px] font-bold tracking-wide uppercase shadow-sm shrink-0",
+                  typeBadgeClass
+                )}
+              >
+                {typeLabel}
+              </span>
+              {card.series_info && (
+                <span className="bg-zinc-950/90 px-2 py-0.5 rounded-md text-[11px] font-semibold text-zinc-200 border border-white/10 truncate min-w-0 shadow-sm">
+                  {ukrainizeSeriesInfo(card.series_info)}
+                </span>
+              )}
+            </>
           )}
         </div>
 

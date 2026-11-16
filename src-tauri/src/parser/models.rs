@@ -73,6 +73,17 @@ pub struct StreamData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FranchisePart {
+    pub id: String,
+    pub url: String,
+    pub title: String,
+    pub year: Option<String>,
+    pub rating: Option<String>,
+    pub is_current: bool,
+    pub order: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MediaDetails {
     pub id: String,
     pub url: String,
@@ -90,4 +101,6 @@ pub struct MediaDetails {
     pub initial_streams: Option<StreamData>,
     #[serde(default)]
     pub related: Vec<MediaCard>,
+    #[serde(default)]
+    pub franchise: Vec<FranchisePart>,
 }

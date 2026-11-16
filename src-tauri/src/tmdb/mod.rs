@@ -18,6 +18,7 @@ struct TmdbSearchResponse {
 struct TmdbSearchResult {
     id: Option<u64>,
     backdrop_path: Option<String>,
+    poster_path: Option<String>,
     media_type: Option<String>,
     original_language: Option<String>,
     title: Option<String>,
@@ -43,6 +44,7 @@ pub struct TmdbRecommendation {
 pub struct TmdbService {
     client: Client,
     cache: Arc<RwLock<HashMap<String, Option<String>>>>,
+    poster_cache: Arc<RwLock<HashMap<String, Option<String>>>>,
     id_cache: Arc<RwLock<HashMap<String, Option<(String, u64)>>>>,
     rec_cache: Arc<RwLock<HashMap<String, Vec<crate::parser::MediaCard>>>>,
     api_key: String,
@@ -60,6 +62,7 @@ impl TmdbService {
         Self {
             client,
             cache: Arc::new(RwLock::new(HashMap::new())),
+            poster_cache: Arc::new(RwLock::new(HashMap::new())),
             id_cache: Arc::new(RwLock::new(HashMap::new())),
             rec_cache: Arc::new(RwLock::new(HashMap::new())),
             api_key: DEFAULT_TMDB_KEY.to_string(),
@@ -418,5 +421,84 @@ impl TmdbService {
             })
             .take(10)
             .collect()
+    }
+
+    pub async fn get_poster(&self, title: &str, year: Option<&str>) -> Option<String> {
+        let cache_key = format!("{}|{}", title.trim().to_lowercase(), year.unwrap_or(""));
+        if let Some(cached) = self.poster_cache.read().await.get(&cache_key).cloned() {
+            return cached;
+        }
+
+        let expected_year = year.and_then(|y| y.trim().get(..4)).and_then(|y| y.parse::<i32>().ok());
+        let mut queries: Vec<String> = Vec::new();
+        for part in title.split('/') {
+            let trimmed = part.trim();
+            if !trimmed.is_empty() && !queries.iter().any(|q| q.eq_ignore_ascii_case(trimmed)) {
+                queries.push(trimmed.to_string());
+            }
+        }
+        if queries.is_empty() {
+            return None;
+        }
+
+        let mut best_match: Option<(f64, String)> = None;
+
+        for query in &queries {
+            let encoded = urlencoding::encode(query);
+            let url = format!(
+                "{}?api_key={}&query={}&include_adult=false&language=ru-RU",
+                TMDB_SEARCH_URL, self.api_key, encoded
+            );
+
+            if let Ok(resp) = self.client.get(&url).send().await {
+                if let Ok(data) = resp.json::<TmdbSearchResponse>().await {
+                    for item in data.results {
+                        if item.media_type.as_deref() == Some("person") {
+                            continue;
+                        }
+                        let Some(path) = item.poster_path.as_ref() else {
+                            continue;
+                        };
+                        if path.is_empty() {
+                            continue;
+                        }
+
+                        let mut year_score = 0.0;
+                        if let Some(exp_y) = expected_year {
+                            let rel = item
+                                .release_date
+                                .as_deref()
+                                .or(item.first_air_date.as_deref())
+                                .unwrap_or("");
+                            if let Some(item_y) = rel.get(..4).and_then(|y| y.parse::<i32>().ok()) {
+                                let diff = (item_y - exp_y).abs();
+                                if diff == 0 {
+                                    year_score = 100_000.0;
+                                } else if diff == 1 {
+                                    year_score = 40_000.0;
+                                } else {
+                                    continue;
+                                }
+                            }
+                        }
+
+                        let title_score = Self::best_title_match_score(&queries, &item).unwrap_or(1_000.0);
+                        let score = year_score + title_score + item.popularity + (item.vote_count as f64);
+
+                        if best_match.as_ref().map_or(true, |(best_s, _)| score > *best_s) {
+                            best_match = Some((score, format!("https://image.tmdb.org/t/p/w500{}", path)));
+                        }
+                    }
+                }
+            }
+
+            if best_match.as_ref().map_or(false, |(s, _)| *s >= 100_000.0) {
+                break;
+            }
+        }
+
+        let result = best_match.map(|(_, url)| url);
+        self.poster_cache.write().await.insert(cache_key, result.clone());
+        result
     }
 }

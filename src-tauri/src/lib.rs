@@ -137,6 +137,7 @@ pub fn run() {
             commands::select_fastest_cdn,
             commands::get_backdrop,
             commands::get_tmdb_recommendations,
+            commands::get_franchise_posters,
             commands::get_system_time,
             commands::is_tiling_wm,
         ])

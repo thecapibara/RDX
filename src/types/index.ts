@@ -73,6 +73,9 @@ export interface MediaCard {
   series_info: string | null;
   misc_info: string;
   rating: string | null;
+  chronology_order?: number;
+  chronology_year?: string;
+  is_current_part?: boolean;
 }
 
 export interface SearchItem {
@@ -133,6 +136,16 @@ export interface TurboStats {
   cdn_mode: string;
 }
 
+export interface FranchisePart {
+  id: string;
+  url: string;
+  title: string;
+  year: string | null;
+  rating: string | null;
+  is_current: boolean;
+  order: number;
+}
+
 export interface MediaDetails {
   id: string;
   url: string;
@@ -151,6 +164,7 @@ export interface MediaDetails {
   episodes: EpisodeTab[];
   initial_streams: StreamData | null;
   related?: MediaCard[];
+  franchise?: FranchisePart[];
   is_offline?: boolean;
 }
 

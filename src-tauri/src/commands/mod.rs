@@ -310,8 +310,31 @@ pub async fn open_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+fn resolve_appimage_path(raw: Option<&str>) -> Option<std::path::PathBuf> {
+    let path_str = raw?.trim();
+    if path_str.is_empty() {
+        return None;
+    }
+    let path = std::path::PathBuf::from(path_str);
+    if path.exists() {
+        Some(path)
+    } else {
+        None
+    }
+}
+
 #[tauri::command]
 pub async fn restart_app(app_handle: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(appimage_path) = resolve_appimage_path(std::env::var("APPIMAGE").ok().as_deref()) {
+            if std::process::Command::new(&appimage_path).spawn().is_ok() {
+                app_handle.exit(0);
+                return Ok(());
+            }
+        }
+    }
     app_handle.restart();
 }
 
@@ -958,6 +981,36 @@ pub async fn get_backdrop(
         .await)
 }
 
+#[derive(Debug, Deserialize)]
+pub struct FranchisePosterQuery {
+    pub id: String,
+    pub title: String,
+    pub year: Option<String>,
+}
+
+#[tauri::command]
+pub async fn get_franchise_posters(
+    items: Vec<FranchisePosterQuery>,
+    state: State<'_, AppState>,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let mut set = tokio::task::JoinSet::new();
+    for item in items.into_iter().take(20) {
+        let tmdb = state.tmdb.clone();
+        set.spawn(async move {
+            let poster = tmdb.get_poster(&item.title, item.year.as_deref()).await;
+            (item.id, poster)
+        });
+    }
+
+    let mut out = std::collections::HashMap::new();
+    while let Some(res) = set.join_next().await {
+        if let Ok((id, Some(poster))) = res {
+            out.insert(id, poster);
+        }
+    }
+    Ok(out)
+}
+
 #[tauri::command]
 pub async fn get_tmdb_recommendations(
     title: String,
@@ -1122,6 +1175,22 @@ pub fn is_tiling_wm() -> bool {
     #[cfg(not(target_os = "linux"))]
     {
         false
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::resolve_appimage_path;
+
+    #[test]
+    fn test_resolve_appimage_path() {
+        assert_eq!(resolve_appimage_path(None), None);
+        assert_eq!(resolve_appimage_path(Some("   ")), None);
+        assert_eq!(resolve_appimage_path(Some("/non/existent/RDX.AppImage")), None);
+
+        let exe = std::env::current_exe().unwrap();
+        let resolved = resolve_appimage_path(exe.to_str());
+        assert_eq!(resolved, Some(exe));
     }
 }
 

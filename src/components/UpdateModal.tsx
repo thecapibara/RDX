@@ -127,13 +127,12 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
             }
           } else if (event.event === "Finished") {
             setUpdateProgress(100);
-            setStatusText("Оновлення встановлено! Потрібен перезапуск.");
-            setIsReadyToRestart(true);
+            setStatusText("Встановлення оновлення...");
           }
         });
 
         setIsReadyToRestart(true);
-        setStatusText("Оновлення готове! Натисніть для перезапуску.");
+        setStatusText("Оновлення встановлено! Натисніть для перезапуску.");
       } else {
         // Fallback: If updater plugin returns no update or latest.json is unavailable
         await api.openUrl(targetUrl);
