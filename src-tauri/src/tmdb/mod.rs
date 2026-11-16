@@ -520,25 +520,74 @@ impl TmdbService {
             return vec![];
         };
 
+        let raw_titles: Vec<String> = data
+            .results
+            .into_iter()
+            .filter(|item| item.media_type.as_deref() != Some("person"))
+            .filter_map(|item| {
+                item.original_title
+                    .or(item.original_name)
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+            })
+            .take(5)
+            .collect();
+
+        Self::extract_search_queries(trimmed, &raw_titles)
+    }
+
+    fn extract_search_queries(user_query: &str, raw_titles: &[String]) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
-        for item in data.results {
-            if item.media_type.as_deref() == Some("person") {
-                continue;
+        let push_unique = |out: &mut Vec<String>, s: &str| {
+            let t = s.trim();
+            if t.len() >= 2
+                && !t.eq_ignore_ascii_case(user_query)
+                && !out.iter().any(|x| x.eq_ignore_ascii_case(t))
+            {
+                out.push(t.to_string());
             }
-            let orig = item
-                .original_title
-                .or(item.original_name)
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty());
-            if let Some(o) = orig {
-                if !o.eq_ignore_ascii_case(trimmed) && !out.iter().any(|x| x.eq_ignore_ascii_case(&o)) {
-                    out.push(o);
-                    if out.len() >= 3 {
-                        break;
-                    }
+        };
+
+        // Extract base franchise prefix before ':' if multiple results share it (e.g. "Star Wars: ..." -> "Star Wars")
+        for (i, t) in raw_titles.iter().enumerate() {
+            if let Some((prefix, _)) = t.split_once(':') {
+                let p = prefix.trim();
+                if p.len() >= 3
+                    && raw_titles
+                        .iter()
+                        .enumerate()
+                        .any(|(j, other)| i != j && other.starts_with(p))
+                {
+                    push_unique(&mut out, p);
                 }
             }
         }
+
+        for t in raw_titles {
+            push_unique(&mut out, t);
+            if out.len() >= 3 {
+                break;
+            }
+        }
+
+        out.truncate(3);
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_search_queries_adds_shared_franchise_prefix() {
+        let raw = vec![
+            "Star Wars: The Clone Wars".to_string(),
+            "Star Wars: Visions".to_string(),
+            "Star Wars Rebels".to_string(),
+        ];
+        let queries = TmdbService::extract_search_queries("Зоряні війни", &raw);
+        assert_eq!(queries[0], "Star Wars");
+        assert!(queries.len() <= 3);
     }
 }

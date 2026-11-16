@@ -574,9 +574,21 @@ pub async fn search_media(state: State<'_, AppState>, query: String) -> Result<V
 #[tauri::command]
 pub async fn search_autocomplete(state: State<'_, AppState>, query: String) -> Result<Vec<SearchItem>, String> {
     let mirror = state.storage.get_settings().map_err(|e| e.to_string())?.active_mirror;
-    RezkaParser::search_autocomplete(&state.client, &mirror, &query)
+    let direct = RezkaParser::search_autocomplete(&state.client, &mirror, &query)
         .await
-        .map_err(|e| e.to_string())
+        .unwrap_or_default();
+    if !direct.is_empty() {
+        return Ok(direct);
+    }
+
+    let orig_titles = state.tmdb.search_original_titles(&query).await;
+    if let Some(first_orig) = orig_titles.into_iter().next() {
+        return RezkaParser::search_autocomplete(&state.client, &mirror, &first_orig)
+            .await
+            .map_err(|e| e.to_string());
+    }
+
+    Ok(direct)
 }
 
 #[tauri::command]
