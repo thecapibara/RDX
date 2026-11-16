@@ -146,6 +146,13 @@ export interface FranchisePart {
   order: number;
 }
 
+export interface TmdbLocalizedMetadata {
+  title: string | null;
+  overview: string | null;
+  poster: string | null;
+  backdrop: string | null;
+}
+
 export interface MediaDetails {
   id: string;
   url: string;

@@ -136,8 +136,10 @@ pub fn run() {
             commands::get_turbo_stats,
             commands::select_fastest_cdn,
             commands::get_backdrop,
+            commands::get_tmdb_metadata,
             commands::get_tmdb_recommendations,
             commands::get_franchise_posters,
+            commands::localize_media_cards,
             commands::get_system_time,
             commands::is_tiling_wm,
         ])

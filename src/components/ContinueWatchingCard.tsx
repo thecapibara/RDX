@@ -3,6 +3,7 @@ import { Play, X, Loader2, ArrowDownCircle, Clock, Pause } from "lucide-react";
 import type { WatchProgress, MediaCard } from "../types";
 import { playHoverSound } from "../services/sound";
 import { useMediaDownload, openDownloadsTab } from "../services/downloadsStore";
+import { useCardLocalization } from "../services/localizationCache";
 
 interface ContinueWatchingCardProps {
   item: WatchProgress;
@@ -33,6 +34,22 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const downloadInfo = useMediaDownload(item.media_id);
+  const localized = useCardLocalization(
+    item.media_id
+      ? {
+          id: item.media_id,
+          title: item.title,
+          orig_title: item.orig_title,
+          year: null,
+          media_type:
+            item.season !== null || item.media_type === "series" || item.media_url.includes("/series/")
+              ? "tv"
+              : "movie",
+        }
+      : null
+  );
+  const displayTitle = localized?.title || item.title;
+  const displayPoster = localized?.poster || item.poster_url;
 
   const handleResumeClick = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -65,8 +82,8 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
         className="relative aspect-[2/3] w-full overflow-hidden rounded-2xl bg-zinc-900 border border-white/10 shadow-md transition-transform duration-200 ease-out transform-gpu group-hover:scale-[1.025] group-hover:border-rose-500/50"
       >
         <img
-          src={item.poster_url}
-          alt={item.title}
+          src={displayPoster}
+          alt={displayTitle}
           draggable={false}
           loading="lazy"
           decoding="async"
@@ -177,8 +194,8 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
             onOpenDetails({
               id: item.media_id,
               url: item.media_url,
-              title: item.title,
-              poster: item.poster_url,
+              title: displayTitle,
+              poster: displayPoster,
               entity_type: item.media_type || (item.season !== null ? "Серіал" : "Фільм"),
               series_info: item.season !== null && item.episode !== null ? `S${item.season}E${item.episode}` : null,
               misc_info: item.translator_name || "",
@@ -186,11 +203,11 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
             });
           }
         }}
-        title={`Відкрити «${item.title}»`}
+        title={`Відкрити «${displayTitle}»`}
         className="mt-2 px-1 cursor-pointer group/title"
       >
         <h4 className="text-sm font-semibold text-zinc-100 truncate group-hover/title:text-rose-400 group-hover:text-rose-400 transition-colors duration-150">
-          {item.title}
+          {displayTitle}
         </h4>
       </div>
     </div>

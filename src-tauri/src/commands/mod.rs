@@ -981,6 +981,122 @@ pub async fn get_backdrop(
         .await)
 }
 
+#[tauri::command]
+pub async fn get_tmdb_metadata(
+    title: String,
+    orig_title: Option<String>,
+    year: Option<String>,
+    media_type: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Option<crate::tmdb::TmdbLocalizedMetadata>, String> {
+    Ok(state
+        .tmdb
+        .get_localized_metadata(
+            &title,
+            orig_title.as_deref(),
+            year.as_deref(),
+            media_type.as_deref(),
+        )
+        .await)
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CardLocalizationQuery {
+    pub id: String,
+    pub title: String,
+    pub orig_title: Option<String>,
+    pub year: Option<String>,
+    pub media_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CardLocalizationResult {
+    pub title: Option<String>,
+    pub poster: Option<String>,
+}
+
+#[tauri::command]
+pub async fn localize_media_cards(
+    items: Vec<CardLocalizationQuery>,
+    state: State<'_, AppState>,
+) -> Result<std::collections::HashMap<String, CardLocalizationResult>, String> {
+    if items.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+
+    const CACHE_TTL_SECS: i64 = 14 * 24 * 3600;
+    let keys: Vec<String> = items.iter().map(|i| i.id.clone()).collect();
+    let cached = state
+        .storage
+        .get_tmdb_cards_cache(&keys, CACHE_TTL_SECS)
+        .unwrap_or_default();
+
+    let mut out = std::collections::HashMap::new();
+    let mut missing = Vec::new();
+
+    for item in items {
+        if let Some((uk_title, uk_poster)) = cached.get(&item.id) {
+            if uk_title.is_some() || uk_poster.is_some() {
+                out.insert(
+                    item.id,
+                    CardLocalizationResult {
+                        title: uk_title.clone(),
+                        poster: uk_poster.clone(),
+                    },
+                );
+            }
+        } else if missing.len() < 25 {
+            missing.push(item);
+        }
+    }
+
+    if missing.is_empty() {
+        return Ok(out);
+    }
+
+    let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(6));
+    let mut set = tokio::task::JoinSet::new();
+
+    for item in missing {
+        let tmdb = state.tmdb.clone();
+        let permit_sem = sem.clone();
+        set.spawn(async move {
+            let _permit = permit_sem.acquire().await;
+            let (uk_title, uk_poster) = tmdb
+                .get_card_localization(
+                    &item.title,
+                    item.orig_title.as_deref(),
+                    item.year.as_deref(),
+                    item.media_type.as_deref(),
+                )
+                .await;
+            (item.id, uk_title, uk_poster)
+        });
+    }
+
+    let mut to_cache = Vec::new();
+    while let Some(res) = set.join_next().await {
+        if let Ok((id, uk_title, uk_poster)) = res {
+            to_cache.push((id.clone(), uk_title.clone(), uk_poster.clone()));
+            if uk_title.is_some() || uk_poster.is_some() {
+                out.insert(
+                    id,
+                    CardLocalizationResult {
+                        title: uk_title,
+                        poster: uk_poster,
+                    },
+                );
+            }
+        }
+    }
+
+    if !to_cache.is_empty() {
+        let _ = state.storage.upsert_tmdb_cards_cache(&to_cache);
+    }
+
+    Ok(out)
+}
+
 #[derive(Debug, Deserialize)]
 pub struct FranchisePosterQuery {
     pub id: String,
