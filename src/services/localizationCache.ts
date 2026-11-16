@@ -12,6 +12,8 @@ export interface LocalizationQuery {
   orig_title?: string | null;
   year?: string | null;
   media_type?: "movie" | "tv" | null;
+  url?: string | null;
+  is_animation?: boolean;
 }
 
 const MAX_MEM_CACHE = 600;

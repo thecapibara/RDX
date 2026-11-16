@@ -895,6 +895,8 @@ export const api = {
       orig_title?: string | null;
       year?: string | null;
       media_type?: "movie" | "tv" | null;
+      url?: string | null;
+      is_animation?: boolean;
     }[]
   ): Promise<Record<string, { title: string | null; poster: string | null }>> => {
     if (isTauri && items.length > 0) {

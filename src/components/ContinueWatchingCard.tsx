@@ -45,6 +45,12 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
             item.season !== null || item.media_type === "series" || item.media_url.includes("/series/")
               ? "tv"
               : "movie",
+          url: item.media_url,
+          is_animation:
+            item.media_type === "cartoon" ||
+            item.media_type === "anime" ||
+            item.media_url.includes("/cartoons/") ||
+            item.media_url.includes("/animation/"),
         }
       : null
   );

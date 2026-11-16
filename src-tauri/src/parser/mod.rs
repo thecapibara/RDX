@@ -707,6 +707,45 @@ impl RezkaParser {
         Ok(details)
     }
 
+    /// Lightweight fetch of original title and release year from a media details page.
+    pub async fn fetch_orig_title_and_year(
+        client: &HttpClient,
+        base_url: &str,
+        item_url: &str,
+    ) -> (Option<String>, Option<String>) {
+        let full_url = Self::rewrite_to_mirror(item_url, base_url);
+        let Ok(html) = client.get_html(&full_url, None).await else {
+            return (None, None);
+        };
+        let document = Html::parse_document(&html);
+        let orig_title = document
+            .select(&ORIG_TITLE_SEL)
+            .next()
+            .map(|el| el.text().collect::<String>().trim().to_string())
+            .filter(|s| !s.is_empty());
+
+        let mut year = None;
+        for tr in document.select(&TABLE_TR_SEL) {
+            let key = tr
+                .select(&TD_L_SEL)
+                .next()
+                .map(|el| el.text().collect::<String>().trim().to_lowercase())
+                .unwrap_or_default();
+            if key.contains("дата") || key.contains("год") || key.contains("рік") {
+                let val = tr
+                    .select(&TD_R_SEL)
+                    .next()
+                    .map(|el| el.text().collect::<String>())
+                    .unwrap_or_default();
+                if let Some(m) = YEAR_RE.find(&val) {
+                    year = Some(m.as_str().to_string());
+                    break;
+                }
+            }
+        }
+        (orig_title, year)
+    }
+
     /// Fetches stream URL for movie or series episode via /ajax/get_cdn_series/
     pub async fn get_stream(
         client: &HttpClient,

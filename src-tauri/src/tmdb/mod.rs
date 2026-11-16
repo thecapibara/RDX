@@ -29,6 +29,8 @@ struct TmdbSearchResult {
     vote_count: u32,
     #[serde(default)]
     popularity: f64,
+    #[serde(default)]
+    genre_ids: Vec<u32>,
     release_date: Option<String>,
     first_air_date: Option<String>,
 }
@@ -661,6 +663,7 @@ impl TmdbService {
         orig_title: Option<&str>,
         year: Option<&str>,
         media_type: Option<&str>,
+        is_animation: bool,
     ) -> (Option<String>, Option<String>) {
         let mut candidates = Self::generate_candidates(title, orig_title);
         for part in title.split('/') {
@@ -673,6 +676,7 @@ impl TmdbService {
             return (None, None);
         }
 
+        let has_orig = orig_title.map(|o| !o.trim().is_empty()).unwrap_or(false);
         let expected_year: Option<i32> = year.and_then(|y| y.trim().get(..4)).and_then(|y| y.parse().ok());
         let (search_endpoint, year_param) = match (media_type, expected_year) {
             (Some("movie"), Some(y)) => ("https://api.themoviedb.org/3/search/movie", Some(format!("&year={}", y))),
@@ -712,7 +716,13 @@ impl TmdbService {
                     }
                 }
 
-                let title_score = Self::best_title_match_score(&candidates, &item).unwrap_or(0.0);
+                let title_score_opt = Self::best_title_match_score(&candidates, &item);
+                // If we have neither a release year nor an original title, require a title match
+                // so ambiguous queries (like "Одиссей" without year) don't pick a random film.
+                if expected_year.is_none() && !has_orig && title_score_opt.is_none() {
+                    continue;
+                }
+                let title_score = title_score_opt.unwrap_or(0.0);
 
                 let mut year_score = 0.0;
                 if let Some(exp_y) = expected_year {
@@ -733,6 +743,15 @@ impl TmdbService {
                     }
                 }
 
+                let mut genre_score = 0.0;
+                if is_animation && !item.genre_ids.is_empty() {
+                    if item.genre_ids.contains(&16) {
+                        genre_score = 80_000.0;
+                    } else {
+                        genre_score = -100_000.0;
+                    }
+                }
+
                 let uk_title = item
                     .title
                     .or(item.name)
@@ -750,7 +769,10 @@ impl TmdbService {
                     continue;
                 }
 
-                let score = year_score + title_score + (item.popularity * 100.0) + ((item.vote_count as f64) * 10.0);
+                let score = year_score + genre_score + title_score + (item.popularity * 100.0) + ((item.vote_count as f64) * 10.0);
+                if score <= 0.0 && is_animation && !item.genre_ids.is_empty() && !item.genre_ids.contains(&16) {
+                    continue;
+                }
                 if best.as_ref().map_or(true, |(bs, _, _)| score > *bs) {
                     best = Some((score, uk_title, uk_poster));
                 }
@@ -765,6 +787,46 @@ impl TmdbService {
             Some((_, t, p)) => (t, p),
             None => (None, None),
         }
+    }
+
+    /// Resolves a Ukrainian/localized search query into top TMDB original titles for searching HDRezka.
+    pub async fn search_original_titles(&self, query: &str) -> Vec<String> {
+        let trimmed = query.trim();
+        if trimmed.len() < 2 {
+            return vec![];
+        }
+        let encoded = urlencoding::encode(trimmed);
+        let url = format!(
+            "{}?api_key={}&query={}&include_adult=false&language=uk-UA",
+            TMDB_SEARCH_URL, self.api_key, encoded
+        );
+        let Ok(resp) = self.client.get(&url).send().await else {
+            return vec![];
+        };
+        let Ok(data) = resp.json::<TmdbSearchResponse>().await else {
+            return vec![];
+        };
+
+        let mut out: Vec<String> = Vec::new();
+        for item in data.results {
+            if item.media_type.as_deref() == Some("person") {
+                continue;
+            }
+            let orig = item
+                .original_title
+                .or(item.original_name)
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            if let Some(o) = orig {
+                if !o.eq_ignore_ascii_case(trimmed) && !out.iter().any(|x| x.eq_ignore_ascii_case(&o)) {
+                    out.push(o);
+                    if out.len() >= 3 {
+                        break;
+                    }
+                }
+            }
+        }
+        out
     }
 }
 

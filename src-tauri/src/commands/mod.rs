@@ -537,9 +537,38 @@ pub async fn get_category_catalog(
 #[tauri::command]
 pub async fn search_media(state: State<'_, AppState>, query: String) -> Result<Vec<MediaCard>, String> {
     let mirror = state.storage.get_settings().map_err(|e| e.to_string())?.active_mirror;
-    RezkaParser::search_media(&state.client, &mirror, &query)
-        .await
-        .map_err(|e| e.to_string())
+    let (direct_res, orig_titles) = tokio::join!(
+        RezkaParser::search_media(&state.client, &mirror, &query),
+        state.tmdb.search_original_titles(&query)
+    );
+
+    let mut combined = direct_res.unwrap_or_default();
+    let mut seen_ids: std::collections::HashSet<String> =
+        combined.iter().map(|c| c.id.clone()).collect();
+
+    if !orig_titles.is_empty() {
+        let mut set = tokio::task::JoinSet::new();
+        for orig in orig_titles.into_iter().take(2) {
+            let client = state.client.clone();
+            let mirror_clone = mirror.clone();
+            set.spawn(async move {
+                RezkaParser::search_media(&client, &mirror_clone, &orig)
+                    .await
+                    .unwrap_or_default()
+            });
+        }
+        while let Some(res) = set.join_next().await {
+            if let Ok(cards) = res {
+                for card in cards {
+                    if seen_ids.insert(card.id.clone()) {
+                        combined.push(card);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(combined)
 }
 
 #[tauri::command]
@@ -1007,6 +1036,8 @@ pub struct CardLocalizationQuery {
     pub orig_title: Option<String>,
     pub year: Option<String>,
     pub media_type: Option<String>,
+    pub url: Option<String>,
+    pub is_animation: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1025,7 +1056,7 @@ pub async fn localize_media_cards(
     }
 
     const CACHE_TTL_SECS: i64 = 14 * 24 * 3600;
-    let keys: Vec<String> = items.iter().map(|i| format!("v2:{}", i.id)).collect();
+    let keys: Vec<String> = items.iter().map(|i| format!("v3:{}", i.id)).collect();
     let cached = state
         .storage
         .get_tmdb_cards_cache(&keys, CACHE_TTL_SECS)
@@ -1035,7 +1066,7 @@ pub async fn localize_media_cards(
     let mut missing = Vec::new();
 
     for item in items {
-        let cache_key = format!("v2:{}", item.id);
+        let cache_key = format!("v3:{}", item.id);
         if let Some((uk_title, uk_poster)) = cached.get(&cache_key) {
             if uk_title.is_some() || uk_poster.is_some() {
                 out.insert(
@@ -1055,22 +1086,57 @@ pub async fn localize_media_cards(
         return Ok(out);
     }
 
+    let mirror = state
+        .storage
+        .get_settings()
+        .map(|s| s.active_mirror)
+        .unwrap_or_else(|_| "https://rezka-tv.org".to_string());
     let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(6));
+    let rezka_sem = std::sync::Arc::new(tokio::sync::Semaphore::new(3));
     let mut set = tokio::task::JoinSet::new();
 
     for item in missing {
         let tmdb = state.tmdb.clone();
+        let client = state.client.clone();
+        let mirror_clone = mirror.clone();
         let permit_sem = sem.clone();
+        let rezka_permit_sem = rezka_sem.clone();
         set.spawn(async move {
             let _permit = permit_sem.acquire().await;
-            let (uk_title, uk_poster) = tmdb
+            let is_anim = item.is_animation.unwrap_or(false);
+            let (mut uk_title, mut uk_poster) = tmdb
                 .get_card_localization(
                     &item.title,
                     item.orig_title.as_deref(),
                     item.year.as_deref(),
                     item.media_type.as_deref(),
+                    is_anim,
                 )
                 .await;
+
+            // If TMDB couldn't match by localized Russian title alone (e.g. "Волшебный домик Дузи",
+            // "Мой друг-интуиция", or "Одиссей" without year), fetch orig_title + year from HDRezka.
+            if uk_title.is_none() && uk_poster.is_none() && item.orig_title.is_none() {
+                if let Some(ref item_url) = item.url {
+                    let _r_permit = rezka_permit_sem.acquire().await;
+                    let (fetched_orig, fetched_year) =
+                        RezkaParser::fetch_orig_title_and_year(&client, &mirror_clone, item_url).await;
+                    if fetched_orig.is_some() || fetched_year.is_some() {
+                        let (t2, p2) = tmdb
+                            .get_card_localization(
+                                &item.title,
+                                fetched_orig.as_deref(),
+                                fetched_year.as_deref().or(item.year.as_deref()),
+                                item.media_type.as_deref(),
+                                is_anim,
+                            )
+                            .await;
+                        uk_title = t2.or(fetched_orig);
+                        uk_poster = p2;
+                    }
+                }
+            }
+
             (item.id, uk_title, uk_poster)
         });
     }
@@ -1078,7 +1144,7 @@ pub async fn localize_media_cards(
     let mut to_cache = Vec::new();
     while let Some(res) = set.join_next().await {
         if let Ok((id, uk_title, uk_poster)) = res {
-            to_cache.push((format!("v2:{}", id), uk_title.clone(), uk_poster.clone()));
+            to_cache.push((format!("v3:{}", id), uk_title.clone(), uk_poster.clone()));
             if uk_title.is_some() || uk_poster.is_some() {
                 out.insert(
                     id,

@@ -58,6 +58,13 @@ export const MediaCard: React.FC<MediaCardProps> = React.memo(({
     entityType.includes("аніме") ||
     Boolean(card.series_info) ||
     card.url.includes("/series/");
+  const isAnimation =
+    entityType.includes("cartoon") ||
+    entityType.includes("мульт") ||
+    entityType.includes("anime") ||
+    entityType.includes("аніме") ||
+    card.url.includes("/cartoons/") ||
+    card.url.includes("/animation/");
   const yearMatch = (card.chronology_year || card.misc_info || "").match(/\b(19\d\d|20\d\d)\b/)?.[0] || null;
   const localized = useCardLocalization(
     card.id
@@ -67,6 +74,8 @@ export const MediaCard: React.FC<MediaCardProps> = React.memo(({
           orig_title: (card as any).orig_title || null,
           year: yearMatch,
           media_type: isSeriesLike ? "tv" : "movie",
+          url: card.url,
+          is_animation: isAnimation,
         }
       : null
   );
