@@ -4,7 +4,6 @@ import type { MediaCard as MediaCardType } from "../types";
 import { cn } from "../lib/utils";
 import { playHoverSound } from "../services/sound";
 import { useMediaDownload, openDownloadsTab } from "../services/downloadsStore";
-import { useCardLocalization } from "../services/localizationCache";
 import { ukrainizeMiscInfo, ukrainizeSeriesInfo } from "../utils/ukrainize";
 
 interface MediaCardProps {
@@ -50,38 +49,6 @@ export const MediaCard: React.FC<MediaCardProps> = React.memo(({
   };
 
   const entityType = card.entity_type?.toLowerCase() || "";
-  const isSeriesLike =
-    entityType.includes("series") ||
-    entityType.includes("серіал") ||
-    entityType.includes("сериал") ||
-    entityType.includes("anime") ||
-    entityType.includes("аніме") ||
-    Boolean(card.series_info) ||
-    card.url.includes("/series/");
-  const isAnimation =
-    entityType.includes("cartoon") ||
-    entityType.includes("мульт") ||
-    entityType.includes("anime") ||
-    entityType.includes("аніме") ||
-    card.url.includes("/cartoons/") ||
-    card.url.includes("/animation/");
-  const yearMatch = (card.chronology_year || card.misc_info || "").match(/\b(19\d\d|20\d\d)\b/)?.[0] || null;
-  const localized = useCardLocalization(
-    card.id
-      ? {
-          id: card.id,
-          title: card.title,
-          orig_title: (card as any).orig_title || null,
-          year: yearMatch,
-          media_type: isSeriesLike ? "tv" : "movie",
-          url: card.url,
-          is_animation: isAnimation,
-        }
-      : null
-  );
-  const displayTitle = localized?.title || card.title;
-  const displayPoster = localized?.poster || card.poster;
-
   let typeLabel = "Фільм";
   let typeBadgeClass = "bg-indigo-600 text-white";
 
@@ -115,8 +82,8 @@ export const MediaCard: React.FC<MediaCardProps> = React.memo(({
         )}
       >
         <img
-          src={displayPoster}
-          alt={displayTitle}
+          src={card.poster}
+          alt={card.title}
           draggable={false}
           loading="lazy"
           decoding="async"
@@ -244,7 +211,7 @@ export const MediaCard: React.FC<MediaCardProps> = React.memo(({
       {/* Metadata Below Poster */}
       <div className="mt-2.5 px-0.5 flex flex-col space-y-0.5">
         <h3 className="font-semibold text-sm text-zinc-100 leading-snug line-clamp-1 group-hover:text-rose-400">
-          {displayTitle}
+          {card.title}
         </h3>
         <p className="text-xs text-zinc-400 line-clamp-1">
           {ukrainizeMiscInfo(card.misc_info) || "HDRezka"}

@@ -208,19 +208,11 @@ impl Storage {
                 completed_at INTEGER
             );
 
-            CREATE TABLE IF NOT EXISTS tmdb_meta_cache (
-                cache_key TEXT PRIMARY KEY,
-                uk_title TEXT,
-                uk_poster TEXT,
-                updated_at INTEGER NOT NULL
-            );
-
             CREATE INDEX IF NOT EXISTS idx_watch_progress_updated_at ON watch_progress (updated_at DESC);
             CREATE INDEX IF NOT EXISTS idx_bookmarks_category ON bookmarks (category);
             CREATE INDEX IF NOT EXISTS idx_episode_progress_media ON episode_progress (media_id);
             CREATE INDEX IF NOT EXISTS idx_downloads_created_at ON downloads (created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_downloads_media_id ON downloads (media_id);
-            CREATE INDEX IF NOT EXISTS idx_tmdb_meta_cache_updated ON tmdb_meta_cache (updated_at DESC);
             "#,
         )?;
 
@@ -947,65 +939,6 @@ impl Storage {
             "UPDATE downloads SET status = 'queued' WHERE status = 'paused'",
             [],
         )?;
-        Ok(())
-    }
-
-    pub fn get_tmdb_cards_cache(
-        &self,
-        keys: &[String],
-        max_age_secs: i64,
-    ) -> SqlResult<std::collections::HashMap<String, (Option<String>, Option<String>)>> {
-        let mut out = std::collections::HashMap::new();
-        if keys.is_empty() {
-            return Ok(out);
-        }
-        let now = chrono::Utc::now().timestamp();
-        let min_ts = now - max_age_secs;
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT uk_title, uk_poster FROM tmdb_meta_cache WHERE cache_key = ?1 AND updated_at >= ?2",
-        )?;
-        for key in keys {
-            if let Ok(pair) = stmt.query_row(params![key, min_ts], |row| {
-                Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?))
-            }) {
-                out.insert(key.clone(), pair);
-            }
-        }
-        Ok(out)
-    }
-
-    pub fn upsert_tmdb_cards_cache(
-        &self,
-        entries: &[(String, Option<String>, Option<String>)],
-    ) -> SqlResult<()> {
-        if entries.is_empty() {
-            return Ok(());
-        }
-        let now = chrono::Utc::now().timestamp();
-        let mut conn = self.conn.lock().unwrap();
-        let tx = conn.transaction()?;
-        {
-            let mut stmt = tx.prepare(
-                "INSERT INTO tmdb_meta_cache (cache_key, uk_title, uk_poster, updated_at)
-                 VALUES (?1, ?2, ?3, ?4)
-                 ON CONFLICT(cache_key) DO UPDATE SET
-                    uk_title = excluded.uk_title,
-                    uk_poster = excluded.uk_poster,
-                    updated_at = excluded.updated_at",
-            )?;
-            for (key, uk_title, uk_poster) in entries {
-                stmt.execute(params![key, uk_title, uk_poster, now])?;
-            }
-        }
-        // Keep cache bounded (max 1500 entries) so disk usage stays tiny (< 250 KB)
-        tx.execute(
-            "DELETE FROM tmdb_meta_cache WHERE cache_key NOT IN (
-                SELECT cache_key FROM tmdb_meta_cache ORDER BY updated_at DESC LIMIT 1500
-            )",
-            [],
-        )?;
-        tx.commit()?;
         Ok(())
     }
 }

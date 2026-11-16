@@ -11,7 +11,6 @@ import type {
   SearchItem,
   SmartRotationResult,
   StreamData,
-  TmdbLocalizedMetadata,
   WatchProgress,
 } from "../types";
 
@@ -828,28 +827,6 @@ export const api = {
     return null;
   },
 
-  getTmdbMetadata: async (
-    title: string,
-    origTitle?: string,
-    year?: string,
-    mediaType?: "movie" | "tv"
-  ): Promise<TmdbLocalizedMetadata | null> => {
-    if (isTauri) {
-      try {
-        return await invoke<TmdbLocalizedMetadata | null>("get_tmdb_metadata", {
-          title,
-          origTitle,
-          year,
-          mediaType,
-        });
-      } catch (e) {
-        console.warn("[TMDB] Failed to get localized metadata:", e);
-        return null;
-      }
-    }
-    return null;
-  },
-
   getTmdbRecommendations: async (
     title: string,
     origTitle?: string,
@@ -882,31 +859,6 @@ export const api = {
         return await invoke<Record<string, string>>("get_franchise_posters", { items });
       } catch (e) {
         console.warn("[TMDB] Failed to get franchise posters:", e);
-        return {};
-      }
-    }
-    return {};
-  },
-
-  localizeMediaCards: async (
-    items: {
-      id: string;
-      title: string;
-      orig_title?: string | null;
-      year?: string | null;
-      media_type?: "movie" | "tv" | null;
-      url?: string | null;
-      is_animation?: boolean;
-    }[]
-  ): Promise<Record<string, { title: string | null; poster: string | null }>> => {
-    if (isTauri && items.length > 0) {
-      try {
-        return await invoke<Record<string, { title: string | null; poster: string | null }>>(
-          "localize_media_cards",
-          { items }
-        );
-      } catch (e) {
-        console.warn("[TMDB] Failed to localize media cards:", e);
         return {};
       }
     }

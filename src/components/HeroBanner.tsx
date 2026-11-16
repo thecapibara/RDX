@@ -42,10 +42,9 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
   const [slideKey, setSlideKey] = useState(0);
   const [isVisible, setIsVisible] = useState(true);
   const [backdrops, setBackdrops] = useState<Record<string, string | null>>({});
-  const [localizedTitles, setLocalizedTitles] = useState<Record<string, string | null>>({});
   const bannerRef = useRef<HTMLDivElement>(null);
 
-  // Preload high-res 1080p TMDB backdrops and Ukrainian titles for hero slides
+  // Preload high-res 1080p TMDB backdrops for hero slides
   useEffect(() => {
     if (!slides || slides.length === 0) return;
 
@@ -57,12 +56,9 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
       const yearMatch = slide.misc_info?.match(/\b(19\d\d|20\d\d)\b/)?.[0];
       const slideMediaType: "movie" | "tv" =
         slide.entity_type === "series" || slide.url.includes("/series/") ? "tv" : "movie";
-      api.getTmdbMetadata(slide.title, (slide as any).orig_title, yearMatch, slideMediaType).then((meta) => {
+      api.getBackdrop(slide.title, (slide as any).orig_title, yearMatch, slideMediaType).then((url) => {
         if (isMounted) {
-          setBackdrops((prev) => ({ ...prev, [key]: meta?.backdrop || null }));
-          if (meta?.title) {
-            setLocalizedTitles((prev) => ({ ...prev, [key]: meta.title }));
-          }
+          setBackdrops((prev) => ({ ...prev, [key]: url || null }));
         }
       });
     });
@@ -237,7 +233,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
             transition={{ duration: 0.35 }}
             className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-white line-clamp-2 drop-shadow-2xl"
           >
-            {localizedTitles[currentMedia.id || currentMedia.url] || currentMedia.title}
+            {currentMedia.title}
           </motion.h1>
         </AnimatePresence>
 

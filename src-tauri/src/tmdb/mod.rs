@@ -29,8 +29,6 @@ struct TmdbSearchResult {
     vote_count: u32,
     #[serde(default)]
     popularity: f64,
-    #[serde(default)]
-    genre_ids: Vec<u32>,
     release_date: Option<String>,
     first_air_date: Option<String>,
 }
@@ -42,44 +40,11 @@ pub struct TmdbRecommendation {
     pub year: Option<String>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct TmdbLocalizedMetadata {
-    pub title: Option<String>,
-    pub overview: Option<String>,
-    pub poster: Option<String>,
-    pub backdrop: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct TmdbImageItem {
-    file_path: Option<String>,
-    iso_639_1: Option<String>,
-    #[serde(default)]
-    vote_average: f64,
-}
-
-#[derive(Debug, Deserialize)]
-struct TmdbImagesResponse {
-    #[serde(default)]
-    posters: Vec<TmdbImageItem>,
-}
-
-#[derive(Debug, Deserialize)]
-struct TmdbDetailsResponse {
-    title: Option<String>,
-    name: Option<String>,
-    overview: Option<String>,
-    poster_path: Option<String>,
-    backdrop_path: Option<String>,
-    images: Option<TmdbImagesResponse>,
-}
-
 #[derive(Clone)]
 pub struct TmdbService {
     client: Client,
     cache: Arc<RwLock<HashMap<String, Option<String>>>>,
     poster_cache: Arc<RwLock<HashMap<String, Option<String>>>>,
-    meta_cache: Arc<RwLock<HashMap<String, Option<TmdbLocalizedMetadata>>>>,
     id_cache: Arc<RwLock<HashMap<String, Option<(String, u64)>>>>,
     rec_cache: Arc<RwLock<HashMap<String, Vec<crate::parser::MediaCard>>>>,
     api_key: String,
@@ -98,7 +63,6 @@ impl TmdbService {
             client,
             cache: Arc::new(RwLock::new(HashMap::new())),
             poster_cache: Arc::new(RwLock::new(HashMap::new())),
-            meta_cache: Arc::new(RwLock::new(HashMap::new())),
             id_cache: Arc::new(RwLock::new(HashMap::new())),
             rec_cache: Arc::new(RwLock::new(HashMap::new())),
             api_key: DEFAULT_TMDB_KEY.to_string(),
@@ -422,7 +386,7 @@ impl TmdbService {
         };
 
         let url = format!(
-            "https://api.themoviedb.org/3/{}/{}/recommendations?api_key={}&language=uk-UA&page=1",
+            "https://api.themoviedb.org/3/{}/{}/recommendations?api_key={}&language=ru-RU&page=1",
             mtype, tmdb_id, self.api_key
         );
 
@@ -538,257 +502,6 @@ impl TmdbService {
         result
     }
 
-    fn pick_preferred_poster(images: &[TmdbImageItem], fallback_path: Option<&str>) -> Option<String> {
-        let pick_by_lang = |target_lang: Option<&str>| -> Option<String> {
-            images
-                .iter()
-                .filter(|img| img.iso_639_1.as_deref() == target_lang)
-                .filter_map(|img| {
-                    let path = img.file_path.as_deref()?.trim();
-                    if path.is_empty() {
-                        None
-                    } else {
-                        Some((img.vote_average, path))
-                    }
-                })
-                .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
-                .map(|(_, path)| format!("https://image.tmdb.org/t/p/w500{}", path))
-        };
-
-        pick_by_lang(Some("uk"))
-            .or_else(|| pick_by_lang(Some("en")))
-            .or_else(|| pick_by_lang(None))
-            .or_else(|| {
-                fallback_path
-                    .map(str::trim)
-                    .filter(|p| !p.is_empty())
-                    .map(|p| format!("https://image.tmdb.org/t/p/w500{}", p))
-            })
-    }
-
-    pub async fn get_localized_metadata(
-        &self,
-        title: &str,
-        orig_title: Option<&str>,
-        year: Option<&str>,
-        media_type: Option<&str>,
-    ) -> Option<TmdbLocalizedMetadata> {
-        let cache_key = format!(
-            "{}:{}:{}:{}",
-            title.trim(),
-            orig_title.unwrap_or("").trim(),
-            year.unwrap_or("").trim(),
-            media_type.unwrap_or("").trim()
-        );
-
-        if let Some(cached) = self.meta_cache.read().await.get(&cache_key).cloned() {
-            return cached;
-        }
-
-        let backdrop_from_search = self.get_backdrop(title, orig_title, year, media_type).await;
-        let identity = self.id_cache.read().await.get(&cache_key).cloned().flatten();
-
-        let Some((mtype, tmdb_id)) = identity else {
-            let fallback = backdrop_from_search.map(|backdrop| TmdbLocalizedMetadata {
-                title: None,
-                overview: None,
-                poster: None,
-                backdrop: Some(backdrop),
-            });
-            self.meta_cache.write().await.insert(cache_key, fallback.clone());
-            return fallback;
-        };
-
-        let url = format!(
-            "https://api.themoviedb.org/3/{}/{}?api_key={}&language=uk-UA&append_to_response=images&include_image_language=uk,en,null",
-            mtype, tmdb_id, self.api_key
-        );
-
-        let mut meta = TmdbLocalizedMetadata {
-            title: None,
-            overview: None,
-            poster: None,
-            backdrop: backdrop_from_search,
-        };
-
-        if let Ok(resp) = self.client.get(&url).send().await {
-            if let Ok(data) = resp.json::<TmdbDetailsResponse>().await {
-                meta.title = data
-                    .title
-                    .or(data.name)
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty());
-
-                meta.overview = data
-                    .overview
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty());
-
-                let posters = data.images.as_ref().map(|i| i.posters.as_slice()).unwrap_or(&[]);
-                meta.poster = Self::pick_preferred_poster(posters, data.poster_path.as_deref());
-
-                if meta.backdrop.is_none() {
-                    meta.backdrop = data
-                        .backdrop_path
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|p| !p.is_empty())
-                        .map(|p| format!("https://image.tmdb.org/t/p/original{}", p));
-                }
-            }
-        }
-
-        let result = if meta.title.is_some()
-            || meta.overview.is_some()
-            || meta.poster.is_some()
-            || meta.backdrop.is_some()
-        {
-            Some(meta)
-        } else {
-            None
-        };
-
-        let mut cache = self.meta_cache.write().await;
-        if cache.len() >= 300 {
-            cache.clear();
-        }
-        cache.insert(cache_key, result.clone());
-        result
-    }
-
-    /// Lightweight single-request TMDB lookup for Home/Catalog cards (`uk-UA` title + poster).
-    pub async fn get_card_localization(
-        &self,
-        title: &str,
-        orig_title: Option<&str>,
-        year: Option<&str>,
-        media_type: Option<&str>,
-        is_animation: bool,
-    ) -> (Option<String>, Option<String>) {
-        let mut candidates = Self::generate_candidates(title, orig_title);
-        for part in title.split('/') {
-            let trimmed = part.trim();
-            if !trimmed.is_empty() && !candidates.iter().any(|c| c.eq_ignore_ascii_case(trimmed)) {
-                candidates.push(trimmed.to_string());
-            }
-        }
-        if candidates.is_empty() {
-            return (None, None);
-        }
-
-        let has_orig = orig_title.map(|o| !o.trim().is_empty()).unwrap_or(false);
-        let expected_year: Option<i32> = year.and_then(|y| y.trim().get(..4)).and_then(|y| y.parse().ok());
-        let (search_endpoint, year_param) = match (media_type, expected_year) {
-            (Some("movie"), Some(y)) => ("https://api.themoviedb.org/3/search/movie", Some(format!("&year={}", y))),
-            (Some("tv"), Some(y)) => ("https://api.themoviedb.org/3/search/tv", Some(format!("&first_air_date_year={}", y))),
-            (Some("movie"), None) => ("https://api.themoviedb.org/3/search/movie", None),
-            (Some("tv"), None) => ("https://api.themoviedb.org/3/search/tv", None),
-            _ => (TMDB_SEARCH_URL, None),
-        };
-
-        let mut best: Option<(f64, Option<String>, Option<String>)> = None;
-
-        for candidate in candidates.iter().take(3) {
-            let encoded = urlencoding::encode(candidate);
-            let url = format!(
-                "{}?api_key={}&query={}&include_adult=false&language=uk-UA{}",
-                search_endpoint,
-                self.api_key,
-                encoded,
-                year_param.as_deref().unwrap_or("")
-            );
-
-            let Ok(resp) = self.client.get(&url).send().await else {
-                continue;
-            };
-            let Ok(data) = resp.json::<TmdbSearchResponse>().await else {
-                continue;
-            };
-
-            for item in data.results {
-                let item_type = item.media_type.as_deref().or(media_type).unwrap_or("");
-                if item_type == "person" {
-                    continue;
-                }
-                if let Some(exp) = media_type {
-                    if (item_type == "movie" || item_type == "tv") && item_type != exp {
-                        continue;
-                    }
-                }
-
-                let title_score_opt = Self::best_title_match_score(&candidates, &item);
-                // If we have neither a release year nor an original title, require a title match
-                // so ambiguous queries (like "Одиссей" without year) don't pick a random film.
-                if expected_year.is_none() && !has_orig && title_score_opt.is_none() {
-                    continue;
-                }
-                let title_score = title_score_opt.unwrap_or(0.0);
-
-                let mut year_score = 0.0;
-                if let Some(exp_y) = expected_year {
-                    let rel = item
-                        .release_date
-                        .as_deref()
-                        .or(item.first_air_date.as_deref())
-                        .unwrap_or("");
-                    if let Some(item_y) = rel.get(..4).and_then(|y| y.parse::<i32>().ok()) {
-                        let diff = (item_y - exp_y).abs();
-                        if diff == 0 {
-                            year_score = 100_000.0;
-                        } else if diff == 1 {
-                            year_score = 40_000.0;
-                        } else {
-                            continue;
-                        }
-                    }
-                }
-
-                let mut genre_score = 0.0;
-                if is_animation && !item.genre_ids.is_empty() {
-                    if item.genre_ids.contains(&16) {
-                        genre_score = 80_000.0;
-                    } else {
-                        genre_score = -100_000.0;
-                    }
-                }
-
-                let uk_title = item
-                    .title
-                    .or(item.name)
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty());
-
-                let uk_poster = item
-                    .poster_path
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|p| !p.is_empty())
-                    .map(|p| format!("https://image.tmdb.org/t/p/w500{}", p));
-
-                if uk_title.is_none() && uk_poster.is_none() {
-                    continue;
-                }
-
-                let score = year_score + genre_score + title_score + (item.popularity * 100.0) + ((item.vote_count as f64) * 10.0);
-                if score <= 0.0 && is_animation && !item.genre_ids.is_empty() && !item.genre_ids.contains(&16) {
-                    continue;
-                }
-                if best.as_ref().map_or(true, |(bs, _, _)| score > *bs) {
-                    best = Some((score, uk_title, uk_poster));
-                }
-            }
-
-            if best.as_ref().map_or(false, |(s, _, _)| *s >= 150_000.0) {
-                break;
-            }
-        }
-
-        match best {
-            Some((_, t, p)) => (t, p),
-            None => (None, None),
-        }
-    }
-
     /// Resolves a Ukrainian/localized search query into top TMDB original titles for searching HDRezka.
     pub async fn search_original_titles(&self, query: &str) -> Vec<String> {
         let trimmed = query.trim();
@@ -827,41 +540,5 @@ impl TmdbService {
             }
         }
         out
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_pick_preferred_poster_prioritizes_uk_then_en_then_null() {
-        let items = vec![
-            TmdbImageItem {
-                file_path: Some("/null_poster.jpg".to_string()),
-                iso_639_1: None,
-                vote_average: 9.0,
-            },
-            TmdbImageItem {
-                file_path: Some("/en_poster.jpg".to_string()),
-                iso_639_1: Some("en".to_string()),
-                vote_average: 8.0,
-            },
-            TmdbImageItem {
-                file_path: Some("/uk_poster.jpg".to_string()),
-                iso_639_1: Some("uk".to_string()),
-                vote_average: 5.0,
-            },
-        ];
-        assert_eq!(
-            TmdbService::pick_preferred_poster(&items, Some("/fallback.jpg")).as_deref(),
-            Some("https://image.tmdb.org/t/p/w500/uk_poster.jpg")
-        );
-
-        let no_uk = &items[..2];
-        assert_eq!(
-            TmdbService::pick_preferred_poster(no_uk, Some("/fallback.jpg")).as_deref(),
-            Some("https://image.tmdb.org/t/p/w500/en_poster.jpg")
-        );
     }
 }

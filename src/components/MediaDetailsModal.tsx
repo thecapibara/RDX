@@ -16,7 +16,7 @@ import {
   Mic,
   Layers,
 } from "lucide-react";
-import type { Bookmark, MediaCard, MediaDetails, WatchProgress, Translator, EpisodeProgress, StreamQuality, TmdbLocalizedMetadata } from "../types";
+import type { Bookmark, MediaCard, MediaDetails, WatchProgress, Translator, EpisodeProgress, StreamQuality } from "../types";
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
 import { playModalOpenSound, suppressHoverSound } from "../services/sound";
@@ -77,7 +77,6 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
   const [selectedEpisode, setSelectedEpisode] = useState<number>(1);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
   const [tmdbBackdrop, setTmdbBackdrop] = useState<string | null>(null);
-  const [tmdbMeta, setTmdbMeta] = useState<TmdbLocalizedMetadata | null>(null);
   const [backdropResolved, setBackdropResolved] = useState(false);
   const [backdropImgLoaded, setBackdropImgLoaded] = useState(false);
 
@@ -155,7 +154,6 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
   useEffect(() => {
     if (!isOpen || !media) {
       setTmdbBackdrop(null);
-      setTmdbMeta(null);
       setBackdropResolved(false);
       setBackdropImgLoaded(false);
       return;
@@ -178,10 +176,8 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
       media.url.includes("/series/");
     const mediaType: "movie" | "tv" = isSer ? "tv" : "movie";
 
-    api.getTmdbMetadata(title, origTitle, yearMatch, mediaType).then((meta) => {
+    api.getBackdrop(title, origTitle, yearMatch, mediaType).then((url) => {
       if (!mounted) return;
-      setTmdbMeta(meta);
-      const url = meta?.backdrop || null;
       if (url) {
         setTmdbBackdrop((prev) => {
           if (prev !== url) setBackdropImgLoaded(false);
@@ -825,8 +821,8 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
             {/* Vertical Crisp Poster */}
             <div className="w-56 sm:w-64 lg:w-76 aspect-[2/3] rounded-2xl overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.95)] border border-white/15 flex-shrink-0 bg-zinc-900">
               <img
-                src={tmdbMeta?.poster || details?.poster || media.poster}
-                alt={tmdbMeta?.title || details?.title || media.title}
+                src={details?.poster || media.poster}
+                alt={details?.title || media.title}
                 className="w-full h-full object-cover"
               />
             </div>
@@ -865,7 +861,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
               {/* Main Titles */}
               <div className="space-y-1">
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight">
-                  {tmdbMeta?.title || details?.title || media.title}
+                  {details?.title || media.title}
                 </h1>
                 {details?.orig_title && (
                   <p className="text-base sm:text-lg font-medium text-zinc-400">
@@ -1142,9 +1138,9 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                   )}
 
                   {/* Description */}
-                  {(tmdbMeta?.overview || details.description) && (
+                  {details.description && (
                     <p className="text-sm sm:text-base text-zinc-300 leading-relaxed max-w-4xl pt-1">
-                      {tmdbMeta?.overview || details.description}
+                      {details.description}
                     </p>
                   )}
                 </>
