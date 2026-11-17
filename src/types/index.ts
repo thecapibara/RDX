@@ -43,6 +43,7 @@ export interface Bookmark {
   rating: string | null;
   category: string;
   added_at: number;
+  awaiting_release?: boolean;
 }
 
 export interface MirrorStatus {

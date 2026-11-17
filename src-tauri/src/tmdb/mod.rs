@@ -432,7 +432,7 @@ impl TmdbService {
         let expected_year = year.and_then(|y| y.trim().get(..4)).and_then(|y| y.parse::<i32>().ok());
         let mut queries: Vec<String> = Vec::new();
         for part in title.split('/') {
-            let trimmed = part.trim();
+            let trimmed = part.trim().trim_end_matches('*').trim();
             if !trimmed.is_empty() && !queries.iter().any(|q| q.eq_ignore_ascii_case(trimmed)) {
                 queries.push(trimmed.to_string());
             }
@@ -442,96 +442,117 @@ impl TmdbService {
         }
 
         let mut best_match: Option<(f64, String)> = None;
+        let mut had_http_success = false;
 
-        for query in &queries {
-            let encoded = urlencoding::encode(query);
-            let url = format!(
-                "{}?api_key={}&query={}&include_adult=false&language=uk-UA",
-                TMDB_SEARCH_URL, self.api_key, encoded
-            );
+        'lang_loop: for lang in ["uk-UA", "ru-RU"] {
+            for query in &queries {
+                let encoded = urlencoding::encode(query);
+                let url = format!(
+                    "{}?api_key={}&query={}&include_adult=false&language={}",
+                    TMDB_SEARCH_URL, self.api_key, encoded, lang
+                );
 
-            if let Ok(resp) = self.client.get(&url).send().await {
-                if let Ok(data) = resp.json::<TmdbSearchResponse>().await {
-                    for item in data.results {
-                        if item.media_type.as_deref() == Some("person") {
-                            continue;
-                        }
-                        let Some(path) = item.poster_path.as_ref() else {
-                            continue;
-                        };
-                        if path.is_empty() {
-                            continue;
-                        }
+                if let Ok(resp) = self.client.get(&url).send().await {
+                    if let Ok(data) = resp.json::<TmdbSearchResponse>().await {
+                        had_http_success = true;
+                        for item in data.results {
+                            if item.media_type.as_deref() == Some("person") {
+                                continue;
+                            }
+                            let Some(path) = item.poster_path.as_ref() else {
+                                continue;
+                            };
+                            if path.is_empty() {
+                                continue;
+                            }
 
-                        let mut year_score = 0.0;
-                        if let Some(exp_y) = expected_year {
-                            let rel = item
-                                .release_date
-                                .as_deref()
-                                .or(item.first_air_date.as_deref())
-                                .unwrap_or("");
-                            if let Some(item_y) = rel.get(..4).and_then(|y| y.parse::<i32>().ok()) {
-                                let diff = (item_y - exp_y).abs();
-                                if diff == 0 {
-                                    year_score = 100_000.0;
-                                } else if diff == 1 {
-                                    year_score = 40_000.0;
-                                } else {
-                                    continue;
+                            let Some(title_score) = Self::best_title_match_score(&queries, &item) else {
+                                continue;
+                            };
+
+                            let mut year_score = 0.0;
+                            if let Some(exp_y) = expected_year {
+                                let rel = item
+                                    .release_date
+                                    .as_deref()
+                                    .or(item.first_air_date.as_deref())
+                                    .unwrap_or("");
+                                if let Some(item_y) = rel.get(..4).and_then(|y| y.parse::<i32>().ok()) {
+                                    let diff = (item_y - exp_y).abs();
+                                    if diff == 0 {
+                                        year_score = 100_000.0;
+                                    } else if diff == 1 {
+                                        year_score = 40_000.0;
+                                    } else {
+                                        continue;
+                                    }
                                 }
                             }
-                        }
 
-                        let title_score = Self::best_title_match_score(&queries, &item).unwrap_or(1_000.0);
-                        let score = year_score + title_score + (item.popularity * 100.0) + ((item.vote_count as f64) * 10.0);
+                            let score = year_score + title_score + (item.popularity * 100.0) + ((item.vote_count as f64) * 10.0);
 
-                        if best_match.as_ref().map_or(true, |(best_s, _)| score > *best_s) {
-                            best_match = Some((score, format!("https://image.tmdb.org/t/p/w500{}", path)));
+                            if best_match.as_ref().map_or(true, |(best_s, _)| score > *best_s) {
+                                best_match = Some((score, format!("https://image.tmdb.org/t/p/w500{}", path)));
+                            }
                         }
                     }
                 }
-            }
 
-            if best_match.as_ref().map_or(false, |(s, _)| *s >= 100_000.0) {
+                if best_match.as_ref().map_or(false, |(s, _)| *s >= 100_000.0) {
+                    break 'lang_loop;
+                }
+            }
+            if best_match.is_some() {
                 break;
             }
         }
 
         let result = best_match.map(|(_, url)| url);
-        self.poster_cache.write().await.insert(cache_key, result.clone());
+        if result.is_some() || had_http_success {
+            self.poster_cache.write().await.insert(cache_key, result.clone());
+        }
         result
     }
 
-    /// Resolves a Ukrainian/localized search query into top TMDB original titles for searching HDRezka.
+    /// Resolves a Ukrainian/Russian/typo search query into top TMDB titles (shared franchise stems + original/localized titles).
     pub async fn search_original_titles(&self, query: &str) -> Vec<String> {
         let trimmed = query.trim();
         if trimmed.len() < 2 {
             return vec![];
         }
         let encoded = urlencoding::encode(trimmed);
-        let url = format!(
-            "{}?api_key={}&query={}&include_adult=false&language=uk-UA",
-            TMDB_SEARCH_URL, self.api_key, encoded
-        );
-        let Ok(resp) = self.client.get(&url).send().await else {
-            return vec![];
-        };
-        let Ok(data) = resp.json::<TmdbSearchResponse>().await else {
-            return vec![];
-        };
 
-        let raw_titles: Vec<String> = data
-            .results
-            .into_iter()
-            .filter(|item| item.media_type.as_deref() != Some("person"))
-            .filter_map(|item| {
-                item.original_title
-                    .or(item.original_name)
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-            })
-            .take(5)
-            .collect();
+        let mut raw_titles: Vec<String> = Vec::new();
+        for lang in ["uk-UA", "ru-RU"] {
+            let url = format!(
+                "{}?api_key={}&query={}&include_adult=false&language={}",
+                TMDB_SEARCH_URL, self.api_key, encoded, lang
+            );
+            let Ok(resp) = self.client.get(&url).send().await else {
+                continue;
+            };
+            let Ok(data) = resp.json::<TmdbSearchResponse>().await else {
+                continue;
+            };
+
+            for item in data
+                .results
+                .into_iter()
+                .filter(|item| item.media_type.as_deref() != Some("person"))
+                .take(6)
+            {
+                for cand in [item.original_title, item.original_name, item.title, item.name] {
+                    if let Some(t) = cand.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+                        if !raw_titles.iter().any(|x| x.eq_ignore_ascii_case(&t)) {
+                            raw_titles.push(t);
+                        }
+                    }
+                }
+            }
+            if !raw_titles.is_empty() {
+                break;
+            }
+        }
 
         Self::extract_search_queries(trimmed, &raw_titles)
     }
@@ -548,7 +569,7 @@ impl TmdbService {
             }
         };
 
-        // Extract base franchise prefix before ':' if multiple results share it (e.g. "Star Wars: ..." -> "Star Wars")
+        // 1. Shared prefix before ':' (e.g. "Star Wars: ..." -> "Star Wars")
         for (i, t) in raw_titles.iter().enumerate() {
             if let Some((prefix, _)) = t.split_once(':') {
                 let p = prefix.trim();
@@ -559,6 +580,22 @@ impl TmdbService {
                         .any(|(j, other)| i != j && other.starts_with(p))
                 {
                     push_unique(&mut out, p);
+                }
+            }
+        }
+
+        // 2. Shared 2-word franchise stem (e.g. "Harry Potter and..." + "Harry Potter..." -> "Harry Potter")
+        for (i, t) in raw_titles.iter().enumerate() {
+            let words: Vec<&str> = t.split_whitespace().collect();
+            if words.len() >= 3 {
+                let stem2 = format!("{} {}", words[0], words[1]);
+                if stem2.len() >= 5
+                    && raw_titles
+                        .iter()
+                        .enumerate()
+                        .any(|(j, other)| i != j && other.starts_with(&stem2))
+                {
+                    push_unique(&mut out, &stem2);
                 }
             }
         }

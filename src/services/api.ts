@@ -349,6 +349,11 @@ export const api = {
     return found ? found.category : null;
   },
 
+  checkPendingBookmarkReleases: async (): Promise<Bookmark[]> => {
+    if (isTauri) return invoke<Bookmark[]>("check_pending_bookmark_releases");
+    return [];
+  },
+
   // Mirror Management
   checkMirrorStatus: async (mirrorUrl: string): Promise<MirrorStatus> => {
     if (isTauri) return invoke<MirrorStatus>("check_mirror_status", { mirrorUrl });

@@ -76,6 +76,8 @@ pub struct Bookmark {
     pub rating: Option<String>,
     pub category: String, // "favorites", "watching", "planned", "watched"
     pub added_at: i64,
+    #[serde(default)]
+    pub awaiting_release: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -170,7 +172,8 @@ impl Storage {
                 year_info TEXT,
                 rating TEXT,
                 category TEXT NOT NULL,
-                added_at INTEGER NOT NULL
+                added_at INTEGER NOT NULL,
+                awaiting_release INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS episode_progress (
@@ -215,6 +218,12 @@ impl Storage {
             CREATE INDEX IF NOT EXISTS idx_downloads_media_id ON downloads (media_id);
             "#,
         )?;
+
+        // Migration for existing databases
+        let _ = conn.execute(
+            "ALTER TABLE bookmarks ADD COLUMN awaiting_release INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
 
         // Ensure default settings exist
         let defaults = AppSettings::default();
@@ -542,8 +551,8 @@ impl Storage {
             r#"
             INSERT INTO bookmarks (
                 media_id, media_url, title, poster_url, media_type,
-                year_info, rating, category, added_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                year_info, rating, category, added_at, awaiting_release
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
             ON CONFLICT(media_id) DO UPDATE SET
                 media_url = excluded.media_url,
                 title = excluded.title,
@@ -552,7 +561,8 @@ impl Storage {
                 year_info = excluded.year_info,
                 rating = excluded.rating,
                 category = excluded.category,
-                added_at = excluded.added_at
+                added_at = excluded.added_at,
+                awaiting_release = excluded.awaiting_release
             "#,
             params![
                 bookmark.media_id,
@@ -564,6 +574,7 @@ impl Storage {
                 bookmark.rating,
                 final_category,
                 bookmark.added_at,
+                if bookmark.awaiting_release { 1 } else { 0 },
             ],
         )?;
 
@@ -618,6 +629,7 @@ impl Storage {
                     rating: row.get(6)?,
                     category: row.get(7)?,
                     added_at: row.get(8)?,
+                    awaiting_release: false,
                 })
             })?;
             for item in rows {
@@ -627,7 +639,7 @@ impl Storage {
             let mut stmt = conn.prepare(
                 r#"
                 SELECT media_id, media_url, title, poster_url, media_type,
-                       year_info, rating, category, added_at
+                       year_info, rating, category, added_at, awaiting_release
                 FROM bookmarks
                 ORDER BY added_at DESC
                 "#,
@@ -643,6 +655,7 @@ impl Storage {
                     rating: row.get(6)?,
                     category: row.get(7)?,
                     added_at: row.get(8)?,
+                    awaiting_release: row.get::<_, i64>(9).unwrap_or(0) != 0,
                 })
             })?;
             for item in rows {
@@ -651,6 +664,48 @@ impl Storage {
         }
 
         Ok(list)
+    }
+
+    pub fn get_pending_release_bookmarks(&self) -> SqlResult<Vec<Bookmark>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT media_id, media_url, title, poster_url, media_type,
+                   year_info, rating, category, added_at, awaiting_release
+            FROM bookmarks
+            WHERE awaiting_release = 1
+            ORDER BY added_at DESC
+            LIMIT 10
+            "#,
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(Bookmark {
+                media_id: row.get(0)?,
+                media_url: row.get(1)?,
+                title: row.get(2)?,
+                poster_url: row.get(3)?,
+                media_type: row.get(4)?,
+                year_info: row.get(5)?,
+                rating: row.get(6)?,
+                category: row.get(7)?,
+                added_at: row.get(8)?,
+                awaiting_release: row.get::<_, i64>(9).unwrap_or(0) != 0,
+            })
+        })?;
+        let mut out = Vec::new();
+        for item in rows {
+            out.push(item?);
+        }
+        Ok(out)
+    }
+
+    pub fn clear_bookmark_awaiting_release(&self, media_id: &str) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE bookmarks SET awaiting_release = 0 WHERE media_id = ?1",
+            params![media_id],
+        )?;
+        Ok(())
     }
 
     pub fn is_bookmarked(&self, media_id: &str) -> SqlResult<Option<String>> {
@@ -1014,6 +1069,7 @@ mod tests {
             rating: Some("8.5".to_string()),
             category: "favorites".to_string(),
             added_at: 2000,
+            awaiting_release: false,
         };
 
         // First toggle should add
@@ -1060,6 +1116,7 @@ mod tests {
             rating: Some("9.0".to_string()),
             category: "favorites".to_string(),
             added_at: 1000,
+            awaiting_release: false,
         };
         let added = storage.toggle_bookmark(&bookmark).expect("toggle bookmark");
         assert!(added);

@@ -891,6 +891,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                           rating: media.rating || null,
                           category: getBookmarkCategory(),
                           added_at: Math.floor(Date.now() / 1000),
+                          awaiting_release: !hasAvailableStream,
                         };
                         onToggleBookmark(bookmarkItem);
                       }}
@@ -1077,6 +1078,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                           rating: details.imdb_rating || details.kp_rating || null,
                           category: getBookmarkCategory(),
                           added_at: Math.floor(Date.now() / 1000),
+                          awaiting_release: !hasAvailableStream,
                         };
                         onToggleBookmark(bookmarkItem);
                       }}
@@ -1394,7 +1396,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                         title: part.title,
                         poster: part.is_current
                           ? details.poster
-                          : franchisePosters[part.id] || details.poster,
+                          : franchisePosters[part.id] || "",
                         entity_type: media?.entity_type || (isSeries ? "series" : "film"),
                         series_info: null,
                         misc_info: part.year || "",

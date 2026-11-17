@@ -81,19 +81,27 @@ export const MediaCard: React.FC<MediaCardProps> = React.memo(({
             : "border-white/10 group-hover:border-rose-500/50"
         )}
       >
-        <img
-          src={card.poster}
-          alt={card.title}
-          draggable={false}
-          loading="lazy"
-          decoding="async"
-          className="h-full w-full object-cover pointer-events-none select-none"
-          onError={(e) => {
-            e.currentTarget.onerror = null;
-            (e.currentTarget as HTMLImageElement).src =
-              "data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22200%22%20height%3D%22300%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20fill%3D%22%2318181b%22%20width%3D%22200%22%20height%3D%22300%22%2F%3E%3Ctext%20fill%3D%22%2371717a%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3ERDX%3C%2Ftext%3E%3C%2Fsvg%3E";
-          }}
-        />
+        {card.poster ? (
+          <img
+            src={card.poster}
+            alt={card.title}
+            draggable={false}
+            loading="lazy"
+            decoding="async"
+            className="h-full w-full object-cover pointer-events-none select-none"
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              (e.currentTarget as HTMLImageElement).src =
+                "data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22200%22%20height%3D%22300%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20fill%3D%22%2318181b%22%20width%3D%22200%22%20height%3D%22300%22%2F%3E%3Ctext%20fill%3D%22%2371717a%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3ERDX%3C%2Ftext%3E%3C%2Fsvg%3E";
+            }}
+          />
+        ) : (
+          <div className="h-full w-full flex flex-col items-center justify-center p-4 text-center bg-gradient-to-b from-zinc-800/80 to-zinc-950 select-none">
+            <span className="text-xs font-semibold text-zinc-400 line-clamp-3">
+              {card.title}
+            </span>
+          </div>
+        )}
 
         {/* Top Badges Row: Chronology Order + Year OR Entity Type + Series Info */}
         <div className="absolute top-2.5 left-2.5 right-2.5 z-10 pointer-events-none flex items-start justify-between gap-1.5">

@@ -111,6 +111,7 @@ pub fn run() {
             commands::toggle_bookmark,
             commands::get_bookmarks,
             commands::is_bookmarked,
+            commands::check_pending_bookmark_releases,
             commands::check_mirror_status,
             commands::check_all_mirrors,
             commands::smart_select_mirror,
