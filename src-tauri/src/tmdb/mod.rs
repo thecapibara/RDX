@@ -431,10 +431,37 @@ impl TmdbService {
 
         let expected_year = year.and_then(|y| y.trim().get(..4)).and_then(|y| y.parse::<i32>().ok());
         let mut queries: Vec<String> = Vec::new();
-        for part in title.split('/') {
+        let mut full_clean = title.trim().trim_end_matches('*').trim().to_string();
+        // Strip trailing "(1989)" / "(2004)" so TMDB searches clean title + matches exact_year
+        if let Some(open_idx) = full_clean.rfind('(') {
+            if full_clean.ends_with(')') {
+                let inside = &full_clean[open_idx + 1..full_clean.len() - 1];
+                if inside.len() == 4 && inside.chars().all(|c| c.is_ascii_digit()) {
+                    full_clean = full_clean[..open_idx].trim().to_string();
+                }
+            }
+        }
+        if !full_clean.is_empty() {
+            queries.push(full_clean.clone());
+            if full_clean.contains('/') {
+                let joined = full_clean.replace('/', "");
+                if !queries.iter().any(|q| q.eq_ignore_ascii_case(&joined)) {
+                    queries.push(joined);
+                }
+            }
+        }
+        for part in full_clean.split('/') {
             let trimmed = part.trim().trim_end_matches('*').trim();
             if !trimmed.is_empty() && !queries.iter().any(|q| q.eq_ignore_ascii_case(trimmed)) {
                 queries.push(trimmed.to_string());
+            }
+        }
+        if expected_year.is_some() {
+            if let Some((prefix, _)) = full_clean.split_once(':') {
+                let p = prefix.trim();
+                if p.len() >= 3 && !queries.iter().any(|q| q.eq_ignore_ascii_case(p)) {
+                    queries.push(p.to_string());
+                }
             }
         }
         if queries.is_empty() {
@@ -466,11 +493,8 @@ impl TmdbService {
                                 continue;
                             }
 
-                            let Some(title_score) = Self::best_title_match_score(&queries, &item) else {
-                                continue;
-                            };
-
                             let mut year_score = 0.0;
+                            let mut exact_year_match = false;
                             if let Some(exp_y) = expected_year {
                                 let rel = item
                                     .release_date
@@ -481,6 +505,7 @@ impl TmdbService {
                                     let diff = (item_y - exp_y).abs();
                                     if diff == 0 {
                                         year_score = 100_000.0;
+                                        exact_year_match = true;
                                     } else if diff == 1 {
                                         year_score = 40_000.0;
                                     } else {
@@ -488,6 +513,14 @@ impl TmdbService {
                                     }
                                 }
                             }
+
+                            // Allow TMDB's own alias match (e.g. "Локи" -> "Loki", "Женщина-Халк" -> "She-Hulk")
+                            // when the release year matches exactly.
+                            let title_score = match Self::best_title_match_score(&queries, &item) {
+                                Some(s) => s,
+                                None if exact_year_match => 1_000.0,
+                                None => continue,
+                            };
 
                             let score = year_score + title_score + (item.popularity * 100.0) + ((item.vote_count as f64) * 10.0);
 
