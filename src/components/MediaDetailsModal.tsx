@@ -240,7 +240,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
 
     const queries = details.franchise
       .filter((p) => !p.is_current)
-      .map((p) => ({ id: p.id, title: p.title, year: p.year }));
+      .map((p) => ({ id: p.id, title: p.title, year: p.year, url: p.url }));
 
     if (queries.length === 0) return;
 

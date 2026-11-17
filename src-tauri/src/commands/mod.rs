@@ -1140,6 +1140,8 @@ pub struct FranchisePosterQuery {
     pub id: String,
     pub title: String,
     pub year: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
 }
 
 #[tauri::command]
@@ -1147,14 +1149,35 @@ pub async fn get_franchise_posters(
     items: Vec<FranchisePosterQuery>,
     state: State<'_, AppState>,
 ) -> Result<std::collections::HashMap<String, String>, String> {
-    let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(8));
+    let mirror = state
+        .storage
+        .get_settings()
+        .map(|s| s.active_mirror)
+        .unwrap_or_default();
+
+    let tmdb_sem = std::sync::Arc::new(tokio::sync::Semaphore::new(8));
+    let rezka_sem = std::sync::Arc::new(tokio::sync::Semaphore::new(4));
     let mut set = tokio::task::JoinSet::new();
+
     for item in items.into_iter().take(60) {
         let tmdb = state.tmdb.clone();
-        let permit_sem = sem.clone();
+        let client = state.client.clone();
+        let mirror_clone = mirror.clone();
+        let tmdb_permit_sem = tmdb_sem.clone();
+        let rezka_permit_sem = rezka_sem.clone();
         set.spawn(async move {
-            let _permit = permit_sem.acquire_owned().await.ok();
-            let poster = tmdb.get_poster(&item.title, item.year.as_deref()).await;
+            let mut poster = {
+                let _permit = tmdb_permit_sem.acquire_owned().await.ok();
+                tmdb.get_poster(&item.title, item.year.as_deref()).await
+            };
+            if poster.is_none() {
+                if let Some(ref item_url) = item.url {
+                    if !mirror_clone.is_empty() && !item_url.is_empty() {
+                        let _permit = rezka_permit_sem.acquire_owned().await.ok();
+                        poster = RezkaParser::get_poster_from_page(&client, &mirror_clone, item_url).await;
+                    }
+                }
+            }
             (item.id, poster)
         });
     }

@@ -857,7 +857,7 @@ export const api = {
   },
 
   getFranchisePosters: async (
-    items: { id: string; title: string; year: string | null }[]
+    items: { id: string; title: string; year: string | null; url?: string }[]
   ): Promise<Record<string, string>> => {
     if (isTauri && items.length > 0) {
       try {

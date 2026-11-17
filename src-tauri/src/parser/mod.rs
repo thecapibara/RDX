@@ -543,6 +543,28 @@ impl RezkaParser {
         })
     }
 
+    /// Lightweight fallback to extract just the cover poster from an HDRezka page when TMDB has no match.
+    pub async fn get_poster_from_page(
+        client: &HttpClient,
+        base_url: &str,
+        item_url: &str,
+    ) -> Option<String> {
+        let base = base_url.trim_end_matches('/');
+        let page_url = Self::normalize_link(item_url, base);
+        let html = client.get_html(&page_url, Some(base)).await.ok()?;
+        let document = Html::parse_document(&html);
+        document
+            .select(&POSTER_IMG_SEL)
+            .next()
+            .and_then(|img| {
+                img.value()
+                    .attr("src")
+                    .or_else(|| img.value().attr("data-src"))
+            })
+            .map(|s| Self::normalize_link(s, base))
+            .filter(|s| !s.is_empty())
+    }
+
     /// Parses HDRezka franchise / series chronology block (`.b-post__partcontent`) sorted by release year.
     fn parse_franchise(document: &Html, page_url: &str, base_url: &str) -> Vec<FranchisePart> {
         let mut raw_parts: Vec<(Option<u32>, usize, FranchisePart)> = Vec::new();
