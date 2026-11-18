@@ -71,7 +71,7 @@ function detectPlatformAsset(assets: any[]): ReleaseAsset | undefined {
 }
 
 export async function checkForUpdates(
-  currentVersion: string = "1.1.5",
+  currentVersion: string = "1.1.6",
   force: boolean = false
 ): Promise<UpdateInfo | null> {
   try {
