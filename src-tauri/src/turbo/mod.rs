@@ -113,7 +113,15 @@ impl TurboServer {
         };
 
         let parts: Vec<&str> = request_line.split_whitespace().collect();
-        if parts.len() < 2 || (parts[0] != "GET" && parts[0] != "HEAD") {
+        if parts.len() < 2 {
+            return Ok(());
+        }
+        if parts[0] == "OPTIONS" {
+            let res = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, HEAD, OPTIONS\r\nAccess-Control-Allow-Headers: Range\r\nContent-Length: 0\r\n\r\n";
+            socket.write_all(res.as_bytes()).await?;
+            return Ok(());
+        }
+        if parts[0] != "GET" && parts[0] != "HEAD" {
             let res = "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n";
             socket.write_all(res.as_bytes()).await?;
             return Ok(());
@@ -161,6 +169,33 @@ impl TurboServer {
 
         let mut upstream_resp = upstream_req.send().await?;
         let status = upstream_resp.status();
+        let final_url = upstream_resp.url().to_string();
+        let ct_str = upstream_resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("video/mp4")
+            .to_string();
+
+        let is_m3u8 = !is_head
+            && status.is_success()
+            && (final_url.contains(".m3u8")
+                || ct_str.to_lowercase().contains("mpegurl"));
+
+        if is_m3u8 {
+            let body_text = upstream_resp.text().await?;
+            let rewritten = self.rewrite_m3u8_playlist(&body_text, &final_url);
+            let bytes = rewritten.as_bytes();
+            let response_headers = format!(
+                "HTTP/1.1 {}\r\nContent-Type: application/vnd.apple.mpegurl\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n",
+                status,
+                bytes.len()
+            );
+            socket.write_all(response_headers.as_bytes()).await?;
+            socket.write_all(bytes).await?;
+            self.total_bytes_served.fetch_add(bytes.len() as u64, Ordering::Relaxed);
+            return Ok(());
+        }
 
         // Forward response status and headers
         let mut response_headers = format!("HTTP/1.1 {}\r\n", status);
@@ -169,15 +204,7 @@ impl TurboServer {
                 response_headers.push_str(&format!("Content-Length: {}\r\n", s));
             }
         }
-        if let Some(ct) = upstream_resp.headers().get("content-type") {
-            if let Ok(s) = ct.to_str() {
-                response_headers.push_str(&format!("Content-Type: {}\r\n", s));
-            } else {
-                response_headers.push_str("Content-Type: video/mp4\r\n");
-            }
-        } else {
-            response_headers.push_str("Content-Type: video/mp4\r\n");
-        }
+        response_headers.push_str(&format!("Content-Type: {}\r\n", ct_str));
         if let Some(cr) = upstream_resp.headers().get("content-range") {
             if let Ok(s) = cr.to_str() {
                 response_headers.push_str(&format!("Content-Range: {}\r\n", s));
@@ -200,5 +227,44 @@ impl TurboServer {
 
         self.total_bytes_served.fetch_add(total_streamed, Ordering::Relaxed);
         Ok(())
+    }
+
+    fn rewrite_m3u8_playlist(&self, playlist: &str, base_url: &str) -> String {
+        let base = url::Url::parse(base_url).ok();
+        let resolve = |raw: &str| -> String {
+            let trimmed = raw.trim();
+            base.as_ref()
+                .and_then(|b| b.join(trimmed).ok())
+                .map(|u| u.to_string())
+                .unwrap_or_else(|| trimmed.to_string())
+        };
+
+        playlist
+            .lines()
+            .map(|line| {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    return String::new();
+                }
+                if trimmed.starts_with('#') {
+                    if let Some(uri_pos) = trimmed.find("URI=\"") {
+                        let start = uri_pos + 5;
+                        if let Some(end_rel) = trimmed[start..].find('"') {
+                            let orig_uri = &trimmed[start..start + end_rel];
+                            let proxied = self.get_turbo_url(&resolve(orig_uri));
+                            return format!(
+                                "{}{}{}",
+                                &trimmed[..start],
+                                proxied,
+                                &trimmed[start + end_rel..]
+                            );
+                        }
+                    }
+                    return trimmed.to_string();
+                }
+                self.get_turbo_url(&resolve(trimmed))
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }

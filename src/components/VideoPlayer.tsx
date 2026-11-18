@@ -1265,12 +1265,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
     };
 
-    const startMp4 = (mp4Url: string) => {
+    const resolveTurboUrl = async (rawUrl: string): Promise<string> => {
+      if (!turboBufferEnabled) return rawUrl;
+      try {
+        return await api.getTurboStreamUrl(rawUrl);
+      } catch {
+        return rawUrl;
+      }
+    };
+
+    const startMp4 = async (rawMp4Url: string) => {
       clearWatchdog();
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
+      const mp4Url = await resolveTurboUrl(rawMp4Url);
+      if (isEffectCleanedUp) return;
       video.src = mp4Url;
       activeWatchdog = setTimeout(() => {
         if (!isEffectCleanedUp && video.readyState < 2) {
@@ -1307,12 +1318,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
 
     // Helper to start HLS playback with native startPosition and LEVEL_LOADED duration capture
-    const startHls = (hlsUrl: string) => {
+    const startHls = async (rawHlsUrl: string) => {
       clearWatchdog();
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
+      const hlsUrl = await resolveTurboUrl(rawHlsUrl);
+      if (isEffectCleanedUp) return;
 
       if (Hls.isSupported()) {
         let mediaErrorRecovered = false;
