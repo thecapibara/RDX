@@ -28,6 +28,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -71,6 +73,25 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Generate release notes
+        id: notes
+        shell: bash
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            CHANGES=$(git log "${PREV_TAG}..HEAD" --no-merges --pretty=format:"- %s" | grep -vE "^- chore\(release\):" || true)
+          else
+            CHANGES=$(git log -n 10 --no-merges --pretty=format:"- %s")
+          fi
+          if [ -z "$CHANGES" ]; then
+            CHANGES="- Покращення стабільності та виправлення помилок"
+          fi
+          {
+            echo "changes<<EOF"
+            echo "$CHANGES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build Tauri app & create Release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -81,37 +102,11 @@ jobs:
           tagName: v__VERSION__
           releaseName: 'RDX v__VERSION__'
           releaseBody: |
-            ## RDX v__VERSION__ — Smart Tiling WM Controls, Accurate TMDB Matching & Planned Bookmarks
-
-            Cross-platform native desktop streaming client (Linux, Windows, macOS) built with **Rust (Tauri v2)**, **React 19**, **Tailwind CSS v4**, and **HLS.js**, inspired by modern Android TV & Smart TV interfaces with an *Obsidian Crimson* aesthetic.
-
-            ---
+            ## RDX v__VERSION__
 
             ### 🇺🇦 Що нового у версії __VERSION__:
 
-            - **🪟 Розумні кнопки вікна для Linux / Tiling WM**:
-              - Додано автоматичне визначення тайлінгових віконних менеджерів (Hyprland, Sway, i3, bspwm, niri, river тощо) на Linux — кнопки згортання/розгортання/закриття автоматично приховуються там, де вони не потрібні.
-              - У налаштуваннях інтерфейсу з'явився вибір режиму кнопок вікна (**Авто** / **Завжди** / **Приховати**).
-
-            - **🎯 Точний підбір фонів TMDB**:
-              - Покращено алгоритм зіставлення назви та року в TMDB: результати з невідповідним роком (відмінність >= 2 років) або чужими франшизами тепер відсіюються, щоб замість хибного фону показувався рідний постер тайтла.
-
-            - **📌 Виправлено вкладку закладок «В планах»**:
-              - Непереглянуті фільми та серіали при додаванні в закладки тепер потрапляють у **«В планах»**, а після початку перегляду автоматично переходять у **«Дивлюсь»** та **«Переглянуто»**.
-
-            ---
-
-            ### 🇬🇧 What's New in v__VERSION__:
-
-            - **🪟 Smart Window Controls for Linux / Tiling WMs**:
-              - Added automatic tiling WM detection on Linux (Hyprland, Sway, i3, bspwm, niri, river, etc.) so custom window buttons hide automatically when running in a tiling environment.
-              - Added a **Window Controls** preference (**Auto** / **Always** / **Hide**) in Appearance settings.
-
-            - **🎯 Accurate TMDB Backdrop Matching**:
-              - Tightened TMDB title similarity scoring and year filtering (rejecting >= 2 year mismatches and unrelated franchises) so cards fall back to their own poster rather than showing an unrelated title's backdrop.
-
-            - **📌 Fixed "Planned" Bookmarks Workflow**:
-              - Unwatched titles added to bookmarks now land in **Planned** («В планах») and automatically transition to **Watching** («Дивлюсь») and **Completed** («Переглянуто») as playback progresses.
+            ${{ steps.notes.outputs.changes }}
 
             ---
 

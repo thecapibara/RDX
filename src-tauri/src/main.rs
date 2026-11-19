@@ -14,14 +14,15 @@ fn main() {
             }
         }
 
-        // 2. Disable WebKitGTK DMA-BUF hardware renderer ONLY on proprietary NVIDIA drivers.
-        // On Intel (Iris Xe/UHD) and AMD Radeon Mesa drivers on Wayland, DMA-BUF zero-copy
-        // GPU compositing is essential for fluid 60/120 FPS scrolling without CPU bottlenecking.
+        // 2. Disable WebKitGTK DMA-BUF hardware renderer on proprietary NVIDIA drivers AND inside
+        // AppImage bundles (Ubuntu-built libwebkit2gtk-4.1 inside AppImage aborts with SIGABRT on
+        // Arch Linux / KDE Plasma Wayland due to Mesa/GBM ABI mismatch).
         if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
             let is_nvidia = std::path::Path::new("/dev/nvidia0").exists()
                 || std::path::Path::new("/dev/nvidiactl").exists()
                 || std::path::Path::new("/proc/driver/nvidia").exists();
-            if is_nvidia {
+            let is_appimage = std::env::var_os("APPIMAGE").is_some();
+            if is_nvidia || is_appimage {
                 unsafe {
                     std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
                 }

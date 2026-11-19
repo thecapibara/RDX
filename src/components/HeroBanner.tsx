@@ -133,7 +133,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
       ref={bannerRef}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className="relative w-full h-[58vh] min-h-[440px] max-h-[640px] overflow-hidden select-none group [contain:layout_paint]"
+      className="relative w-full h-[58vh] min-h-[440px] max-h-[640px] overflow-hidden select-none group"
     >
       {/* 1. Backdrop Layer (Full-bleed 1080p TMDB Backdrop or Ambient Aurora Fallback) */}
       <AnimatePresence mode="wait">
@@ -186,55 +186,48 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
       {/* Solid 2px bottom seam cover prevents subpixel GPU-layer bleed from transform-gpu backdrop during scroll */}
       <div className="absolute inset-x-0 -bottom-px h-[3px] bg-[var(--bg-base,#000000)] pointer-events-none z-[6]" />
 
-      {/* Content Container (Left-aligned text & actions) */}
-      <div className="relative z-10 h-full flex flex-col justify-end px-[clamp(1.5rem,5vw,5rem)] pb-12 max-w-5xl space-y-4">
-        {/* Badges Row */}
+      {/* Content Container (Left-aligned text & actions, pinned to bottom to prevent WebKitGTK flex-end drift) */}
+      <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col px-[clamp(1.5rem,5vw,5rem)] pb-12 max-w-5xl space-y-4">
         <AnimatePresence mode="wait">
           <motion.div
-            key={`meta-${currentMedia.id || currentMedia.url}`}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.3 }}
-            className="flex flex-wrap items-center gap-2.5"
+            key={`hero-text-${currentMedia.id || currentMedia.url}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="space-y-4"
           >
-            <span className="px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-rose-600/90 text-white shadow-md shadow-rose-950/50 border border-rose-400/30">
-              {isSeries ? "Серіал" : "Фільм"}
-            </span>
-
-            {currentMedia.series_info && (
-              <span className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-white/10 text-zinc-200 border border-white/15">
-                {ukrainizeSeriesInfo(currentMedia.series_info)}
+            {/* Badges Row */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-rose-600/90 text-white shadow-md shadow-rose-950/50 border border-rose-400/30">
+                {isSeries ? "Серіал" : "Фільм"}
               </span>
-            )}
 
-            {currentMedia.rating && (
-              <div className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                <span>{currentMedia.rating}</span>
-              </div>
-            )}
+              {currentMedia.series_info && (
+                <span className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-white/10 text-zinc-200 border border-white/15">
+                  {ukrainizeSeriesInfo(currentMedia.series_info)}
+                </span>
+              )}
 
-            {currentMedia.misc_info && (
-              <span className="text-xs text-zinc-300 font-medium">
-                {ukrainizeMiscInfo(currentMedia.misc_info)}
-              </span>
-            )}
+              {currentMedia.rating && (
+                <div className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                  <span>{currentMedia.rating}</span>
+                </div>
+              )}
+
+              {currentMedia.misc_info && (
+                <span className="text-xs text-zinc-300 font-medium">
+                  {ukrainizeMiscInfo(currentMedia.misc_info)}
+                </span>
+              )}
+            </div>
+
+            {/* Title */}
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-white line-clamp-2 drop-shadow-2xl">
+              {currentMedia.title}
+            </h1>
           </motion.div>
-        </AnimatePresence>
-
-        {/* Title */}
-        <AnimatePresence mode="wait">
-          <motion.h1
-            key={`title-${currentMedia.id || currentMedia.url}`}
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.35 }}
-            className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-white line-clamp-2 drop-shadow-2xl"
-          >
-            {currentMedia.title}
-          </motion.h1>
         </AnimatePresence>
 
         {/* Actions Row */}
