@@ -200,6 +200,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // Track episode change key to distinguish between quality switch and episode switch
   const currentEpisodeKey = `${activeSeason ?? 0}-${activeEpisode ?? 0}`;
   const lastEpisodeKeyRef = useRef<string>(currentEpisodeKey);
+  const savedTimeBeforeReloadRef = useRef<number>(0);
+  const hasAppliedInitialPositionRef = useRef<boolean>(false);
 
   // Playback state
   const [isPlaying, setIsPlaying] = useState(false);
@@ -212,6 +214,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const playbackSpeedRef = useRef(playbackSpeed);
+  useEffect(() => {
+    playbackSpeedRef.current = playbackSpeed;
+    if (videoRef.current) {
+      videoRef.current.playbackRate = playbackSpeed;
+    }
+  }, [playbackSpeed]);
   const [resumeNotice, setResumeNotice] = useState<string | null>(null);
   const [hudToast, setHudToast] = useState<string | null>(null);
   const hudTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -1199,6 +1208,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const isEpisodeChange = currentEpisodeKey !== lastEpisodeKeyRef.current;
     if (isEpisodeChange) {
       lastEpisodeKeyRef.current = currentEpisodeKey;
+      savedTimeBeforeReloadRef.current = 0;
+      hasAppliedInitialPositionRef.current = false;
       hlsDurationRef.current = 0;
       setDuration(0);
       setCurrentTime(initialPositionSec || 0);
@@ -1210,7 +1221,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       ? initialPositionSec
       : video.currentTime > 0
       ? video.currentTime
-      : initialPositionSec;
+      : savedTimeBeforeReloadRef.current > 0
+      ? savedTimeBeforeReloadRef.current
+      : !hasAppliedInitialPositionRef.current
+      ? initialPositionSec
+      : 0;
 
     let isEffectCleanedUp = false;
     let hlsFailedForQuality = false;
@@ -1288,12 +1303,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         if (prevTime > 0 && (!Number.isFinite(vidDur) || vidDur <= 0 || prevTime < vidDur - 5)) {
           video.currentTime = prevTime;
           setCurrentTime(prevTime);
-          if (initialPositionSec > 0 && prevTime === initialPositionSec) {
+          if (!hasAppliedInitialPositionRef.current && initialPositionSec > 0 && prevTime === initialPositionSec) {
             setResumeNotice(`Відновлено з ${formatTime(initialPositionSec)}`);
             setTimeout(() => setResumeNotice(null), 3500);
           }
         }
-        video.playbackRate = playbackSpeed;
+        hasAppliedInitialPositionRef.current = true;
+        video.playbackRate = playbackSpeedRef.current;
         video.play().catch(() => {});
       };
       const onError = () => {
@@ -1302,7 +1318,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       };
       video.addEventListener("loadedmetadata", onMetadata, { once: true });
       video.addEventListener("error", onError, { once: true });
-      video.playbackRate = playbackSpeed;
+      video.playbackRate = playbackSpeedRef.current;
       video.play().catch(() => {});
     };
 
@@ -1361,12 +1377,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           clearWatchdog();
           if (prevTime > 0) {
             setCurrentTime(prevTime);
-            if (initialPositionSec > 0 && prevTime === initialPositionSec) {
+            if (!hasAppliedInitialPositionRef.current && initialPositionSec > 0 && prevTime === initialPositionSec) {
               setResumeNotice(`Відновлено з ${formatTime(initialPositionSec)}`);
               setTimeout(() => setResumeNotice(null), 3500);
             }
           }
-          video.playbackRate = playbackSpeed;
+          hasAppliedInitialPositionRef.current = true;
+          video.playbackRate = playbackSpeedRef.current;
           video.play().catch(() => {});
         });
 
@@ -1429,6 +1446,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return () => {
       isEffectCleanedUp = true;
       clearWatchdog();
+      // Preserve playback position BEFORE hls.destroy() detaches media and resets video.currentTime to 0
+      if (Number.isFinite(video.currentTime) && video.currentTime > 0) {
+        savedTimeBeforeReloadRef.current = video.currentTime;
+      } else if (video.readyState >= 2) {
+        savedTimeBeforeReloadRef.current = 0;
+      } else if (prevTime > 0) {
+        savedTimeBeforeReloadRef.current = prevTime;
+      }
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -1442,7 +1467,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     isStreamFetching,
     streamData,
     initialPositionSec,
-    playbackSpeed,
   ]);
 
   // Auto-save watch progress every 5 seconds & on unmount
