@@ -495,39 +495,99 @@ export default function App() {
   }, []);
 
   // Handle in-player translator change for series
-  const handlePlayerTranslatorChange = async (tId: string) => {
-    setActiveTranslatorId(tId);
-    if (!activePlayerDetails) return;
-    if (activePlayerDetails.is_offline) return;
+  const handlePlayerTranslatorChange = async (
+    tId: string
+  ): Promise<{ ok: boolean; shortBadge?: string; detailText?: string }> => {
+    if (
+      !activePlayerDetails ||
+      activePlayerDetails.is_offline ||
+      !(activePlayerDetails.seasons && activePlayerDetails.seasons.length > 0)
+    ) {
+      setActiveTranslatorId(tId);
+      return { ok: true };
+    }
 
-    if (activePlayerDetails.seasons && activePlayerDetails.seasons.length > 0) {
-      try {
-        const epData = await api.getEpisodes(
-          activePlayerDetails.id,
-          tId,
-          activePlayerDetails.url
-        );
-        const updatedDetails: MediaDetails = {
-          ...activePlayerDetails,
-          seasons: epData.seasons,
-          episodes: epData.episodes,
-          initial_streams: epData.stream_data || activePlayerDetails.initial_streams,
-        };
-        setActivePlayerDetails(updatedDetails);
+    try {
+      const epData = await api.getEpisodes(
+        activePlayerDetails.id,
+        tId,
+        activePlayerDetails.url
+      );
 
-        // Check if currently activeSeason exists in new translator's seasons
+      const targetSeason = activeSeason || 1;
+      const targetEpisode = activeEpisode || 1;
+      const hasEpisode =
+        epData.episodes.length > 0
+          ? epData.episodes.some(
+              (ep) =>
+                parseInt(ep.season_id, 10) === targetSeason &&
+                parseInt(ep.episode_id, 10) === targetEpisode
+            )
+          : epData.seasons.some((s) => parseInt(s.id, 10) === targetSeason);
+
+      if (!hasEpisode) {
+        let shortBadge = "Немає";
+        let detailText = "немає цієї серії";
+
         const seasonExists = epData.seasons.some(
-          (s) => parseInt(s.id, 10) === activeSeason
+          (s) => parseInt(s.id, 10) === targetSeason
         );
-        if (!seasonExists && epData.seasons.length > 0) {
-          const firstSeasonNum = parseInt(epData.seasons[0].id, 10);
-          setActiveSeason(isNaN(firstSeasonNum) ? 1 : firstSeasonNum);
-          setActiveEpisode(1);
-          setInitialPositionSec(0);
+        if (seasonExists) {
+          const maxEp = epData.episodes
+            .filter((ep) => parseInt(ep.season_id, 10) === targetSeason)
+            .reduce((max, ep) => {
+              const n = parseInt(ep.episode_id, 10);
+              return !isNaN(n) && n > max ? n : max;
+            }, 0);
+          if (maxEp > 0) {
+            shortBadge = `до E${maxEp}`;
+            detailText = `Сезон ${targetSeason} лише до ${maxEp} серії`;
+          }
+        } else {
+          const nums = Array.from(
+            new Set(
+              epData.seasons
+                .map((s) => parseInt(s.id, 10))
+                .filter((n) => !isNaN(n))
+            )
+          ).sort((a, b) => a - b);
+
+          if (nums.length === 1) {
+            shortBadge = `лише S${nums[0]}`;
+            detailText = `доступна лише в Сезоні ${nums[0]}`;
+          } else if (nums.length > 1) {
+            const isContiguous = nums.every(
+              (n, idx) => idx === 0 || n === nums[idx - 1] + 1
+            );
+            if (isContiguous) {
+              shortBadge = `S${nums[0]}–S${nums[nums.length - 1]}`;
+              detailText = `доступна: Сезони ${nums[0]}–${nums[nums.length - 1]}`;
+            } else {
+              shortBadge = `S${nums.join(",")}`;
+              detailText = `доступна: Сезони ${nums.join(", ")}`;
+            }
+          }
         }
-      } catch (err) {
-        console.error("Failed to update episodes on translator change:", err);
+
+        return { ok: false, shortBadge, detailText };
       }
+
+      const updatedDetails: MediaDetails = {
+        ...activePlayerDetails,
+        seasons: epData.seasons,
+        episodes: epData.episodes,
+        initial_streams: epData.stream_data || activePlayerDetails.initial_streams,
+      };
+      setActivePlayerDetails(updatedDetails);
+      setActiveTranslatorId(tId);
+      return { ok: true };
+    } catch (err) {
+      console.warn("Failed to update episodes on translator change:", err);
+      return {
+        ok: false,
+        shortBadge: "Помилка",
+        detailText: "не вдалося перевірити озвучку",
+      };
     }
   };
 

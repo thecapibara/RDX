@@ -33,6 +33,7 @@ import {
   Crown,
   Sparkles,
   Zap,
+  AlertCircle,
 } from "lucide-react";
 import type {
   MediaDetails,
@@ -41,6 +42,7 @@ import type {
   WatchProgress,
   SeasonTab,
   EpisodeTab,
+  Translator,
 } from "../types";
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
@@ -73,7 +75,9 @@ interface VideoPlayerProps {
   onModeChange: (mode: PlayerMode) => void;
   onClose: () => void;
   onEpisodeChange?: (season: number, episode: number) => void;
-  onTranslatorChange?: (translatorId: string) => void;
+  onTranslatorChange?: (
+    translatorId: string
+  ) => Promise<{ ok: boolean; shortBadge?: string; detailText?: string } | void> | void;
   startFullscreen?: boolean;
   hidePremium?: boolean;
 }
@@ -268,6 +272,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [showControls, setShowControls] = useState(true);
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [showTranslatorMenu, setShowTranslatorMenu] = useState(false);
+  const [unavailableTranslators, setUnavailableTranslators] = useState<
+    Record<string, { shortBadge: string; detailText: string }>
+  >({});
+  const [checkingTranslatorId, setCheckingTranslatorId] = useState<string | null>(null);
   const [showSubtitleMenu, setShowSubtitleMenu] = useState(false);
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [showEpisodesDrawer, setShowEpisodesDrawer] = useState(false);
@@ -362,11 +370,104 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [details.id, details.url, isSeries, currentTranslator?.id, activeSeason]);
 
+  useEffect(() => {
+    setUnavailableTranslators({});
+  }, [details.id, activeSeason, activeEpisode]);
+
   // Show HUD toast helper
-  const showHud = (text: string) => {
+  const showHud = (text: string, durationMs = 1200) => {
     setHudToast(text);
     if (hudTimerRef.current) clearTimeout(hudTimerRef.current);
-    hudTimerRef.current = setTimeout(() => setHudToast(null), 1200);
+    hudTimerRef.current = setTimeout(() => setHudToast(null), durationMs);
+  };
+
+  const handleSelectTranslator = async (t: Translator) => {
+    if (t.id === currentTranslator?.id) {
+      setShowTranslatorMenu(false);
+      setContextMenu(null);
+      return;
+    }
+    if (checkingTranslatorId) return;
+
+    const cachedUnavail = unavailableTranslators[t.id];
+    if (cachedUnavail) {
+      showHud(
+        `⚠️ «${t.name}» недоступна для S${activeSeason || 1}E${activeEpisode || 1} (${cachedUnavail.detailText})`,
+        3200
+      );
+      return;
+    }
+
+    setCheckingTranslatorId(t.id);
+    try {
+      const res = await onTranslatorChange?.(t.id);
+      if (res && res.ok === false) {
+        const shortBadge = res.shortBadge || "Немає";
+        const detailText = res.detailText || "немає цієї серії";
+        setUnavailableTranslators((prev) => ({
+          ...prev,
+          [t.id]: { shortBadge, detailText },
+        }));
+        showHud(
+          `⚠️ «${t.name}» недоступна для S${activeSeason || 1}E${activeEpisode || 1} (${detailText})`,
+          3200
+        );
+      } else {
+        setShowTranslatorMenu(false);
+        setContextMenu(null);
+      }
+    } finally {
+      setCheckingTranslatorId(null);
+    }
+  };
+
+  const renderTranslatorOption = (t: Translator, compact = false) => {
+    const isSelected = t.id === currentTranslator?.id;
+    const unavail = unavailableTranslators[t.id];
+    const isChecking = checkingTranslatorId === t.id;
+    const isUkr =
+      t.language?.toLowerCase().includes("украин") ||
+      t.language?.toLowerCase().includes("україн");
+
+    return (
+      <button
+        key={t.id}
+        onClick={() => handleSelectTranslator(t)}
+        title={unavail ? unavail.detailText : undefined}
+        className={cn(
+          "w-full flex items-center justify-between gap-2 px-3 rounded-lg text-xs font-medium transition-colors text-left cursor-pointer",
+          compact ? "py-1.5" : "py-2",
+          isSelected
+            ? "bg-rose-600 text-white"
+            : unavail
+              ? "text-zinc-500 hover:bg-white/5"
+              : "text-zinc-300 hover:bg-white/10"
+        )}
+      >
+        <span className="truncate flex items-center gap-1.5 min-w-0">
+          {isUkr && <UaFlag />}
+          <span className="truncate">{t.name}</span>
+          {t.is_premium && (
+            <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-0.5 shrink-0">
+              <Crown className="w-2.5 h-2.5 text-amber-400" />
+              PREM
+            </span>
+          )}
+        </span>
+        {isChecking ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-400 shrink-0" />
+        ) : unavail ? (
+          <span className="flex items-center gap-1 shrink-0">
+            <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+              {unavail.shortBadge}
+            </span>
+          </span>
+        ) : (
+          isSelected && <Check className="w-3.5 h-3.5 flex-shrink-0" />
+        )}
+      </button>
+    );
   };
 
   // Mini-player seek ripple animation state
@@ -3319,40 +3420,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             <div className="text-[11px] font-bold text-zinc-400 px-2 py-1 uppercase">
                               Вибір озвучення
                             </div>
-                            {visibleTranslators.map((t) => {
-                              const isSelected = t.id === currentTranslator?.id;
-                              const isUkr =
-                                t.language?.toLowerCase().includes("украин") ||
-                                t.language?.toLowerCase().includes("україн");
-
-                              return (
-                                <button
-                                  key={t.id}
-                                  onClick={() => {
-                                    if (onTranslatorChange) onTranslatorChange(t.id);
-                                    setShowTranslatorMenu(false);
-                                  }}
-                                  className={cn(
-                                    "w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors text-left cursor-pointer",
-                                    isSelected
-                                      ? "bg-rose-600 text-white"
-                                      : "text-zinc-300 hover:bg-white/10"
-                                  )}
-                                >
-                                  <span className="truncate flex items-center gap-1.5">
-                                    {isUkr && <UaFlag />}
-                                    <span>{t.name}</span>
-                                    {t.is_premium && (
-                                      <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-0.5 shrink-0">
-                                        <Crown className="w-2.5 h-2.5 text-amber-400" />
-                                        PREM
-                                      </span>
-                                    )}
-                                  </span>
-                                  {isSelected && <Check className="w-3.5 h-3.5 flex-shrink-0" />}
-                                </button>
-                              );
-                            })}
+                            {visibleTranslators.map((t) => renderTranslatorOption(t))}
                           </div>
                         )}
                       </div>
@@ -4064,37 +4132,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               </button>
               <div className="h-px bg-white/10 my-1 mx-2" />
               <div className="max-h-64 overflow-y-auto space-y-0.5 pr-1">
-                {visibleTranslators.map((t) => {
-                  const isSelected = t.id === currentTranslator?.id;
-                  const isUkr =
-                    t.language?.toLowerCase().includes("украин") ||
-                    t.language?.toLowerCase().includes("україн");
-                  return (
-                    <button
-                      key={t.id}
-                      onClick={() => {
-                        if (onTranslatorChange) onTranslatorChange(t.id);
-                        setContextMenu(null);
-                      }}
-                      className={cn(
-                        "w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium transition-colors text-left cursor-pointer",
-                        isSelected ? "bg-rose-600 text-white" : "text-zinc-300 hover:bg-white/10"
-                      )}
-                    >
-                      <span className="truncate flex items-center gap-1.5">
-                        {isUkr && <UaFlag />}
-                        <span>{t.name}</span>
-                        {t.is_premium && (
-                          <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-0.5 shrink-0">
-                            <Crown className="w-2.5 h-2.5 text-amber-400" />
-                            PREM
-                          </span>
-                        )}
-                      </span>
-                      {isSelected && <Check className="w-3.5 h-3.5 flex-shrink-0" />}
-                    </button>
-                  );
-                })}
+                {visibleTranslators.map((t) => renderTranslatorOption(t, true))}
               </div>
             </div>
           )}

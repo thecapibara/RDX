@@ -19,7 +19,6 @@ import {
   Volume2,
   Sliders,
   Monitor,
-  Eye,
   Palette,
   Moon,
   Globe,
@@ -149,22 +148,8 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
       return true;
     }
   });
-  const [ambientGlow, setAmbientGlow] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem("rdx_ambient_glow") !== "false";
-    } catch {
-      return true;
-    }
-  });
   const [uiSounds, setUiSounds] = useState<boolean>(() => {
     return getUiSoundsEnabled();
-  });
-  const [motion60fps, setMotion60fps] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem("rdx_motion_60fps") !== "false";
-    } catch {
-      return true;
-    }
   });
   const [accentColor, setAccentColorState] = useState<AccentColor>(() => getAccentColor());
   const [bgTheme, setBgThemeState] = useState<BgTheme>(() => getBgTheme());
@@ -486,20 +471,6 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
     if (enabled) {
       playModalOpenSound();
     }
-  };
-
-  const handleToggleAmbientGlow = (enabled: boolean) => {
-    setAmbientGlow(enabled);
-    try {
-      localStorage.setItem("rdx_ambient_glow", enabled ? "true" : "false");
-    } catch {}
-  };
-
-  const handleToggleMotion60fps = (enabled: boolean) => {
-    setMotion60fps(enabled);
-    try {
-      localStorage.setItem("rdx_motion_60fps", enabled ? "true" : "false");
-    } catch {}
   };
 
   const handleSelectAccent = (color: AccentColor) => {
@@ -1376,21 +1347,6 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                   </div>
                 </div>
 
-                {/* Hardware Engine Card */}
-                <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/8 space-y-2">
-                  <div className="text-xs font-semibold text-zinc-300 flex items-center gap-2">
-                    <Monitor className="w-4 h-4 text-zinc-400" />
-                    <span>Апаратне декодування та буферизація</span>
-                  </div>
-                  <div className="text-[11px] text-zinc-400 leading-relaxed">
-                    Відеоплеєр RDX використовує ядро{" "}
-                    <span className="text-zinc-200 font-mono">WebKitGTK 2.4x</span> на базі
-                    системного <span className="text-zinc-200 font-mono">GStreamer</span>{" "}
-                    (VAAPI/NVDEC) та розширення{" "}
-                    <span className="text-zinc-200 font-mono">HLS.js MSE</span> зі збільшеним
-                    буфером 120 секунд для плавного мотання.
-                  </div>
-                </div>
               </div>
             )}
 
@@ -1571,60 +1527,6 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                         type="checkbox"
                         checked={uiSounds}
                         onChange={(e) => handleToggleUiSounds(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Ambient Glow Card */}
-                <div className="p-4.5 rounded-2xl bg-[var(--bg-elevated,#1e1f2b)]/60 border border-[var(--border-subtle,rgba(255,255,255,0.08))] space-y-3 transition-colors duration-250">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0 mt-0.5">
-                        <Sparkles className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-white">Фоновий ефект розмиття (Ambient Backdrop Glow)</h4>
-                        <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
-                          М'яке розмите світіння під колір постера у стилі Apple TV на головній сторінці
-                        </p>
-                      </div>
-                    </div>
-
-                    <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={ambientGlow}
-                        onChange={(e) => handleToggleAmbientGlow(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
-                    </label>
-                  </div>
-                </div>
-
-                {/* 60fps Motion Animations */}
-                <div className="p-4.5 rounded-2xl bg-[var(--bg-elevated,#1e1f2b)]/60 border border-[var(--border-subtle,rgba(255,255,255,0.08))] space-y-3 transition-colors duration-250">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0 mt-0.5">
-                        <Eye className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-white">Плавні анімації 60fps (Framer Motion)</h4>
-                        <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
-                          Апаратне прискорення переходів карток та плавний скрол без ривків
-                        </p>
-                      </div>
-                    </div>
-
-                    <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={motion60fps}
-                        onChange={(e) => handleToggleMotion60fps(e.target.checked)}
                         className="sr-only peer"
                       />
                       <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
