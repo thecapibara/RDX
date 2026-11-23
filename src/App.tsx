@@ -300,7 +300,7 @@ export default function App() {
   // OTA GitHub Release Updater
   const handleCheckUpdates = useCallback(async (manual = false): Promise<boolean> => {
     try {
-      const update = await checkForUpdates("1.1.9", manual);
+      const update = await checkForUpdates("1.2.0", manual);
       if (update) {
         setAvailableUpdate(update);
         setIsUpdateModalOpen(true);
