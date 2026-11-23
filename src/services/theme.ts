@@ -6,6 +6,7 @@
 
 export type AccentColor = "crimson" | "amethyst" | "sapphire" | "emerald" | "amber";
 export type BgTheme = "oled" | "obsidian";
+export type DetailsCardStyle = "classic" | "tv";
 
 export interface AccentOption {
   id: AccentColor;
@@ -181,6 +182,21 @@ export const setBgTheme = (theme: BgTheme) => {
     if (document.body) {
       document.body.style.backgroundColor = bg.base;
     }
+  } catch {}
+};
+
+export const getDetailsCardStyle = (): DetailsCardStyle => {
+  if (typeof window === "undefined") return "classic";
+  try {
+    return localStorage.getItem("rdx_details_style") === "tv" ? "tv" : "classic";
+  } catch {
+    return "classic";
+  }
+};
+
+export const setDetailsCardStyle = (style: DetailsCardStyle): void => {
+  try {
+    localStorage.setItem("rdx_details_style", style);
   } catch {}
 };
 

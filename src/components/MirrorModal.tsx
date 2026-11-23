@@ -24,6 +24,7 @@ import {
   Globe,
   Maximize2,
   EyeOff,
+  Tv,
 } from "lucide-react";
 import type { AppSettings, MirrorStatus } from "../types";
 import { api } from "../services/api";
@@ -40,9 +41,12 @@ import {
   setAccentColor,
   getBgTheme,
   setBgTheme,
+  getDetailsCardStyle,
+  setDetailsCardStyle,
   ACCENT_OPTIONS,
   type AccentColor,
   type BgTheme,
+  type DetailsCardStyle,
 } from "../services/theme";
 
 interface MirrorModalProps {
@@ -153,6 +157,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
   });
   const [accentColor, setAccentColorState] = useState<AccentColor>(() => getAccentColor());
   const [bgTheme, setBgThemeState] = useState<BgTheme>(() => getBgTheme());
+  const [detailsCardStyle, setDetailsCardStyleState] = useState<DetailsCardStyle>(() => getDetailsCardStyle());
   const [windowControlsMode, setWindowControlsMode] = useState<WindowControlsMode>(() => {
     try {
       const saved = localStorage.getItem("rdx_window_controls");
@@ -482,6 +487,12 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
   const handleSelectBgTheme = (theme: BgTheme) => {
     setBgThemeState(theme);
     setBgTheme(theme);
+    playHoverSound();
+  };
+
+  const handleSelectDetailsStyle = (style: DetailsCardStyle) => {
+    setDetailsCardStyleState(style);
+    setDetailsCardStyle(style);
     playHoverSound();
   };
 
@@ -1472,6 +1483,75 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                         </div>
                         <div className="text-[11px] text-zinc-400 truncate">
                           М'який глибокий цинк (#09090b)
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Details Card Style: Classic vs TV-style */}
+                <div className="p-4.5 rounded-2xl bg-[var(--bg-elevated,#1e1f2b)]/60 border border-[var(--border-subtle,rgba(255,255,255,0.08))] space-y-3.5 transition-colors duration-250">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0 mt-0.5">
+                        <Tv className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Стиль картки фільму</h4>
+                        <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
+                          Оберіть оформлення сторінки деталей фільму чи серіалу
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    <button
+                      onClick={() => handleSelectDetailsStyle("classic")}
+                      className={cn(
+                        "flex items-center gap-3 p-3.5 rounded-xl border text-left transition-all cursor-pointer",
+                        detailsCardStyle === "classic"
+                          ? "bg-zinc-800/90 border-rose-500 shadow-[0_0_14px_rgba(225,29,72,0.25)] ring-1 ring-rose-500"
+                          : "bg-black/30 border-white/8 hover:bg-white/5 hover:border-white/15"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-white/20 flex items-center justify-center flex-shrink-0 shadow-inner">
+                        <div className="w-2.5 h-4 rounded-sm bg-rose-500/80 mr-0.5" />
+                        <div className="w-2 h-2.5 rounded-sm bg-white/30" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                          Класичний
+                          <span className="text-[10px] font-medium text-rose-400/90 bg-rose-500/10 px-1.5 py-0.2 rounded border border-rose-500/20">
+                            Дефолт
+                          </span>
+                          {detailsCardStyle === "classic" && <Check className="w-3.5 h-3.5 text-rose-400 stroke-[3] ml-auto" />}
+                        </div>
+                        <div className="text-[11px] text-zinc-400 truncate">
+                          Постер зліва та компактний хедер
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => handleSelectDetailsStyle("tv")}
+                      className={cn(
+                        "flex items-center gap-3 p-3.5 rounded-xl border text-left transition-all cursor-pointer",
+                        detailsCardStyle === "tv"
+                          ? "bg-zinc-800/90 border-rose-500 shadow-[0_0_14px_rgba(225,29,72,0.25)] ring-1 ring-rose-500"
+                          : "bg-black/30 border-white/8 hover:bg-white/5 hover:border-white/15"
+                      )}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-black via-zinc-900 to-rose-900/60 border border-white/20 flex items-end p-1 flex-shrink-0 shadow-inner">
+                        <div className="w-4 h-1.5 rounded-sm bg-white/60" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                          TV-стиль
+                          {detailsCardStyle === "tv" && <Check className="w-3.5 h-3.5 text-rose-400 stroke-[3] ml-auto" />}
+                        </div>
+                        <div className="text-[11px] text-zinc-400 truncate">
+                          Повноекранний бекдроп та великий заголовок як у RDX-TV
                         </div>
                       </div>
                     </button>

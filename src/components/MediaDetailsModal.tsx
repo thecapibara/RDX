@@ -15,12 +15,15 @@ import {
   X,
   Mic,
   Layers,
+  Tv,
+  Film,
 } from "lucide-react";
 import type { Bookmark, MediaCard, MediaDetails, WatchProgress, Translator, EpisodeProgress, StreamQuality } from "../types";
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
 import { playModalOpenSound, suppressHoverSound } from "../services/sound";
 import { openDownloadsTab } from "../services/downloadsStore";
+import { getDetailsCardStyle } from "../services/theme";
 import { WindowControls } from "./WindowControls";
 import { UaFlag } from "./UaFlag";
 import { Swimlane } from "./Swimlane";
@@ -81,6 +84,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
   const [tmdbBackdrop, setTmdbBackdrop] = useState<string | null>(null);
   const [backdropResolved, setBackdropResolved] = useState(false);
   const [backdropImgLoaded, setBackdropImgLoaded] = useState(false);
+  const [backdropLoaded, setBackdropLoaded] = useState(false);
 
   // Helper to determine effective bookmark category based on watch progress
   const getBookmarkCategory = (): string => {
@@ -194,6 +198,11 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
       mounted = false;
     };
   }, [isOpen, media?.id, media?.url, details, fetchError]);
+
+  const backdropUrl = tmdbBackdrop;
+  useEffect(() => {
+    setBackdropLoaded(false);
+  }, [backdropUrl, media?.url]);
 
   // Fetch relevant TMDB recommendations asynchronously without blocking card load
   useEffect(() => {
@@ -803,6 +812,295 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
     });
   })();
 
+  const detailsCardStyle = getDetailsCardStyle();
+  const fallbackPoster = details?.high_res_poster || details?.poster || media.poster;
+  const rawYearVal = details?.info_table?.find(([k]) => k.toLowerCase().includes("рік") || k.toLowerCase().includes("год"))?.[1];
+  const rawDurationVal = details?.info_table?.find(([k]) => k.toLowerCase().includes("тривалість") || k.toLowerCase().includes("время"))?.[1];
+  const rawGenreVal = details?.info_table?.find(([k]) => k.toLowerCase().includes("жанр"))?.[1];
+  const yearVal = rawYearVal ? ukrainizeInfoValue("рік", rawYearVal) : undefined;
+  const durationVal = rawDurationVal ? ukrainizeInfoValue("тривалість", rawDurationVal) : undefined;
+  const genreVal = rawGenreVal ? ukrainizeInfoValue("жанр", rawGenreVal) : undefined;
+
+  const actionsAndBanners = loading && !details ? (
+    <div className="space-y-5 pt-1">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2.5 px-7 py-3.5 rounded-2xl bg-gradient-to-r from-rose-700/70 via-rose-600/70 to-rose-500/70 text-white font-bold text-sm shadow-xl shadow-rose-950/40 select-none">
+          <Loader2 className="w-4 h-4 animate-spin text-white" />
+          <span>Завантаження плеєра...</span>
+        </div>
+
+        <button
+          onClick={() => {
+            const bookmarkItem: Bookmark = {
+              media_id: media.id,
+              media_url: media.url,
+              title: media.title,
+              poster_url: media.poster,
+              media_type: isSeries ? "series" : "movie",
+              year_info: media.misc_info || null,
+              rating: media.rating || null,
+              category: getBookmarkCategory(),
+              added_at: Math.floor(Date.now() / 1000),
+              awaiting_release: !hasAvailableStream,
+            };
+            onToggleBookmark(bookmarkItem);
+          }}
+          className={cn(
+            "flex items-center gap-2 px-5 py-3.5 rounded-2xl font-semibold text-sm border transition-all cursor-pointer active:scale-95",
+            isBookmarked
+              ? "bg-amber-500/20 text-amber-400 border-amber-500/40 hover:bg-amber-500/30"
+              : "bg-white/10 hover:bg-white/20 text-white border-white/15"
+          )}
+        >
+          <BookmarkIcon
+            className={cn("w-4 h-4", isBookmarked && "fill-amber-400")}
+          />
+          <span>{isBookmarked ? "У закладках" : "У закладки"}</span>
+        </button>
+      </div>
+
+      {/* Shimmer Description Lines */}
+      <div className="space-y-2.5 pt-1 max-w-3xl animate-pulse">
+        <div className="h-4 bg-white/10 rounded-lg w-full" />
+        <div className="h-4 bg-white/10 rounded-lg w-11/12" />
+        <div className="h-4 bg-white/10 rounded-lg w-3/4" />
+      </div>
+
+      <div className="flex items-center gap-2 text-xs text-zinc-400 font-medium">
+        <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-500" />
+        <span>Отримання інформації про озвучення та якість...</span>
+      </div>
+    </div>
+  ) : fetchError ? (
+    <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-200 text-xs flex items-center justify-between gap-4 mt-2">
+      <span>{fetchError}</span>
+    </div>
+  ) : details ? (
+    <>
+      {/* Primary Action Buttons */}
+      <div className="flex flex-wrap items-center gap-2.5 pt-2">
+        {hasAvailableStream ? (
+          <button
+            onClick={() => handleStartPlayback()}
+            className="flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-rose-700 via-rose-600 to-rose-500 hover:from-rose-600 hover:to-rose-400 text-white font-bold text-sm shadow-xl shadow-rose-950/60 active:scale-95 transition-all cursor-pointer shrink-0"
+          >
+            <Play className="w-4 h-4 fill-current" />
+            <span>
+              {savedProgress && savedProgress.position_sec > 10
+                ? `Продовжити (${Math.floor(savedProgress.position_sec / 60)} хв)`
+                : isSeries
+                ? `Дивитися S${selectedSeason}E${selectedEpisode}`
+                : "Дивитися"}
+            </span>
+          </button>
+        ) : (
+          <div className="flex items-center gap-2 px-5 py-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold text-sm shadow-md select-none cursor-default shrink-0">
+            <Clock className="w-4 h-4 text-amber-400" />
+            <span>В очікуванні</span>
+          </div>
+        )}
+
+        {/* Structured Voiceover Selector Dropdown Next to Watch Button */}
+        {visibleTranslators.length > 0 && (
+          <div ref={dropdownRef} className="relative shrink-0">
+            <button
+              onClick={() => setIsTranslatorDropdownOpen(!isTranslatorDropdownOpen)}
+              className="flex items-center gap-2 px-4 py-3.5 rounded-2xl bg-zinc-900 border border-white/15 hover:border-rose-500/60 hover:bg-zinc-850 text-white text-xs sm:text-sm font-semibold transition-all cursor-pointer shadow-lg active:scale-95"
+              title="Обрати студію озвучення"
+            >
+              <Mic className="w-4 h-4 text-rose-400 shrink-0" />
+              {selectedTranslator?.language?.toLowerCase().includes("украин") ||
+              selectedTranslator?.language?.toLowerCase().includes("україн") ? (
+                <UaFlag />
+              ) : null}
+              <span className="truncate max-w-[130px] sm:max-w-[170px]">
+                {selectedTranslator?.name || "Озвучення"}
+              </span>
+              {selectedTranslator?.is_premium && (
+                <span className="text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1 shrink-0">
+                  <Crown className="w-3 h-3 text-amber-400" />
+                </span>
+              )}
+              <ChevronDown
+                className={cn(
+                  "w-3.5 h-3.5 text-zinc-400 transition-transform shrink-0",
+                  isTranslatorDropdownOpen && "rotate-180"
+                )}
+              />
+              <span className="text-[11px] text-zinc-500 font-mono">
+                {visibleTranslators.length}
+              </span>
+            </button>
+
+            {/* Searchable Dropdown Popover */}
+            {isTranslatorDropdownOpen && (
+              <div className="absolute top-14 left-0 w-80 sm:w-96 max-h-96 overflow-hidden bg-zinc-900 border border-white/20 rounded-2xl shadow-2xl p-3 z-50 flex flex-col space-y-2 ring-1 ring-black/60">
+                {/* Search input inside dropdown */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-2.5" />
+                  <input
+                    autoFocus
+                    type="text"
+                    value={translatorSearch}
+                    onChange={(e) => setTranslatorSearch(e.target.value)}
+                    placeholder="Пошук озвучення..."
+                    className="w-full bg-zinc-800 border border-white/10 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-rose-500"
+                  />
+                </div>
+
+                {/* Tabs */}
+                <div className="flex gap-1 border-b border-white/10 pb-1.5">
+                  <button
+                    onClick={() => setTranslatorFilterTab("all")}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer",
+                      translatorFilterTab === "all"
+                        ? "bg-rose-600 text-white"
+                        : "text-zinc-400 hover:text-white"
+                    )}
+                  >
+                    Всі ({visibleTranslators.length})
+                  </button>
+                  {ukrTranslators.length > 0 && (
+                    <button
+                      onClick={() => setTranslatorFilterTab("ukr")}
+                      className={cn(
+                        "px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors flex items-center gap-1 cursor-pointer",
+                        translatorFilterTab === "ukr"
+                          ? "bg-rose-600 text-white"
+                          : "text-zinc-400 hover:text-white"
+                      )}
+                    >
+                      <UaFlag />
+                      <span>Українські ({ukrTranslators.length})</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Studios List */}
+                <div className="max-h-56 overflow-y-auto space-y-1 pr-1">
+                  {filteredTranslators.map((t) => {
+                    const isSelected = selectedTranslator?.id === t.id;
+                    const isUkr =
+                      t.language?.toLowerCase().includes("украин") ||
+                      t.language?.toLowerCase().includes("україн");
+
+                    return (
+                      <button
+                        key={t.id}
+                        onClick={() => handleTranslatorSelect(t)}
+                        className={cn(
+                          "w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all text-left cursor-pointer",
+                          isSelected
+                            ? "bg-rose-600 text-white"
+                            : "hover:bg-white/10 text-zinc-200"
+                        )}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          {isUkr && <UaFlag />}
+                          <span className="truncate">{t.name}</span>
+                          {t.is_premium && (
+                            <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-0.5 shrink-0">
+                              <Crown className="w-2.5 h-2.5 text-amber-400" />
+                              PREMIUM
+                            </span>
+                          )}
+                        </div>
+                        {isSelected && <Check className="w-4 h-4 flex-shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <button
+          onClick={() => {
+            const bookmarkItem: Bookmark = {
+              media_id: details.id,
+              media_url: details.url,
+              title: details.title,
+              poster_url: details.poster,
+              media_type: isSeries ? "series" : "movie",
+              year_info: details.year ? [details.year, details.countries?.[0]].filter(Boolean).join(", ") : (media?.misc_info || null),
+              rating: details.imdb_rating || details.kp_rating || null,
+              category: getBookmarkCategory(),
+              added_at: Math.floor(Date.now() / 1000),
+              awaiting_release: !hasAvailableStream,
+            };
+            onToggleBookmark(bookmarkItem);
+          }}
+          className={cn(
+            "flex items-center justify-center gap-2 rounded-2xl font-semibold text-xs sm:text-sm border transition-all cursor-pointer active:scale-95 shrink-0",
+            detailsCardStyle === "tv" && hasAvailableStream ? "w-12 h-12 p-0" : "px-5 py-3.5",
+            isBookmarked
+              ? "bg-amber-500/20 text-amber-400 border-amber-500/40 hover:bg-amber-500/30"
+              : !hasAvailableStream
+              ? "bg-rose-600 hover:bg-rose-500 text-white border-rose-500 shadow-xl shadow-rose-950/60 font-bold"
+              : "bg-white/10 hover:bg-white/20 text-white border-white/15"
+          )}
+          title={isBookmarked ? "Видалити із закладок" : "Додати у закладки"}
+        >
+          <BookmarkIcon
+            className={cn(
+              detailsCardStyle === "tv" && hasAvailableStream ? "w-4.5 h-4.5" : "w-4 h-4",
+              isBookmarked && "fill-amber-400"
+            )}
+          />
+          {!(detailsCardStyle === "tv" && hasAvailableStream) && (
+            <span>{isBookmarked ? "У закладках" : "У закладки"}</span>
+          )}
+        </button>
+
+        {hasAvailableStream && (
+          <button
+            onClick={handleOpenDownloadModal}
+            className={cn(
+              "flex items-center justify-center gap-2 rounded-2xl font-semibold text-xs sm:text-sm border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 transition-all cursor-pointer active:scale-95 shadow-lg shadow-rose-950/30 shrink-0",
+              detailsCardStyle === "tv" ? "w-12 h-12 p-0" : "px-5 py-3.5"
+            )}
+            title="Завантажити для перегляду офлайн"
+          >
+            <Download className={cn("text-rose-400", detailsCardStyle === "tv" ? "w-4.5 h-4.5" : "w-4 h-4")} />
+            {detailsCardStyle !== "tv" && <span>Завантажити</span>}
+          </button>
+        )}
+      </div>
+
+      {/* Premium Translator Warning Notice */}
+      {selectedTranslator?.is_premium && (
+        <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs">
+          <Crown className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <span className="font-semibold text-amber-300">
+              Озвучення доступне лише для передплатників HDRezka Premium.
+            </span>
+            <p className="text-[11px] text-amber-200/80 mt-0.5 leading-relaxed">
+              Без підписки замість фільму транслюється 1-хвилинне промо-відео сайту із QR-кодом.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Informational banner if title has no streams yet ("В очікуванні") */}
+      {!hasAvailableStream && (
+        <div className="flex items-start gap-3 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs sm:text-sm max-w-2xl">
+          <Clock className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <p className="font-semibold text-amber-300">
+              Фільм ще не вийшов у прокат або очікує надходження
+            </p>
+            <p className="text-zinc-400 text-xs leading-relaxed">
+              Відеопотік або озвучення поки відсутні на HDRezka. Ви можете додати тайтл у закладки, щоб не пропустити появу плеєра на сайті!
+            </p>
+          </div>
+        </div>
+      )}
+    </>
+  ) : null;
+
   return (
     <div
       data-modal-open="true"
@@ -828,365 +1126,215 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
 
       {/* Full Modal Layout (Rendered INSTANTLY with ambient backdrop and poster) */}
       <div className="relative w-full">
-        {/* Full-Bleed Atmospheric Backdrop (Dark while loading, then smooth fade-in to TMDB or Poster Fallback) */}
-        <div className="relative w-full h-[55vh] min-h-[420px] max-h-[620px] overflow-hidden pointer-events-none transform-gpu [isolation:isolate] bg-zinc-950">
-          {(tmdbBackdrop || (backdropResolved && (details?.high_res_poster || details?.poster || media.poster))) && (
-            <img
-              src={tmdbBackdrop || details?.high_res_poster || details?.poster || media.poster}
-              alt={details?.title || media.title}
-              decoding="async"
-              onLoad={() => setBackdropImgLoaded(true)}
-              className={cn(
-                "w-full h-full object-cover transform-gpu transition-opacity duration-500",
-                !backdropImgLoaded
-                  ? "opacity-0"
-                  : tmdbBackdrop
-                  ? "object-center opacity-80 sm:opacity-85"
-                  : "object-[center_20%] sm:object-[75%_20%] opacity-55 sm:opacity-60 scale-105 blur-[6px] sm:blur-[10px] saturate-125"
-              )}
-            />
-          )}
-          {/* Balanced cinematic vignette gradients (preserving backdrop visibility) */}
-          <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/45 to-transparent transition-colors duration-250" />
-          <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)]/80 via-[var(--bg-base,#000000)]/20 to-transparent transition-colors duration-250" />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-transparent transition-colors duration-250" />
-        </div>
-
-        {/* Fluid Full-Width Details Content Container */}
-        <div className="w-full px-[clamp(1.5rem,5vw,5rem)] -mt-44 sm:-mt-52 relative z-10 pb-24 space-y-10">
-          {/* Top Hero Row */}
-          <div className="flex flex-col md:flex-row items-start gap-8 lg:gap-12">
-            {/* Vertical Crisp Poster */}
-            <div className="w-56 sm:w-64 lg:w-76 aspect-[2/3] rounded-2xl overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.95)] border border-white/15 flex-shrink-0 bg-zinc-900">
+        {detailsCardStyle === "tv" ? (
+          /* RDX-TV Full-Bleed Cinematic Hero Header */
+          <div className="relative z-30 min-h-[58vh] sm:min-h-[66vh] w-full flex flex-col justify-end">
+            {/* Background Backdrop Wrapper (overflow-hidden only here so voiceover dropdown is not clipped) */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+              {/* Base HDRezka fallback layer (always rendered) */}
               <img
-                src={details?.poster || media.poster}
-                alt={details?.title || media.title}
-                className="w-full h-full object-cover"
+                src={fallbackPoster}
+                alt=""
+                aria-hidden="true"
+                decoding="async"
+                className={cn(
+                  "w-full h-full object-cover object-right blur-[6px] scale-105 transition-opacity duration-500",
+                  backdropUrl && backdropLoaded ? "opacity-0" : "opacity-50"
+                )}
+              />
+              {/* High-res TMDB backdrop layer */}
+              {backdropUrl && (
+                <img
+                  src={backdropUrl}
+                  alt={details?.title || media.title}
+                  decoding="async"
+                  onLoad={() => setBackdropLoaded(true)}
+                  onError={() => setBackdropLoaded(false)}
+                  className={cn(
+                    "absolute inset-0 w-full h-full object-cover object-right-top sm:object-[70%_20%] transition-opacity duration-500 ease-out",
+                    backdropLoaded ? "opacity-90" : "opacity-0"
+                  )}
+                />
+              )}
+              {/* Left-to-right text legibility fade */}
+              <div
+                className="absolute inset-0"
+                style={{ background: "linear-gradient(to right, var(--bg-base, #000000) 0%, rgba(0, 0, 0, 0.88) 42%, transparent 100%)" }}
+              />
+              {/* Top subtle vignette */}
+              <div
+                className="absolute inset-x-0 top-0 h-28"
+                style={{ background: "linear-gradient(to bottom, rgba(0, 0, 0, 0.7) 0%, transparent 100%)" }}
+              />
+              {/* Bottom seamless fade */}
+              <div
+                className="absolute inset-x-0 bottom-0 h-52"
+                style={{ background: "linear-gradient(to top, var(--bg-base, #000000) 0%, rgba(0, 0, 0, 0.85) 45%, transparent 100%)" }}
               />
             </div>
 
-            {/* Title, Badges, Actions, Description */}
-            <div className="flex-1 space-y-5 min-w-0">
-              {/* Badges Row */}
-              <div className="flex flex-wrap items-center gap-2.5">
+            {/* Left Content Column */}
+            <div className="relative z-10 px-[clamp(1.5rem,5vw,5rem)] pt-16 pb-8 max-w-5xl space-y-4">
+              {/* Type & Rating Badges Row */}
+              <div className="flex flex-wrap items-center gap-2.5 text-sm font-semibold">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-600 text-white font-bold uppercase tracking-wider text-xs shadow-lg shadow-rose-950/50">
+                  {isSeries ? <Tv className="w-3.5 h-3.5" /> : <Film className="w-3.5 h-3.5" />}
+                  {isSeries ? "Серіал" : "Фільм"}
+                </span>
+
                 {(details?.imdb_rating || media.rating) && (
-                  <span className="flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                    <Star className="w-3.5 h-3.5 fill-amber-400" />
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                    <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
                     IMDb {details?.imdb_rating || media.rating}
                   </span>
                 )}
+
                 {details?.kp_rating && (
-                  <span className="flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30">
-                    Кинопоиск {details.kp_rating}
+                  <span className="px-3 py-1 rounded-lg bg-white/10 text-zinc-200 border border-white/10">
+                    KP {details.kp_rating}
                   </span>
                 )}
-                <span className="px-3 py-1 rounded-xl text-xs font-bold uppercase bg-rose-600/90 text-white border border-rose-400/30">
-                  {isSeries ? "Серіал" : "Фільм"}
-                </span>
+
                 {details && !hasAvailableStream && (
-                  <span className="flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/35">
+                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/35">
                     <Clock className="w-3.5 h-3.5 text-amber-400" />
                     В очікуванні
                   </span>
                 )}
-                {media.misc_info && (
-                  <span className="text-xs text-zinc-300 font-medium px-1">
-                    {ukrainizeMiscInfo(media.misc_info)}
-                  </span>
+
+                {yearVal && <span className="text-zinc-300">{yearVal}</span>}
+                {durationVal && <span className="text-zinc-300">• {durationVal}</span>}
+                {!yearVal && !durationVal && media.misc_info && (
+                  <span className="text-zinc-300">{ukrainizeMiscInfo(media.misc_info)}</span>
                 )}
               </div>
 
-              {/* Main Titles */}
-              <div className="space-y-1">
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight">
+              {/* Giant Cinematic Title, Original Title & Genres */}
+              <div className="space-y-1.5">
+                <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white leading-[1.06] drop-shadow-2xl">
                   {details?.title || media.title}
                 </h1>
                 {details?.orig_title && (
-                  <p className="text-base sm:text-lg font-medium text-zinc-400">
+                  <p className="text-base sm:text-lg text-zinc-400 font-medium">
                     {details.orig_title}
                   </p>
                 )}
+                {genreVal && (
+                  <p className="text-sm text-zinc-300/90 font-medium pt-0.5">{genreVal}</p>
+                )}
               </div>
 
-              {/* Actions & Details Area (Instant Skeleton Shimmer or Real Actions) */}
-              {loading && !details ? (
-                <div className="space-y-5 pt-1">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-2.5 px-7 py-3.5 rounded-2xl bg-gradient-to-r from-rose-700/70 via-rose-600/70 to-rose-500/70 text-white font-bold text-sm shadow-xl shadow-rose-950/40 select-none">
-                      <Loader2 className="w-4 h-4 animate-spin text-white" />
-                      <span>Завантаження плеєра...</span>
-                    </div>
+              {/* Compact 3-line Synopsis */}
+              {details?.description && (
+                <p className="line-clamp-3 max-w-2xl text-sm sm:text-base text-zinc-200/90 leading-relaxed">
+                  {details.description}
+                </p>
+              )}
 
-                    <button
-                      onClick={() => {
-                        const bookmarkItem: Bookmark = {
-                          media_id: media.id,
-                          media_url: media.url,
-                          title: media.title,
-                          poster_url: media.poster,
-                          media_type: isSeries ? "series" : "movie",
-                          year_info: media.misc_info || null,
-                          rating: media.rating || null,
-                          category: getBookmarkCategory(),
-                          added_at: Math.floor(Date.now() / 1000),
-                          awaiting_release: !hasAvailableStream,
-                        };
-                        onToggleBookmark(bookmarkItem);
-                      }}
-                      className={cn(
-                        "flex items-center gap-2 px-5 py-3.5 rounded-2xl font-semibold text-sm border transition-all cursor-pointer active:scale-95",
-                        isBookmarked
-                          ? "bg-amber-500/20 text-amber-400 border-amber-500/40 hover:bg-amber-500/30"
-                          : "bg-white/10 hover:bg-white/20 text-white border-white/15"
-                      )}
-                    >
-                      <BookmarkIcon
-                        className={cn("w-4 h-4", isBookmarked && "fill-amber-400")}
-                      />
-                      <span>{isBookmarked ? "У закладках" : "У закладки"}</span>
-                    </button>
-                  </div>
+              {/* Desktop RDX Action Buttons & Banners */}
+              {actionsAndBanners}
+            </div>
+          </div>
+        ) : (
+          /* Classic Full-Bleed Atmospheric Backdrop */
+          <div className="relative w-full h-[55vh] min-h-[420px] max-h-[620px] overflow-hidden pointer-events-none transform-gpu [isolation:isolate] bg-zinc-950">
+            {(tmdbBackdrop || (backdropResolved && (details?.high_res_poster || details?.poster || media.poster))) && (
+              <img
+                src={tmdbBackdrop || details?.high_res_poster || details?.poster || media.poster}
+                alt={details?.title || media.title}
+                decoding="async"
+                onLoad={() => setBackdropImgLoaded(true)}
+                className={cn(
+                  "w-full h-full object-cover transform-gpu transition-opacity duration-500",
+                  !backdropImgLoaded
+                    ? "opacity-0"
+                    : tmdbBackdrop
+                    ? "object-center opacity-80 sm:opacity-85"
+                    : "object-[center_20%] sm:object-[75%_20%] opacity-55 sm:opacity-60 scale-105 blur-[6px] sm:blur-[10px] saturate-125"
+                )}
+              />
+            )}
+            {/* Balanced cinematic vignette gradients (preserving backdrop visibility) */}
+            <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/45 to-transparent transition-colors duration-250" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)]/80 via-[var(--bg-base,#000000)]/20 to-transparent transition-colors duration-250" />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-transparent transition-colors duration-250" />
+          </div>
+        )}
 
-                  {/* Shimmer Description Lines */}
-                  <div className="space-y-2.5 pt-1 max-w-3xl animate-pulse">
-                    <div className="h-4 bg-white/10 rounded-lg w-full" />
-                    <div className="h-4 bg-white/10 rounded-lg w-11/12" />
-                    <div className="h-4 bg-white/10 rounded-lg w-3/4" />
-                  </div>
+        {/* Fluid Full-Width Details Content Container */}
+        <div
+          className={cn(
+            "w-full px-[clamp(1.5rem,5vw,5rem)] relative z-10 pb-24 space-y-10",
+            detailsCardStyle === "classic" && "-mt-44 sm:-mt-52"
+          )}
+        >
+          {/* Classic Top Hero Row */}
+          {detailsCardStyle === "classic" && (
+            <div className="flex flex-col md:flex-row items-start gap-8 lg:gap-12">
+              {/* Vertical Crisp Poster */}
+              <div className="w-56 sm:w-64 lg:w-76 aspect-[2/3] rounded-2xl overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.95)] border border-white/15 flex-shrink-0 bg-zinc-900">
+                <img
+                  src={details?.poster || media.poster}
+                  alt={details?.title || media.title}
+                  className="w-full h-full object-cover"
+                />
+              </div>
 
-                  <div className="flex items-center gap-2 text-xs text-zinc-400 font-medium">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-500" />
-                    <span>Отримання інформації про озвучення та якість...</span>
-                  </div>
-                </div>
-              ) : fetchError ? (
-                <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-200 text-xs flex items-center justify-between gap-4 mt-2">
-                  <span>{fetchError}</span>
-                </div>
-              ) : details ? (
-                <>
-                  {/* Primary Action Buttons */}
-                  <div className="flex flex-wrap items-center gap-2.5 pt-2">
-                    {hasAvailableStream ? (
-                      <button
-                        onClick={() => handleStartPlayback()}
-                        className="flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-rose-700 via-rose-600 to-rose-500 hover:from-rose-600 hover:to-rose-400 text-white font-bold text-sm shadow-xl shadow-rose-950/60 active:scale-95 transition-all cursor-pointer shrink-0"
-                      >
-                        <Play className="w-4 h-4 fill-current" />
-                        <span>
-                          {savedProgress && savedProgress.position_sec > 10
-                            ? `Продовжити (${Math.floor(savedProgress.position_sec / 60)} хв)`
-                            : isSeries
-                            ? `Дивитися S${selectedSeason}E${selectedEpisode}`
-                            : "Дивитися"}
-                        </span>
-                      </button>
-                    ) : (
-                      <div className="flex items-center gap-2 px-5 py-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold text-sm shadow-md select-none cursor-default shrink-0">
-                        <Clock className="w-4 h-4 text-amber-400" />
-                        <span>В очікуванні</span>
-                      </div>
-                    )}
-
-                    {/* Structured Voiceover Selector Dropdown Next to Watch Button */}
-                    {visibleTranslators.length > 0 && (
-                      <div ref={dropdownRef} className="relative shrink-0">
-                        <button
-                          onClick={() => setIsTranslatorDropdownOpen(!isTranslatorDropdownOpen)}
-                          className="flex items-center gap-2 px-4 py-3.5 rounded-2xl bg-zinc-900 border border-white/15 hover:border-rose-500/60 hover:bg-zinc-850 text-white text-xs sm:text-sm font-semibold transition-all cursor-pointer shadow-lg active:scale-95"
-                          title="Обрати студію озвучення"
-                        >
-                          <Mic className="w-4 h-4 text-rose-400 shrink-0" />
-                          {selectedTranslator?.language?.toLowerCase().includes("украин") ||
-                          selectedTranslator?.language?.toLowerCase().includes("україн") ? (
-                            <UaFlag />
-                          ) : null}
-                          <span className="truncate max-w-[130px] sm:max-w-[170px]">
-                            {selectedTranslator?.name || "Озвучення"}
-                          </span>
-                          {selectedTranslator?.is_premium && (
-                            <span className="text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1 shrink-0">
-                              <Crown className="w-3 h-3 text-amber-400" />
-                            </span>
-                          )}
-                          <ChevronDown
-                            className={cn(
-                              "w-3.5 h-3.5 text-zinc-400 transition-transform shrink-0",
-                              isTranslatorDropdownOpen && "rotate-180"
-                            )}
-                          />
-                          <span className="text-[11px] text-zinc-500 font-mono">
-                            {visibleTranslators.length}
-                          </span>
-                        </button>
-
-                        {/* Searchable Dropdown Popover */}
-                        {isTranslatorDropdownOpen && (
-                          <div className="absolute top-14 left-0 w-80 sm:w-96 max-h-96 overflow-hidden bg-zinc-900 border border-white/20 rounded-2xl shadow-2xl p-3 z-50 flex flex-col space-y-2 ring-1 ring-black/60">
-                            {/* Search input inside dropdown */}
-                            <div className="relative">
-                              <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-2.5" />
-                              <input
-                                autoFocus
-                                type="text"
-                                value={translatorSearch}
-                                onChange={(e) => setTranslatorSearch(e.target.value)}
-                                placeholder="Пошук озвучення..."
-                                className="w-full bg-zinc-800 border border-white/10 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-rose-500"
-                              />
-                            </div>
-
-                            {/* Tabs */}
-                            <div className="flex gap-1 border-b border-white/10 pb-1.5">
-                              <button
-                                onClick={() => setTranslatorFilterTab("all")}
-                                className={cn(
-                                  "px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer",
-                                  translatorFilterTab === "all"
-                                    ? "bg-rose-600 text-white"
-                                    : "text-zinc-400 hover:text-white"
-                                )}
-                              >
-                                Всі ({visibleTranslators.length})
-                              </button>
-                              {ukrTranslators.length > 0 && (
-                                <button
-                                  onClick={() => setTranslatorFilterTab("ukr")}
-                                  className={cn(
-                                    "px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors flex items-center gap-1 cursor-pointer",
-                                    translatorFilterTab === "ukr"
-                                      ? "bg-rose-600 text-white"
-                                      : "text-zinc-400 hover:text-white"
-                                  )}
-                                >
-                                  <UaFlag />
-                                  <span>Українські ({ukrTranslators.length})</span>
-                                </button>
-                              )}
-                            </div>
-
-                            {/* Studios List */}
-                            <div className="max-h-56 overflow-y-auto space-y-1 pr-1">
-                              {filteredTranslators.map((t) => {
-                                const isSelected = selectedTranslator?.id === t.id;
-                                const isUkr =
-                                  t.language?.toLowerCase().includes("украин") ||
-                                  t.language?.toLowerCase().includes("україн");
-
-                                return (
-                                  <button
-                                    key={t.id}
-                                    onClick={() => handleTranslatorSelect(t)}
-                                    className={cn(
-                                      "w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all text-left cursor-pointer",
-                                      isSelected
-                                        ? "bg-rose-600 text-white"
-                                        : "hover:bg-white/10 text-zinc-200"
-                                    )}
-                                  >
-                                    <div className="flex items-center gap-2 truncate">
-                                      {isUkr && <UaFlag />}
-                                      <span className="truncate">{t.name}</span>
-                                      {t.is_premium && (
-                                        <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-0.5 shrink-0">
-                                          <Crown className="w-2.5 h-2.5 text-amber-400" />
-                                          PREMIUM
-                                        </span>
-                                      )}
-                                    </div>
-                                    {isSelected && <Check className="w-4 h-4 flex-shrink-0" />}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <button
-                      onClick={() => {
-                        const bookmarkItem: Bookmark = {
-                          media_id: details.id,
-                          media_url: details.url,
-                          title: details.title,
-                          poster_url: details.poster,
-                          media_type: isSeries ? "series" : "movie",
-                          year_info: details.year ? [details.year, details.countries?.[0]].filter(Boolean).join(", ") : (media?.misc_info || null),
-                          rating: details.imdb_rating || details.kp_rating || null,
-                          category: getBookmarkCategory(),
-                          added_at: Math.floor(Date.now() / 1000),
-                          awaiting_release: !hasAvailableStream,
-                        };
-                        onToggleBookmark(bookmarkItem);
-                      }}
-                      className={cn(
-                        "flex items-center gap-2 px-5 py-3.5 rounded-2xl font-semibold text-xs sm:text-sm border transition-all cursor-pointer active:scale-95 shrink-0",
-                        isBookmarked
-                          ? "bg-amber-500/20 text-amber-400 border-amber-500/40 hover:bg-amber-500/30"
-                          : !hasAvailableStream
-                          ? "bg-rose-600 hover:bg-rose-500 text-white border-rose-500 shadow-xl shadow-rose-950/60 font-bold"
-                          : "bg-white/10 hover:bg-white/20 text-white border-white/15"
-                      )}
-                    >
-                      <BookmarkIcon
-                        className={cn("w-4 h-4", isBookmarked && "fill-amber-400")}
-                      />
-                      <span>{isBookmarked ? "У закладках" : "У закладки"}</span>
-                    </button>
-
-                    {hasAvailableStream && (
-                      <button
-                        onClick={handleOpenDownloadModal}
-                        className="flex items-center gap-2 px-5 py-3.5 rounded-2xl font-semibold text-xs sm:text-sm border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 transition-all cursor-pointer active:scale-95 shadow-lg shadow-rose-950/30 shrink-0"
-                        title="Завантажити для перегляду офлайн"
-                      >
-                        <Download className="w-4 h-4 text-rose-400" />
-                        <span>Завантажити</span>
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Premium Translator Warning Notice */}
-                  {selectedTranslator?.is_premium && (
-                    <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs">
-                      <Crown className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                      <div>
-                        <span className="font-semibold text-amber-300">
-                          Озвучення доступне лише для передплатників HDRezka Premium.
-                        </span>
-                        <p className="text-[11px] text-amber-200/80 mt-0.5 leading-relaxed">
-                          Без підписки замість фільму транслюється 1-хвилинне промо-відео сайту із QR-кодом.
-                        </p>
-                      </div>
-                    </div>
+              {/* Title, Badges, Actions, Description */}
+              <div className="flex-1 space-y-5 min-w-0">
+                {/* Badges Row */}
+                <div className="flex flex-wrap items-center gap-2.5">
+                  {(details?.imdb_rating || media.rating) && (
+                    <span className="flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                      <Star className="w-3.5 h-3.5 fill-amber-400" />
+                      IMDb {details?.imdb_rating || media.rating}
+                    </span>
                   )}
-
-                  {/* Informational banner if title has no streams yet ("В очікуванні") */}
-                  {!hasAvailableStream && (
-                    <div className="flex items-start gap-3 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs sm:text-sm max-w-2xl">
-                      <Clock className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                      <div className="space-y-0.5">
-                        <p className="font-semibold text-amber-300">
-                          Фільм ще не вийшов у прокат або очікує надходження
-                        </p>
-                        <p className="text-zinc-400 text-xs leading-relaxed">
-                          Відеопотік або озвучення поки відсутні на HDRezka. Ви можете додати тайтл у закладки, щоб не пропустити появу плеєра на сайті!
-                        </p>
-                      </div>
-                    </div>
+                  {details?.kp_rating && (
+                    <span className="flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                      Кинопоиск {details.kp_rating}
+                    </span>
                   )}
+                  <span className="px-3 py-1 rounded-xl text-xs font-bold uppercase bg-rose-600/90 text-white border border-rose-400/30">
+                    {isSeries ? "Серіал" : "Фільм"}
+                  </span>
+                  {details && !hasAvailableStream && (
+                    <span className="flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/35">
+                      <Clock className="w-3.5 h-3.5 text-amber-400" />
+                      В очікуванні
+                    </span>
+                  )}
+                  {media.misc_info && (
+                    <span className="text-xs text-zinc-300 font-medium px-1">
+                      {ukrainizeMiscInfo(media.misc_info)}
+                    </span>
+                  )}
+                </div>
 
-                  {/* Description */}
-                  {details.description && (
-                    <p className="text-sm sm:text-base text-zinc-300 leading-relaxed max-w-4xl pt-1">
-                      {details.description}
+                {/* Main Titles */}
+                <div className="space-y-1">
+                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight">
+                    {details?.title || media.title}
+                  </h1>
+                  {details?.orig_title && (
+                    <p className="text-base sm:text-lg font-medium text-zinc-400">
+                      {details.orig_title}
                     </p>
                   )}
-                </>
-              ) : null}
+                </div>
+
+                {/* Actions & Details Area */}
+                {actionsAndBanners}
+
+                {/* Classic Description */}
+                {details?.description && (
+                  <p className="text-sm sm:text-base text-zinc-300 leading-relaxed max-w-4xl pt-1">
+                    {details.description}
+                  </p>
+                )}
               </div>
             </div>
+          )}
 
             {/* Below Hero Row: Seasons & Episodes (ALWAYS show seasons row for series) */}
             {details && isSeries && details.seasons.length >= 1 && (
