@@ -99,9 +99,22 @@ export default function App() {
       });
     }
 
-    const interval = setInterval(checkActiveDownloads, 4000);
+    const interval = setInterval(() => {
+      if (!document.hidden) {
+        checkActiveDownloads();
+      }
+    }, 4000);
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        checkActiveDownloads();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (unlisten) unlisten();
     };
   }, []);

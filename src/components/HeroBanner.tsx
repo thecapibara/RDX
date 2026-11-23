@@ -41,8 +41,25 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
   const [isHovered, setIsHovered] = useState(false);
   const [slideKey, setSlideKey] = useState(0);
   const [isVisible, setIsVisible] = useState(true);
+  const [isPageActive, setIsPageActive] = useState(
+    () => typeof document === "undefined" || (!document.hidden && document.hasFocus())
+  );
   const [backdrops, setBackdrops] = useState<Record<string, string | null>>({});
   const bannerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const updatePageActive = () => {
+      setIsPageActive(!document.hidden && document.hasFocus());
+    };
+    document.addEventListener("visibilitychange", updatePageActive);
+    window.addEventListener("focus", updatePageActive);
+    window.addEventListener("blur", updatePageActive);
+    return () => {
+      document.removeEventListener("visibilitychange", updatePageActive);
+      window.removeEventListener("focus", updatePageActive);
+      window.removeEventListener("blur", updatePageActive);
+    };
+  }, []);
 
   // Preload high-res 1080p TMDB backdrops for hero slides
   useEffect(() => {
@@ -106,14 +123,14 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
   }, []);
 
   useEffect(() => {
-    if (slides.length <= 1 || isHovered || !isVisible) return;
+    if (slides.length <= 1 || isHovered || !isVisible || !isPageActive) return;
 
     const timer = setInterval(() => {
       handleNext();
     }, ROTATION_INTERVAL_MS);
 
     return () => clearInterval(timer);
-  }, [slides.length, isHovered, isVisible, handleNext, slideKey]);
+  }, [slides.length, isHovered, isVisible, isPageActive, handleNext, slideKey]);
 
   if (slides.length === 0) {
     return null;

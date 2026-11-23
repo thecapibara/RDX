@@ -41,6 +41,14 @@ fn main() {
             }
         }
 
+        // Since software `avdec_h264` is already prioritized, disabling GStreamer's DMABUF video sink
+        // prevents GStreamer from leaking DRM/DMABUF surface pools without affecting UI scrolling.
+        if std::env::var_os("WEBKIT_GST_DMABUF_SINK_DISABLED").is_none() {
+            unsafe {
+                std::env::set_var("WEBKIT_GST_DMABUF_SINK_DISABLED", "1");
+            }
+        }
+
         // 4. Scale Skia GPU painting threads dynamically by CPU core count (1 thread on 2-core Lubuntu/LXDE
         // netbooks to avoid thread contention, up to 4 threads on modern multi-core CPUs).
         if std::env::var_os("WEBKIT_SKIA_GPU_PAINTING_THREADS").is_none() {

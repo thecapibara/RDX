@@ -646,7 +646,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   useEffect(() => {
     if (videoEnhanceMode === "off") {
-      shaderRendererRef.current?.stop();
+      shaderRendererRef.current?.destroy();
+      shaderRendererRef.current = null;
       setShaderReady(false);
       return;
     }
@@ -680,13 +681,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Real-time video decoder framerate monitor for Stream Info overlay when shaders are off
   useEffect(() => {
-    if (!showMediaInfo || videoEnhanceMode !== "off") return;
+    if (!showMediaInfo || videoEnhanceMode !== "off" || !isPlaying) return;
 
     let frameCount = 0;
     let lastTime = performance.now();
     let animId: number | null = null;
 
     const measureFps = () => {
+      if (document.hidden) {
+        animId = null;
+        return;
+      }
       frameCount++;
       const now = performance.now();
       const elapsed = (now - lastTime) / 1000;
@@ -699,9 +704,26 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       animId = requestAnimationFrame(measureFps);
     };
 
-    animId = requestAnimationFrame(measureFps);
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (animId !== null) {
+          cancelAnimationFrame(animId);
+          animId = null;
+        }
+      } else if (animId === null) {
+        frameCount = 0;
+        lastTime = performance.now();
+        animId = requestAnimationFrame(measureFps);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    if (!document.hidden) {
+      animId = requestAnimationFrame(measureFps);
+    }
 
     return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (animId !== null) cancelAnimationFrame(animId);
     };
   }, [showMediaInfo, isPlaying, videoEnhanceMode]);
@@ -1283,6 +1305,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const startMp4 = (mp4Url: string) => {
       clearWatchdog();
       if (hlsRef.current) {
+        hlsRef.current.stopLoad();
+        hlsRef.current.detachMedia();
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
@@ -1326,6 +1350,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const startHls = (hlsUrl: string) => {
       clearWatchdog();
       if (hlsRef.current) {
+        hlsRef.current.stopLoad();
+        hlsRef.current.detachMedia();
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
@@ -1455,6 +1481,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         savedTimeBeforeReloadRef.current = prevTime;
       }
       if (hlsRef.current) {
+        hlsRef.current.stopLoad();
+        hlsRef.current.detachMedia();
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
@@ -2444,17 +2472,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onDoubleClick={handleVideoDoubleClick}
         />
 
-        {/* Real-time WebGL Deband + AMD CAS Canvas (Layered at z-10) */}
-        <canvas
-          ref={shaderCanvasRef}
-          aria-hidden="true"
-          className={cn(
-            "absolute inset-0 m-auto w-full h-full pointer-events-none z-10 transition-opacity duration-150",
-            getVideoObjectFitClass(),
-            videoEnhanceMode !== "off" && shaderReady ? "opacity-100" : "opacity-0"
-          )}
-          style={getVideoStyle()}
-        />
+        {/* Real-time WebGL Deband + AMD CAS Canvas (Layered at z-10, mounted only when active so lost WebGL contexts are cleanly recycled) */}
+        {videoEnhanceMode !== "off" && (
+          <canvas
+            key={`shader-${details.id}-${activeSeason ?? 0}-${activeEpisode ?? 0}`}
+            ref={shaderCanvasRef}
+            aria-hidden="true"
+            className={cn(
+              "absolute inset-0 m-auto w-full h-full pointer-events-none z-10 transition-opacity duration-150",
+              getVideoObjectFitClass(),
+              shaderReady ? "opacity-100" : "opacity-0"
+            )}
+            style={getVideoStyle()}
+          />
+        )}
 
         {/* ================= DOUBLE-TAP SEEK RIPPLE INDICATORS ================= */}
         {isMiniMode && miniSeekRipple === "left" && (

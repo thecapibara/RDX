@@ -123,6 +123,7 @@ export class VideoShaderRenderer {
   private video: HTMLVideoElement;
   private gl: WebGLRenderingContext | null = null;
   private program: WebGLProgram | null = null;
+  private posBuffer: WebGLBuffer | null = null;
   private texture: WebGLTexture | null = null;
   private mode: VideoEnhanceMode = "off";
   private sharpness = 0.85;
@@ -132,6 +133,7 @@ export class VideoShaderRenderer {
   private newVideoFrameAvailable = true;
   private isDestroyed = false;
   private isRunning = false;
+  private listenersAttached = false;
   private hasReportedSuccess = false;
   private allocatedWidth = 0;
   private allocatedHeight = 0;
@@ -227,6 +229,7 @@ export class VideoShaderRenderer {
 
     // Full-screen quad buffer
     const posBuffer = gl.createBuffer();
+    this.posBuffer = posBuffer;
     gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
     gl.bufferData(
       gl.ARRAY_BUFFER,
@@ -341,8 +344,63 @@ export class VideoShaderRenderer {
     }
   }
 
+  private handleVideoPlay = () => {
+    if (
+      this.isRunning &&
+      !this.isDestroyed &&
+      this.mode !== "off" &&
+      !document.hidden &&
+      this.animFrameId === null
+    ) {
+      this.fpsFrameCount = 0;
+      this.lastFpsTime = performance.now();
+      this.renderLoop();
+    }
+  };
+
+  private handleVideoSeeked = () => {
+    if (this.isRunning && !this.isDestroyed && this.mode !== "off") {
+      this.renderFrame(true);
+    }
+  };
+
+  private handleVisibilityChange = () => {
+    if (
+      !document.hidden &&
+      this.isRunning &&
+      !this.isDestroyed &&
+      this.mode !== "off" &&
+      !this.video.paused &&
+      !this.video.ended &&
+      this.animFrameId === null
+    ) {
+      this.fpsFrameCount = 0;
+      this.lastFpsTime = performance.now();
+      this.renderLoop();
+    }
+  };
+
+  private attachListeners() {
+    if (this.listenersAttached) return;
+    this.video.addEventListener("play", this.handleVideoPlay);
+    this.video.addEventListener("seeked", this.handleVideoSeeked);
+    document.addEventListener("visibilitychange", this.handleVisibilityChange);
+    this.listenersAttached = true;
+  }
+
+  private detachListeners() {
+    if (!this.listenersAttached) return;
+    this.video.removeEventListener("play", this.handleVideoPlay);
+    this.video.removeEventListener("seeked", this.handleVideoSeeked);
+    document.removeEventListener("visibilitychange", this.handleVisibilityChange);
+    this.listenersAttached = false;
+  }
+
   public start() {
-    if (this.animFrameId !== null || this.mode === "off" || this.isDestroyed) {
+    if (this.mode === "off" || this.isDestroyed) {
+      return;
+    }
+    if (this.isRunning && this.animFrameId !== null) {
       return;
     }
     this.isRunning = true;
@@ -350,12 +408,14 @@ export class VideoShaderRenderer {
     this.newVideoFrameAvailable = true;
     this.fpsFrameCount = 0;
     this.lastFpsTime = performance.now();
+    this.attachListeners();
     this.setupRvfc();
     this.renderLoop();
   }
 
   public stop() {
     this.isRunning = false;
+    this.detachListeners();
     this.teardownRvfc();
     if (this.animFrameId !== null) {
       cancelAnimationFrame(this.animFrameId);
@@ -364,7 +424,14 @@ export class VideoShaderRenderer {
   }
 
   private renderLoop = () => {
-    if (!this.isRunning || this.isDestroyed || this.mode === "off") {
+    if (
+      !this.isRunning ||
+      this.isDestroyed ||
+      this.mode === "off" ||
+      document.hidden ||
+      this.video.paused ||
+      this.video.ended
+    ) {
       this.animFrameId = null;
       return;
     }
@@ -497,14 +564,25 @@ export class VideoShaderRenderer {
   public destroy() {
     this.isDestroyed = true;
     this.stop();
-    if (this.gl && this.program) {
-      this.gl.deleteProgram(this.program);
-      this.program = null;
+    if (this.gl) {
+      if (this.posBuffer) {
+        this.gl.deleteBuffer(this.posBuffer);
+        this.posBuffer = null;
+      }
+      if (this.program) {
+        this.gl.deleteProgram(this.program);
+        this.program = null;
+      }
+      if (this.texture) {
+        this.gl.deleteTexture(this.texture);
+        this.texture = null;
+      }
     }
-    if (this.gl && this.texture) {
-      this.gl.deleteTexture(this.texture);
-      this.texture = null;
+    this.canvas.width = 0;
+    this.canvas.height = 0;
+    if (this.gl) {
+      this.gl.getExtension("WEBGL_lose_context")?.loseContext();
+      this.gl = null;
     }
-    this.gl = null;
   }
 }
