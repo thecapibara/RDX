@@ -6,6 +6,8 @@ export interface AppSettings {
   preferred_translator: string;
   startup_sound?: boolean;
   autoplay_next?: boolean;
+  start_fullscreen?: boolean;
+  hide_premium?: boolean;
 }
 
 export interface EpisodeProgress {

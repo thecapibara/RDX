@@ -228,6 +228,8 @@ export const api = {
       preferred_quality: "720p",
       preferred_translator: "Українська",
       autoplay_next: true,
+      start_fullscreen: false,
+      hide_premium: false,
     };
   },
 

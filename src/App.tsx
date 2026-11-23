@@ -545,10 +545,21 @@ export default function App() {
       const isSeries = Boolean(
         (details.seasons && details.seasons.length > 0) || saved?.season
       );
+      const hidePrem = Boolean(settings?.hide_premium);
+      const nonPremium = hidePrem
+        ? details.translators.filter((t) => !t.is_premium)
+        : details.translators;
+      const pool = nonPremium.length > 0 ? nonPremium : details.translators;
+      const savedTranslatorObj = saved?.translator_id
+        ? details.translators.find((t) => t.id === saved.translator_id)
+        : undefined;
+      const useSaved =
+        saved?.translator_id &&
+        (!hidePrem || nonPremium.length === 0 || !savedTranslatorObj?.is_premium);
       const translatorId =
-        saved?.translator_id ||
-        details.translators.find((t) => t.is_active)?.id ||
-        details.translators[0]?.id;
+        (useSaved ? saved?.translator_id : undefined) ||
+        pool.find((t) => t.is_active)?.id ||
+        pool[0]?.id;
 
       if (isSeries && translatorId) {
         try {
@@ -575,7 +586,7 @@ export default function App() {
       console.error("Direct play error:", e);
       handleOpenDetails(card);
     }
-  }, [handleStartPlayback, handleOpenDetails]);
+  }, [handleStartPlayback, handleOpenDetails, settings?.hide_premium]);
 
   // Resume from Continue Watching Card
   const handleResumeContinueWatching = useCallback(async (item: WatchProgress) => {
@@ -585,10 +596,21 @@ export default function App() {
       const isSeries = Boolean(
         (details.seasons && details.seasons.length > 0) || item.season
       );
+      const hidePrem = Boolean(settings?.hide_premium);
+      const nonPremium = hidePrem
+        ? details.translators.filter((t) => !t.is_premium)
+        : details.translators;
+      const pool = nonPremium.length > 0 ? nonPremium : details.translators;
+      const itemTranslatorObj = item.translator_id
+        ? details.translators.find((t) => t.id === item.translator_id)
+        : undefined;
+      const useItemTranslator =
+        item.translator_id &&
+        (!hidePrem || nonPremium.length === 0 || !itemTranslatorObj?.is_premium);
       const targetTranslator =
-        item.translator_id ||
-        details.translators.find((t) => t.is_active)?.id ||
-        details.translators[0]?.id;
+        (useItemTranslator ? item.translator_id : undefined) ||
+        pool.find((t) => t.is_active)?.id ||
+        pool[0]?.id;
 
       if (isSeries && targetTranslator) {
         try {
@@ -616,7 +638,7 @@ export default function App() {
     } catch (e) {
       console.error("Resume error:", e);
     }
-  }, [handleStartPlayback]);
+  }, [handleStartPlayback, settings?.hide_premium]);
 
   // Remove from Continue Watching
   const handleRemoveContinueWatching = useCallback(async (mediaId: string) => {
@@ -976,6 +998,7 @@ export default function App() {
         onSelectMedia={handleOpenDetails}
         isBookmarked={isCurrentBookmarked}
         onToggleBookmark={handleToggleBookmark}
+        hidePremium={Boolean(settings?.hide_premium)}
       />
 
       {/* Spotlight Search Modal */}
@@ -993,6 +1016,7 @@ export default function App() {
           setSettings((prev) => (prev ? { ...prev, active_mirror: newMirror } : null));
           loadCatalog();
         }}
+        onSettingsChanged={(updated) => setSettings(updated)}
         onCheckUpdates={() => handleCheckUpdates(true)}
       />
 
@@ -1080,6 +1104,8 @@ export default function App() {
             setInitialPositionSec(0);
           }}
           onTranslatorChange={handlePlayerTranslatorChange}
+          startFullscreen={Boolean(settings?.start_fullscreen)}
+          hidePremium={Boolean(settings?.hide_premium)}
         />
       )}
     </div>

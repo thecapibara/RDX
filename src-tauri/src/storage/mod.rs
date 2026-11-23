@@ -14,6 +14,10 @@ pub struct AppSettings {
     pub startup_sound: bool,
     #[serde(default = "default_true")]
     pub autoplay_next: bool,
+    #[serde(default)]
+    pub start_fullscreen: bool,
+    #[serde(default)]
+    pub hide_premium: bool,
 }
 
 fn default_true() -> bool {
@@ -34,6 +38,8 @@ impl Default for AppSettings {
             preferred_translator: "".to_string(),
             startup_sound: true,
             autoplay_next: true,
+            start_fullscreen: false,
+            hide_premium: false,
         }
     }
 }
@@ -235,6 +241,8 @@ impl Storage {
             ("preferred_translator", defaults.preferred_translator),
             ("startup_sound", if defaults.startup_sound { "true".to_string() } else { "false".to_string() }),
             ("autoplay_next", if defaults.autoplay_next { "true".to_string() } else { "false".to_string() }),
+            ("start_fullscreen", "false".to_string()),
+            ("hide_premium", "false".to_string()),
         ];
 
         for (key, val) in init_settings {
@@ -274,6 +282,8 @@ impl Storage {
                 "preferred_translator" => defaults.preferred_translator = value,
                 "startup_sound" => defaults.startup_sound = value != "false",
                 "autoplay_next" => defaults.autoplay_next = value != "false",
+                "start_fullscreen" => defaults.start_fullscreen = value == "true",
+                "hide_premium" => defaults.hide_premium = value == "true",
                 _ => {}
             }
         }
@@ -287,6 +297,8 @@ impl Storage {
             .unwrap_or_else(|_| "[]".to_string());
         let sound_str = if settings.startup_sound { "true" } else { "false" };
         let autoplay_str = if settings.autoplay_next { "true" } else { "false" };
+        let start_fs_str = if settings.start_fullscreen { "true" } else { "false" };
+        let hide_prem_str = if settings.hide_premium { "true" } else { "false" };
 
         let pairs = [
             ("active_mirror", settings.active_mirror.as_str()),
@@ -296,6 +308,8 @@ impl Storage {
             ("preferred_translator", settings.preferred_translator.as_str()),
             ("startup_sound", sound_str),
             ("autoplay_next", autoplay_str),
+            ("start_fullscreen", start_fs_str),
+            ("hide_premium", hide_prem_str),
         ];
 
         let tx = conn.transaction()?;
@@ -1017,13 +1031,19 @@ mod tests {
         let storage = Storage::in_memory().expect("in memory db");
         let settings = storage.get_settings().expect("get settings");
         assert_eq!(settings.active_mirror, "https://hdrezka.me");
+        assert!(!settings.start_fullscreen);
+        assert!(!settings.hide_premium);
 
         let mut updated = settings;
         updated.active_mirror = "https://custom-mirror.com".to_string();
+        updated.start_fullscreen = true;
+        updated.hide_premium = true;
         storage.update_settings(&updated).expect("update settings");
 
         let reloaded = storage.get_settings().expect("reload settings");
         assert_eq!(reloaded.active_mirror, "https://custom-mirror.com");
+        assert!(reloaded.start_fullscreen);
+        assert!(reloaded.hide_premium);
     }
 
     #[test]

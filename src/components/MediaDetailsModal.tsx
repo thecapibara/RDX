@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   ArrowLeft,
   Play,
@@ -40,6 +40,7 @@ interface MediaDetailsModalProps {
   onSelectMedia?: (media: MediaCard) => void;
   isBookmarked: boolean;
   onToggleBookmark: (bookmark: Bookmark) => void;
+  hidePremium?: boolean;
 }
 
 function isPremiumQuality(label?: string | null): boolean {
@@ -63,6 +64,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
   onSelectMedia,
   isBookmarked,
   onToggleBookmark,
+  hidePremium = false,
 }) => {
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -332,16 +334,21 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
         // Determine default translator
         let defaultT: Translator | null = null;
         if (det.translators && det.translators.length > 0) {
+          const nonPrem = hidePremium
+            ? det.translators.filter((t) => !t.is_premium)
+            : det.translators;
+          const pool = nonPrem.length > 0 ? nonPrem : det.translators;
+
           const savedT = progress?.translator_id
-            ? det.translators.find((t) => t.id === progress.translator_id)
+            ? pool.find((t) => t.id === progress.translator_id)
             : null;
 
-          const ukrT = det.translators.find((t) =>
+          const ukrT = pool.find((t) =>
             t.language?.toLowerCase().includes("украин") ||
             t.language?.toLowerCase().includes("україн")
           );
 
-          defaultT = savedT || ukrT || det.translators.find((t) => t.is_active) || det.translators[0];
+          defaultT = savedT || ukrT || pool.find((t) => t.is_active) || pool[0];
           setSelectedTranslator(defaultT);
         }
 
@@ -461,6 +468,36 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
     }
   };
 
+  const visibleTranslators = useMemo(() => {
+    const all = details?.translators || [];
+    if (!hidePremium) return all;
+    const nonPrem = all.filter((t) => !t.is_premium);
+    return nonPrem.length > 0 ? nonPrem : all;
+  }, [details?.translators, hidePremium]);
+
+  const filterVisibleQualities = (qualities: StreamQuality[]) => {
+    if (!hidePremium) return qualities;
+    const nonPrem = qualities.filter((q) => !isPremiumQuality(q.label));
+    return nonPrem.length > 0 ? nonPrem : qualities;
+  };
+
+  const visibleDownloadQualities = useMemo(
+    () => filterVisibleQualities(downloadQualities),
+    [downloadQualities, hidePremium]
+  );
+
+  useEffect(() => {
+    if (
+      hidePremium &&
+      selectedTranslator?.is_premium &&
+      visibleTranslators.length > 0 &&
+      visibleTranslators.some((t) => !t.is_premium)
+    ) {
+      const nextT = visibleTranslators.find((t) => !t.is_premium) || visibleTranslators[0];
+      setSelectedTranslator(nextT);
+    }
+  }, [hidePremium, selectedTranslator, visibleTranslators]);
+
   if (!isOpen || !media) return null;
 
   const isSeries = details
@@ -541,11 +578,12 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
         isSeries ? selectedEpisode : undefined
       );
       if (stream && stream.qualities.length > 0) {
-        setDownloadQualities(stream.qualities);
+        const availQualities = filterVisibleQualities(stream.qualities);
+        setDownloadQualities(availQualities);
         const preferred =
-          stream.qualities.find((q) => q.label === "1080p") ||
-          stream.qualities.find((q) => q.label === "720p") ||
-          stream.qualities[0];
+          availQualities.find((q) => q.label === "1080p") ||
+          availQualities.find((q) => q.label === "720p") ||
+          availQualities[0];
         setSelectedDownloadQuality(preferred.label);
       }
     } catch (err) {
@@ -594,13 +632,14 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
         );
 
         if (stream && stream.qualities.length > 0) {
-          setDownloadQualities(stream.qualities);
-          const exists = stream.qualities.some((q) => q.label === selectedDownloadQuality);
+          const availQualities = filterVisibleQualities(stream.qualities);
+          setDownloadQualities(availQualities);
+          const exists = availQualities.some((q) => q.label === selectedDownloadQuality);
           if (!exists) {
             const preferred =
-              stream.qualities.find((q) => q.label === "1080p") ||
-              stream.qualities.find((q) => q.label === "720p") ||
-              stream.qualities[0];
+              availQualities.find((q) => q.label === "1080p") ||
+              availQualities.find((q) => q.label === "720p") ||
+              availQualities[0];
             setSelectedDownloadQuality(preferred.label);
           }
         }
@@ -741,17 +780,16 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
   };
 
   // Ukrainian translators list
-  const ukrTranslators =
-    details?.translators.filter(
-      (t) =>
-        t.language?.toLowerCase().includes("украин") ||
-        t.language?.toLowerCase().includes("україн")
-    ) || [];
+  const ukrTranslators = visibleTranslators.filter(
+    (t) =>
+      t.language?.toLowerCase().includes("украин") ||
+      t.language?.toLowerCase().includes("україн")
+  );
 
   // Filtered translators for dropdown (prioritizing Ukrainian dubs at the top)
   const filteredTranslators = (() => {
-    if (!details?.translators) return [];
-    let list = [...details.translators];
+    if (!visibleTranslators.length) return [];
+    let list = [...visibleTranslators];
     if (translatorSearch.trim()) {
       const q = translatorSearch.toLowerCase();
       list = list.filter((t) => t.name.toLowerCase().includes(q));
@@ -951,7 +989,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                     )}
 
                     {/* Structured Voiceover Selector Dropdown Next to Watch Button */}
-                    {details.translators && details.translators.length > 0 && (
+                    {visibleTranslators.length > 0 && (
                       <div ref={dropdownRef} className="relative shrink-0">
                         <button
                           onClick={() => setIsTranslatorDropdownOpen(!isTranslatorDropdownOpen)}
@@ -978,7 +1016,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                             )}
                           />
                           <span className="text-[11px] text-zinc-500 font-mono">
-                            {details.translators.length}
+                            {visibleTranslators.length}
                           </span>
                         </button>
 
@@ -1009,7 +1047,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                                     : "text-zinc-400 hover:text-white"
                                 )}
                               >
-                                Всі ({details.translators.length})
+                                Всі ({visibleTranslators.length})
                               </button>
                               {ukrTranslators.length > 0 && (
                                 <button
@@ -1518,7 +1556,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
               </div>
 
               {/* Voiceover Selection Section */}
-              {details && details.translators && details.translators.length > 0 && (
+              {details && visibleTranslators.length > 0 && (
                 <div className="space-y-2" ref={downloadTranslatorDropdownRef}>
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -1556,7 +1594,7 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
 
                     {isDownloadTranslatorDropdownOpen && (
                       <div className="absolute top-full left-0 right-0 mt-1.5 max-h-52 overflow-y-auto bg-zinc-950/98 border border-white/15 rounded-2xl shadow-2xl p-1.5 z-50 space-y-1 backdrop-blur-2xl">
-                        {details.translators.map((t) => {
+                        {visibleTranslators.map((t) => {
                           const isUkr = t.language?.toLowerCase().includes("украин") || t.language?.toLowerCase().includes("україн") || t.name.toLowerCase().includes("украин") || t.name.toLowerCase().includes("україн");
                           const isSelected = (downloadTranslator?.id || selectedTranslator?.id || "") === t.id;
                           return (
@@ -1837,13 +1875,13 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
                     <Loader2 className="w-4 h-4 animate-spin text-rose-500" />
                     <span>Отримання доступних якостей...</span>
                   </div>
-                ) : downloadQualities.length === 0 ? (
+                ) : visibleDownloadQualities.length === 0 ? (
                   <div className="py-2 text-xs text-zinc-400">
                     За замовчуванням: 1080p / 720p MP4
                   </div>
                 ) : (
                   <div className="grid grid-cols-3 gap-2">
-                    {downloadQualities.map((q) => {
+                    {visibleDownloadQualities.map((q) => {
                       const isSelected = selectedDownloadQuality === q.label;
                       const isPrem = isPremiumQuality(q.label);
                       return (

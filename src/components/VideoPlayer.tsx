@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Hls from "hls.js";
 import { motion } from "framer-motion";
 import {
@@ -74,6 +74,8 @@ interface VideoPlayerProps {
   onClose: () => void;
   onEpisodeChange?: (season: number, episode: number) => void;
   onTranslatorChange?: (translatorId: string) => void;
+  startFullscreen?: boolean;
+  hidePremium?: boolean;
 }
 
 function isPremiumQuality(label?: string | null): boolean {
@@ -190,6 +192,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onClose,
   onEpisodeChange,
   onTranslatorChange,
+  startFullscreen = false,
+  hidePremium = false,
 }) => {
   const isMiniMode = mode === "os_pip" || mode === "docked";
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -292,11 +296,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [activeSeason]);
 
+  const visibleTranslators = useMemo(() => {
+    const all = details.translators || [];
+    if (!hidePremium) return all;
+    const nonPrem = all.filter((t) => !t.is_premium);
+    return nonPrem.length > 0 ? nonPrem : all;
+  }, [details.translators, hidePremium]);
+
   // Active Translator
   const currentTranslator =
-    details.translators.find((t) => t.id === activeTranslatorId) ||
-    details.translators.find((t) => t.is_active) ||
-    details.translators[0];
+    visibleTranslators.find((t) => t.id === activeTranslatorId) ||
+    visibleTranslators.find((t) => t.is_active) ||
+    visibleTranslators[0];
 
   const effectiveTranslatorId = currentTranslator?.id || activeTranslatorId;
   const currentStreamTargetKey = `${effectiveTranslatorId || ""}:${currentEpisodeKey}`;
@@ -418,6 +429,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const isFullscreenRef = useRef(false);
   isFullscreenRef.current = isFullscreen;
   const lastDblClickTimeRef = useRef<number>(0);
+  const hasAppliedAutoFullscreenRef = useRef<boolean>(false);
 
   useEffect(() => {
     const onFsChange = () => {
@@ -425,11 +437,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
     document.addEventListener("fullscreenchange", onFsChange);
 
-    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-      getCurrentWindow()
-        .isFullscreen()
-        .then(setIsFullscreen)
-        .catch(() => {});
+    if (startFullscreen && mode === "full" && !hasAppliedAutoFullscreenRef.current) {
+      hasAppliedAutoFullscreenRef.current = true;
+      setIsFullscreen(true);
+      isFullscreenRef.current = true;
+      if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+        api.setFullscreenMode(true).catch(() => {});
+      } else {
+        containerRef.current?.requestFullscreen?.()?.catch?.(() => {});
+      }
+    } else if (!hasAppliedAutoFullscreenRef.current) {
+      if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+        getCurrentWindow()
+          .isFullscreen()
+          .then(setIsFullscreen)
+          .catch(() => {});
+      }
     }
 
     return () => {
@@ -1189,27 +1212,36 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     initialStreams,
   ]);
 
+  const visibleQualities = useMemo(() => {
+    const all = streamData?.qualities || [];
+    if (!hidePremium) return all;
+    const nonPrem = all.filter((q) => !isPremiumQuality(q.label));
+    return nonPrem.length > 0 ? nonPrem : all;
+  }, [streamData?.qualities, hidePremium]);
+
   // When streamData arrives, pick user's saved quality (or default 720p, avoiding Premium-only 1080p Ultra unless explicitly chosen)
   useEffect(() => {
-    if (!streamData || streamData.qualities.length === 0) return;
+    if (visibleQualities.length === 0) return;
 
-    const targetLabel = selectedQuality?.label || preferredQualityLabel || "720p";
+    const rawTarget = selectedQuality?.label || preferredQualityLabel || "720p";
+    const targetLabel =
+      hidePremium && isPremiumQuality(rawTarget) ? "" : rawTarget;
 
     const preferred =
-      streamData.qualities.find((q) => q.label === targetLabel) ||
-      streamData.qualities.find((q) => q.label === "720p") ||
-      streamData.qualities.find((q) => q.label === "1080p") ||
-      streamData.qualities.find((q) => q.label === "480p") ||
-      streamData.qualities.find(
+      (targetLabel ? visibleQualities.find((q) => q.label === targetLabel) : undefined) ||
+      visibleQualities.find((q) => q.label === "1080p") ||
+      visibleQualities.find((q) => q.label === "720p") ||
+      visibleQualities.find((q) => q.label === "480p") ||
+      visibleQualities.find(
         (q) =>
-          q.label === streamData.default_quality &&
-          !q.label.toLowerCase().includes("ultra")
+          q.label === streamData?.default_quality &&
+          !isPremiumQuality(q.label)
       ) ||
-      streamData.qualities.find((q) => !q.label.toLowerCase().includes("ultra")) ||
-      streamData.qualities[0];
+      visibleQualities.find((q) => !isPremiumQuality(q.label)) ||
+      visibleQualities[0];
 
     setSelectedQuality(preferred);
-  }, [streamData, preferredQualityLabel]);
+  }, [visibleQualities, streamData?.default_quality, preferredQualityLabel, hidePremium]);
 
   // Attach stream to video
   useEffect(() => {
@@ -1219,7 +1251,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (
       isStreamFetching ||
       loadedStreamKey !== currentStreamTargetKey ||
-      !streamData?.qualities.some((q) => q.label === selectedQuality.label)
+      !visibleQualities.some((q) => q.label === selectedQuality.label)
     ) {
       return;
     }
@@ -1267,9 +1299,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
 
     const stepDownQuality = () => {
-      if (isEffectCleanedUp || !streamData?.qualities?.length) return;
+      if (isEffectCleanedUp || !visibleQualities.length) return;
       const curRes = parseRes(selectedQuality.label);
-      const lower = [...streamData.qualities]
+      const lower = [...visibleQualities]
         .filter((q) => q.label !== selectedQuality.label && parseRes(q.label) < curRes)
         .sort((a, b) => parseRes(b.label) - parseRes(a.label));
       const nextQuality = lower[0];
@@ -1494,6 +1526,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     currentStreamTargetKey,
     isStreamFetching,
     streamData,
+    visibleQualities,
     initialPositionSec,
   ]);
 
@@ -3257,7 +3290,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     )}
 
                     {/* Compact Audio Track (Озвучка) Selector */}
-                    {details.translators.length > 1 && (
+                    {visibleTranslators.length > 1 && (
                       <div className="relative">
                         <button
                           onClick={() => {
@@ -3286,7 +3319,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             <div className="text-[11px] font-bold text-zinc-400 px-2 py-1 uppercase">
                               Вибір озвучення
                             </div>
-                            {details.translators.map((t) => {
+                            {visibleTranslators.map((t) => {
                               const isSelected = t.id === currentTranslator?.id;
                               const isUkr =
                                 t.language?.toLowerCase().includes("украин") ||
@@ -3391,7 +3424,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                           <div className="text-[11px] font-bold text-zinc-400 px-2 py-1 uppercase">
                             Якість відео
                           </div>
-                          {streamData.qualities.map((q) => {
+                          {visibleQualities.map((q) => {
                             const isPrem = isPremiumQuality(q.label);
                             return (
                               <button
@@ -3719,7 +3752,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           {contextMenu.page === "main" && (
             <div className="space-y-0.5">
               {/* Translators / Audio tracks */}
-              {details.translators.length > 0 && (
+              {visibleTranslators.length > 0 && (
                 <button
                   onClick={() => setContextMenu({ ...contextMenu, page: "translators" })}
                   className="w-full flex items-center justify-between px-3 py-2 text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
@@ -3753,7 +3786,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               )}
 
               {/* Quality Submenu */}
-              {streamData && streamData.qualities.length > 0 && (
+              {visibleQualities.length > 0 && (
                 <button
                   onClick={() => setContextMenu({ ...contextMenu, page: "quality" })}
                   className="w-full flex items-center justify-between px-3 py-2 text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
@@ -4031,7 +4064,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               </button>
               <div className="h-px bg-white/10 my-1 mx-2" />
               <div className="max-h-64 overflow-y-auto space-y-0.5 pr-1">
-                {details.translators.map((t) => {
+                {visibleTranslators.map((t) => {
                   const isSelected = t.id === currentTranslator?.id;
                   const isUkr =
                     t.language?.toLowerCase().includes("украин") ||
@@ -4155,7 +4188,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <span>Якість відео</span>
               </button>
               <div className="h-px bg-white/10 my-1 mx-2" />
-              {streamData.qualities.map((q) => {
+              {visibleQualities.map((q) => {
                 const isSelected = selectedQuality?.label === q.label;
                 const isPrem = isPremiumQuality(q.label);
                 return (

@@ -23,6 +23,8 @@ import {
   Palette,
   Moon,
   Globe,
+  Maximize2,
+  EyeOff,
 } from "lucide-react";
 import type { AppSettings, MirrorStatus } from "../types";
 import { api } from "../services/api";
@@ -49,6 +51,7 @@ interface MirrorModalProps {
   onClose: () => void;
   onMirrorChanged: (newMirror: string) => void;
   onCheckUpdates?: () => Promise<boolean> | boolean | void;
+  onSettingsChanged?: (settings: AppSettings) => void;
 }
 
 const PRESET_MIRRORS = [
@@ -65,6 +68,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
   onClose,
   onMirrorChanged,
   onCheckUpdates,
+  onSettingsChanged,
 }) => {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<
@@ -122,6 +126,20 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
       return localStorage.getItem("rdx_autoplay_next") !== "false";
     } catch {
       return true;
+    }
+  });
+  const [startFullscreen, setStartFullscreen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("rdx_start_fullscreen") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [hidePremium, setHidePremium] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("rdx_hide_premium") === "true";
+    } catch {
+      return false;
     }
   });
   const [startupSound, setStartupSound] = useState<boolean>(() => {
@@ -199,8 +217,14 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
       }
       const isAutoNext = s.autoplay_next !== false;
       setAutoplayNext(isAutoNext);
+      const isStartFs = Boolean(s.start_fullscreen);
+      setStartFullscreen(isStartFs);
+      const isHidePrem = Boolean(s.hide_premium);
+      setHidePremium(isHidePrem);
       try {
         localStorage.setItem("rdx_autoplay_next", String(isAutoNext));
+        localStorage.setItem("rdx_start_fullscreen", String(isStartFs));
+        localStorage.setItem("rdx_hide_premium", String(isHidePrem));
       } catch {}
 
       const urls = Array.from(
@@ -372,6 +396,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
     } catch {}
     const updatedSettings: AppSettings = { ...settings, preferred_quality: q };
     setSettings(updatedSettings);
+    onSettingsChanged?.(updatedSettings);
     await api.updateSettings(updatedSettings).catch(console.warn);
   };
 
@@ -380,6 +405,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
     setPreferredTranslator(t);
     const updatedSettings: AppSettings = { ...settings, preferred_translator: t.trim() };
     setSettings(updatedSettings);
+    onSettingsChanged?.(updatedSettings);
     await api.updateSettings(updatedSettings).catch(console.warn);
   };
 
@@ -391,6 +417,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
     if (settings) {
       const updatedSettings: AppSettings = { ...settings, startup_sound: enabled };
       setSettings(updatedSettings);
+      onSettingsChanged?.(updatedSettings);
       await api.updateSettings(updatedSettings).catch(console.warn);
     }
   };
@@ -403,6 +430,52 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
     if (settings) {
       const updatedSettings: AppSettings = { ...settings, autoplay_next: enabled };
       setSettings(updatedSettings);
+      onSettingsChanged?.(updatedSettings);
+      await api.updateSettings(updatedSettings).catch(console.warn);
+    }
+  };
+
+  const handleToggleStartFullscreen = async (enabled: boolean) => {
+    setStartFullscreen(enabled);
+    try {
+      localStorage.setItem("rdx_start_fullscreen", String(enabled));
+    } catch {}
+    if (settings) {
+      const updatedSettings: AppSettings = { ...settings, start_fullscreen: enabled };
+      setSettings(updatedSettings);
+      onSettingsChanged?.(updatedSettings);
+      await api.updateSettings(updatedSettings).catch(console.warn);
+    }
+  };
+
+  const handleToggleHidePremium = async (enabled: boolean) => {
+    setHidePremium(enabled);
+    try {
+      localStorage.setItem("rdx_hide_premium", String(enabled));
+    } catch {}
+    const lowerQ = preferredQuality.toLowerCase();
+    const isPremQ =
+      lowerQ.includes("ultra") ||
+      lowerQ.includes("2k") ||
+      lowerQ.includes("4k") ||
+      lowerQ.includes("prem") ||
+      lowerQ.includes("2160") ||
+      lowerQ.includes("1440");
+    const nextQuality = enabled && isPremQ ? "1080p" : preferredQuality;
+    if (enabled && isPremQ) {
+      setPreferredQuality("1080p");
+      try {
+        localStorage.setItem("rdx_preferred_quality", "1080p");
+      } catch {}
+    }
+    if (settings) {
+      const updatedSettings: AppSettings = {
+        ...settings,
+        hide_premium: enabled,
+        preferred_quality: nextQuality,
+      };
+      setSettings(updatedSettings);
+      onSettingsChanged?.(updatedSettings);
       await api.updateSettings(updatedSettings).catch(console.warn);
     }
   };
@@ -1141,7 +1214,9 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                       { key: "720p", label: "720p" },
                       { key: "480p", label: "480p" },
                       { key: "360p", label: "360p" },
-                    ].map((q) => {
+                    ]
+                      .filter((q) => !hidePremium || !q.vip)
+                      .map((q) => {
                       const isSelected = preferredQuality === q.key;
                       return (
                         <button
@@ -1230,6 +1305,70 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                         type="checkbox"
                         checked={autoplayNext}
                         onChange={(e) => handleToggleAutoplayNext(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Auto-Fullscreen on Player Launch */}
+                <div className="p-4.5 rounded-2xl bg-zinc-900/50 border border-white/8 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0">
+                        <Maximize2 className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Відкривати плеєр на весь екран</h4>
+                        <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
+                          Автоматично розгортати плеєр у повноекранний режим без рамок при запуску фільму чи серіалу
+                        </p>
+                      </div>
+                    </div>
+
+                    <label
+                      role="switch"
+                      aria-checked={startFullscreen}
+                      data-testid="start-fullscreen-toggle"
+                      className="relative inline-flex items-center cursor-pointer flex-shrink-0"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={startFullscreen}
+                        onChange={(e) => handleToggleStartFullscreen(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Hide Premium Qualities & Voiceovers */}
+                <div className="p-4.5 rounded-2xl bg-zinc-900/50 border border-white/8 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 flex-shrink-0">
+                        <EyeOff className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Приховувати преміум-якість та озвучки</h4>
+                        <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
+                          Не показувати платні озвучки HDRezka Premium та VIP-якості (1080p Ultra, 2K, 4K) у списках і автовиборі
+                        </p>
+                      </div>
+                    </div>
+
+                    <label
+                      role="switch"
+                      aria-checked={hidePremium}
+                      data-testid="hide-premium-toggle"
+                      className="relative inline-flex items-center cursor-pointer flex-shrink-0"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={hidePremium}
+                        onChange={(e) => handleToggleHidePremium(e.target.checked)}
                         className="sr-only peer"
                       />
                       <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
