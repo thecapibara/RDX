@@ -15,7 +15,6 @@ pub struct AppState {
     pub client: Arc<HttpClient>,
     pub mpris: Arc<crate::mpris::MprisState>,
     pub downloader: Arc<DownloadManager>,
-    pub turbo: Arc<crate::turbo::TurboServer>,
     pub tmdb: Arc<crate::tmdb::TmdbService>,
 }
 
@@ -898,16 +897,6 @@ pub async fn get_episodes(
         episodes,
         stream_data,
     })
-}
-
-#[tauri::command]
-pub fn get_turbo_stream_url(state: State<'_, AppState>, raw_url: String) -> String {
-    state.turbo.get_turbo_url(&raw_url)
-}
-
-#[tauri::command]
-pub fn get_turbo_stats(state: State<'_, AppState>) -> crate::turbo::TurboStats {
-    state.turbo.get_stats()
 }
 
 #[tauri::command]

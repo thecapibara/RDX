@@ -28,6 +28,18 @@ fn main() {
             }
         }
 
+        // On Linux Wayland (e.g. Intel Iris Xe `i915` + Niri/Mesa + WebKitGTK 2.54), zero-copy
+        // GBM/DMABUF leaks `drm-total-system0` (~250 MB/min -> 16+ GB in Shmem/zram), whereas
+        // `WEBKIT_DMABUF_RENDERER_FORCE_SHM=1` keeps accelerated compositing & smooth threaded
+        // scrolling enabled while routing frame transport over SHM with 0 DRM buffer leaks.
+        if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()
+            && std::env::var_os("WEBKIT_DMABUF_RENDERER_FORCE_SHM").is_none()
+        {
+            unsafe {
+                std::env::set_var("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1");
+            }
+        }
+
         // 3. On Linux, WebKitGTK's GStreamer `vah264dec` (rank 257) has a known DMABUF surface pool
         // synchronization bug that causes H.264 frames to jump backward and forward every few seconds.
         // Prioritizing `avdec_h264` (multi-threaded FFmpeg decoder) eliminates frame reordering stutter

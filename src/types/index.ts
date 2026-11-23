@@ -130,15 +130,6 @@ export interface StreamData {
   cdn_ping_ms?: number;
 }
 
-export interface TurboStats {
-  enabled: boolean;
-  port: number;
-  buffered_mb: number;
-  total_prefetched_mb: number;
-  active_workers: number;
-  cdn_mode: string;
-}
-
 export interface FranchisePart {
   id: string;
   url: string;

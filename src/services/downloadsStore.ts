@@ -75,12 +75,42 @@ export const downloadsStore = {
         progress = hasDownloading ? 1 : 0;
       }
 
-      nextMap[mediaId] = {
-        status,
-        progress: Math.min(100, Math.max(0, progress)),
-        activeCount: list.length,
-        isSeries: list.some((i) => (i.season || 0) > 0 || (i.episode || 0) > 0),
-      };
+      const clampedProgress = Math.min(100, Math.max(0, progress));
+      const activeCount = list.length;
+      const isSeries = list.some((i) => (i.season || 0) > 0 || (i.episode || 0) > 0);
+      const prev = downloadsMap[mediaId];
+
+      if (
+        prev &&
+        prev.status === status &&
+        prev.progress === clampedProgress &&
+        prev.activeCount === activeCount &&
+        prev.isSeries === isSeries
+      ) {
+        nextMap[mediaId] = prev;
+      } else {
+        nextMap[mediaId] = {
+          status,
+          progress: clampedProgress,
+          activeCount,
+          isSeries,
+        };
+      }
+    }
+
+    const prevKeys = Object.keys(downloadsMap);
+    const nextKeys = Object.keys(nextMap);
+
+    if (prevKeys.length === 0 && nextKeys.length === 0) {
+      return;
+    }
+
+    const isUnchanged =
+      prevKeys.length === nextKeys.length &&
+      nextKeys.every((key) => nextMap[key] === downloadsMap[key]);
+
+    if (isUnchanged) {
+      return;
     }
 
     downloadsMap = nextMap;

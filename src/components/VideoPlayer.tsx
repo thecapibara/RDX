@@ -654,6 +654,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [episodeProgressMap, setEpisodeProgressMap] = useState<
     Record<string, { position_sec: number; duration_sec: number }>
   >({});
+  const episodeProgressMapRef = useRef(episodeProgressMap);
+  episodeProgressMapRef.current = episodeProgressMap;
 
   useEffect(() => {
     try {
@@ -1011,12 +1013,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       return hlsDurationRef.current;
     }
     const epKey = `${activeSeason ?? 1}-${activeEpisode ?? 1}`;
-    const savedEp = episodeProgressMap[epKey];
+    const savedEp = episodeProgressMapRef.current[epKey];
     if (savedEp && Number.isFinite(savedEp.duration_sec) && savedEp.duration_sec > 0) {
       return savedEp.duration_sec;
     }
     return 0;
-  }, [duration, activeSeason, activeEpisode, episodeProgressMap]);
+  }, [duration, activeSeason, activeEpisode]);
 
   const syncDurationFromVideo = useCallback(() => {
     const vidDur = videoRef.current?.duration ?? 0;
@@ -2624,7 +2626,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {/* ================= DOUBLE-TAP SEEK RIPPLE INDICATORS ================= */}
         {isMiniMode && miniSeekRipple === "left" && (
           <div className="absolute inset-y-0 left-0 w-1/3 flex items-center justify-center pointer-events-none z-30 animate-pulse">
-            <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-md flex flex-col items-center justify-center text-white text-xs font-bold shadow-2xl">
+            <div className="w-14 h-14 rounded-full bg-black/85 border border-white/15 flex flex-col items-center justify-center text-white text-xs font-bold shadow-2xl">
               <Rewind className="w-5 h-5 fill-current" />
               <span>-5с</span>
             </div>
@@ -2632,7 +2634,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         )}
         {isMiniMode && miniSeekRipple === "right" && (
           <div className="absolute inset-y-0 right-0 w-1/3 flex items-center justify-center pointer-events-none z-30 animate-pulse">
-            <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-md flex flex-col items-center justify-center text-white text-xs font-bold shadow-2xl">
+            <div className="w-14 h-14 rounded-full bg-black/85 border border-white/15 flex flex-col items-center justify-center text-white text-xs font-bold shadow-2xl">
               <FastForward className="w-5 h-5 fill-current" />
               <span>+5с</span>
             </div>
@@ -2654,7 +2656,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <div className="relative z-10 flex items-center justify-between p-3">
               {/* Left Capsule: Speaker + Volume Slider + Series/Movie Tag */}
               <div
-                className="pointer-events-auto flex items-center gap-2 bg-black/60 backdrop-blur-md rounded-full px-2.5 py-1.5 border border-white/15 shadow-lg"
+                className="pointer-events-auto flex items-center gap-2 bg-zinc-950/90 rounded-full px-2.5 py-1.5 border border-white/15 shadow-lg"
                 onPointerDown={(e) => e.stopPropagation()}
               >
                 <button
@@ -2712,7 +2714,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <button
                     onClick={() => handleSetOsPip(true)}
                     title="Поверх усіх вікон (Always-on-Top)"
-                    className="w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/15 text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
+                    className="w-8 h-8 rounded-full bg-zinc-950/90 hover:bg-black/95 border border-white/15 text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
                   >
                     <PictureInPicture2 className="w-3.5 h-3.5" />
                   </button>
@@ -2723,7 +2725,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     onModeChange("full");
                   }}
                   title="Розгорнути на весь екран"
-                  className="w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/15 text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
+                  className="w-8 h-8 rounded-full bg-zinc-950/90 hover:bg-black/95 border border-white/15 text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
                 >
                   <Maximize2 className="w-3.5 h-3.5" />
                 </button>
@@ -2733,7 +2735,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     handleTeardownAndClose();
                   }}
                   title="Закрити плеєр"
-                  className="w-8 h-8 rounded-full bg-black/60 hover:bg-rose-600 backdrop-blur-md border border-white/15 text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
+                  className="w-8 h-8 rounded-full bg-zinc-950/90 hover:bg-rose-600 border border-white/15 text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -2749,7 +2751,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   triggerMiniSeekRipple("left");
                 }}
                 title="Назад на 5 сек"
-                className="pointer-events-auto w-10 h-10 rounded-full bg-black/50 hover:bg-black/75 backdrop-blur-md border border-white/15 text-white flex items-center justify-center transition-all hover:scale-110 active:scale-90 cursor-pointer shadow-lg"
+                className="pointer-events-auto w-10 h-10 rounded-full bg-black/85 hover:bg-zinc-900/95 border border-white/15 text-white flex items-center justify-center transition-all hover:scale-110 active:scale-90 cursor-pointer shadow-lg"
               >
                 <Rewind className="w-4 h-4 fill-current/30" />
               </button>
@@ -2776,7 +2778,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   triggerMiniSeekRipple("right");
                 }}
                 title="Вперед на 5 сек"
-                className="pointer-events-auto w-10 h-10 rounded-full bg-black/50 hover:bg-black/75 backdrop-blur-md border border-white/15 text-white flex items-center justify-center transition-all hover:scale-110 active:scale-90 cursor-pointer shadow-lg"
+                className="pointer-events-auto w-10 h-10 rounded-full bg-black/85 hover:bg-zinc-900/95 border border-white/15 text-white flex items-center justify-center transition-all hover:scale-110 active:scale-90 cursor-pointer shadow-lg"
               >
                 <FastForward className="w-4 h-4 fill-current/30" />
               </button>
@@ -2788,7 +2790,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     handleNextEpisode();
                   }}
                   title="Наступна серія"
-                  className="pointer-events-auto w-9 h-9 rounded-full bg-black/50 hover:bg-black/75 backdrop-blur-md border border-white/15 text-white flex items-center justify-center transition-all hover:scale-110 active:scale-90 cursor-pointer shadow-lg"
+                  className="pointer-events-auto w-9 h-9 rounded-full bg-black/85 hover:bg-zinc-900/95 border border-white/15 text-white flex items-center justify-center transition-all hover:scale-110 active:scale-90 cursor-pointer shadow-lg"
                 >
                   <SkipForward className="w-3.5 h-3.5" />
                 </button>
@@ -2968,7 +2970,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <div
                   data-testid="next-episode-card"
                   onClick={(e) => e.stopPropagation()}
-                  className="absolute bottom-28 right-6 sm:right-10 z-40 w-80 rounded-2xl bg-zinc-950/95 border border-white/15 p-4 shadow-2xl backdrop-blur-xl pointer-events-auto animate-in fade-in slide-in-from-bottom-3 duration-200"
+                  className="absolute bottom-28 right-6 sm:right-10 z-40 w-80 rounded-2xl bg-zinc-950/95 border border-white/15 p-4 shadow-2xl pointer-events-auto animate-in fade-in slide-in-from-bottom-3 duration-200"
                 >
                   <div className="flex items-center justify-between mb-2">
                     {nextEpTarget.isNewSeason ? (
@@ -3074,7 +3076,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     </div>
 
                     {(currentTranslator?.is_premium || streamData?.is_premium) && (
-                      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-950/80 border border-amber-500/40 text-amber-200 text-xs shadow-xl backdrop-blur-md mt-1">
+                      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-950/95 border border-amber-500/40 text-amber-200 text-xs shadow-xl mt-1">
                         <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                         <span>Ця озвучка доступна лише з HDRezka Premium (сайт транслює промо-ролик із QR-кодом)</span>
                       </div>
@@ -3121,7 +3123,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               {/* Center Quick Pause/Play Indicator or Loading Spinner */}
               <div className="self-center pointer-events-none">
                 {loadingStream || isBuffering ? (
-                  <div className="w-16 h-16 rounded-full bg-black/75 border border-white/20 flex flex-col items-center justify-center text-rose-500 shadow-2xl backdrop-blur-md gap-1">
+                  <div className="w-16 h-16 rounded-full bg-black/85 border border-white/20 flex flex-col items-center justify-center text-rose-500 shadow-2xl gap-1">
                     <Loader2 className="w-8 h-8 animate-spin" />
                   </div>
                 ) : !isPlaying && !isSeeking ? (
@@ -3689,7 +3691,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {showMediaInfo && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className="absolute top-16 left-6 z-50 w-[380px] max-w-[calc(100vw-3rem)] bg-zinc-950/80 backdrop-blur-xl border border-white/10 rounded-2xl p-4.5 text-xs font-mono text-zinc-300 shadow-2xl shadow-black/80 space-y-2.5 select-none animate-in fade-in duration-150"
+            className="absolute top-16 left-6 z-50 w-[380px] max-w-[calc(100vw-3rem)] bg-zinc-950/90 border border-white/15 rounded-2xl p-4.5 text-xs font-mono text-zinc-300 shadow-2xl shadow-black/80 space-y-2.5 select-none animate-in fade-in duration-150"
           >
             <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
               <div className="flex items-center gap-2 text-white font-bold text-xs">

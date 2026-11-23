@@ -1,7 +1,8 @@
-use rodio::{source::Zero, Decoder, OutputStream, Sink};
+use rodio::{buffer::SamplesBuffer, Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use std::io::Cursor;
-use std::sync::mpsc::{channel, Sender};
-use std::sync::OnceLock;
+use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
+use std::sync::{Arc, OnceLock};
+use std::time::{Duration, Instant};
 
 // Embedded sound assets (compiled directly into the binary)
 const STARTUP_CHIME_BYTES: &[u8] = include_bytes!("../../public/startup.mp3");
@@ -16,59 +17,86 @@ pub enum UiSoundType {
     ButtonClick,
 }
 
+struct PredecodedSound {
+    samples: Arc<[f32]>,
+    channels: u16,
+    sample_rate: u32,
+}
+
+fn decode_sound(bytes: &'static [u8]) -> Option<PredecodedSound> {
+    let source = Decoder::new(Cursor::new(bytes)).ok()?;
+    let channels = source.channels();
+    let sample_rate = source.sample_rate();
+    let samples: Vec<f32> = source.convert_samples::<f32>().collect();
+    Some(PredecodedSound {
+        samples: Arc::from(samples),
+        channels,
+        sample_rate,
+    })
+}
+
 static UI_AUDIO_TX: OnceLock<Sender<UiSoundType>> = OnceLock::new();
 
 fn get_or_init_ui_audio_tx() -> &'static Sender<UiSoundType> {
     UI_AUDIO_TX.get_or_init(|| {
         let (tx, rx) = channel::<UiSoundType>();
         std::thread::spawn(move || {
-            let Ok((_stream, stream_handle)) = OutputStream::try_default() else {
-                eprintln!("RDX Audio: failed to acquire default audio stream for UI feedback sounds");
-                return;
-            };
+            let hover_sound = decode_sound(HOVERCARD_SOUND_BYTES);
+            let modal_sound = decode_sound(OPENCARD_SOUND_BYTES);
+            let click_sound = decode_sound(BUTTONCLICK_SOUND_BYTES);
 
-            // Keep PipeWire/ALSA/WASAPI audio stream active to prevent DAC sleep & truncated transients
-            if let Ok(keepalive_sink) = Sink::try_new(&stream_handle) {
-                keepalive_sink.set_volume(0.0);
-                keepalive_sink.append(Zero::<f32>::new(2, 44100));
-                keepalive_sink.detach();
-            }
+            let mut active_stream: Option<(OutputStream, OutputStreamHandle)> = None;
+            let mut last_hover_time = Instant::now() - Duration::from_secs(1);
 
-            let mut last_hover_time = std::time::Instant::now() - std::time::Duration::from_secs(1);
+            loop {
+                match rx.recv_timeout(Duration::from_secs(10)) {
+                    Ok(sound_type) => {
+                        if let UiSoundType::Hover = sound_type {
+                            if last_hover_time.elapsed() < Duration::from_millis(35) {
+                                continue;
+                            }
+                            last_hover_time = Instant::now();
+                        }
 
-            while let Ok(sound_type) = rx.recv() {
-                if let UiSoundType::Hover = sound_type {
-                    if last_hover_time.elapsed() < std::time::Duration::from_millis(35) {
-                        continue;
-                    }
-                    last_hover_time = std::time::Instant::now();
-                }
+                        if active_stream.is_none() {
+                            match OutputStream::try_default() {
+                                Ok(pair) => active_stream = Some(pair),
+                                Err(_) => {
+                                    eprintln!("RDX Audio: failed to acquire default audio stream for UI feedback sounds");
+                                    continue;
+                                }
+                            }
+                        }
 
-                let Ok(sink) = Sink::try_new(&stream_handle) else {
-                    continue;
-                };
-                match sound_type {
-                    UiSoundType::Hover => {
-                        sink.set_volume(0.50);
-                        if let Ok(source) = Decoder::new(Cursor::new(HOVERCARD_SOUND_BYTES)) {
-                            sink.append(source);
+                        let Some((_, stream_handle)) = active_stream.as_ref() else {
+                            continue;
+                        };
+
+                        let Ok(sink) = Sink::try_new(stream_handle) else {
+                            continue;
+                        };
+
+                        let (volume, predecoded) = match sound_type {
+                            UiSoundType::Hover => (0.50, hover_sound.as_ref()),
+                            UiSoundType::ModalOpen => (0.60, modal_sound.as_ref()),
+                            UiSoundType::ButtonClick => (0.55, click_sound.as_ref()),
+                        };
+
+                        if let Some(sound) = predecoded {
+                            sink.set_volume(volume);
+                            sink.append(SamplesBuffer::new(
+                                sound.channels,
+                                sound.sample_rate,
+                                sound.samples.to_vec(),
+                            ));
                             sink.detach();
                         }
                     }
-                    UiSoundType::ModalOpen => {
-                        sink.set_volume(0.60);
-                        if let Ok(source) = Decoder::new(Cursor::new(OPENCARD_SOUND_BYTES)) {
-                            sink.append(source);
-                            sink.detach();
-                        }
+                    Err(RecvTimeoutError::Timeout) => {
+                        // Drop stream after 10s of silence so PipeWire/ALSA suspends cleanly
+                        active_stream = None;
                     }
-                    UiSoundType::ButtonClick => {
-                        sink.set_volume(0.55);
-                        if let Ok(source) = Decoder::new(Cursor::new(BUTTONCLICK_SOUND_BYTES)) {
-                            sink.append(source);
-                            sink.detach();
-                        }
-                    }
+                    Err(RecvTimeoutError::Disconnected) => break,
                 }
             }
         });

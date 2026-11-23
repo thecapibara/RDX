@@ -7,6 +7,14 @@ use tokio::sync::RwLock;
 
 const DEFAULT_TMDB_KEY: &str = "4e44d9029b1270a757cddc766a1bcb63";
 const TMDB_SEARCH_URL: &str = "https://api.themoviedb.org/3/search/multi";
+const MAX_CACHE_ENTRIES: usize = 256;
+
+fn bounded_insert<V>(map: &mut HashMap<String, V>, key: String, value: V) {
+    if !map.contains_key(&key) && map.len() >= MAX_CACHE_ENTRIES {
+        map.clear();
+    }
+    map.insert(key, value);
+}
 
 #[derive(Debug, Deserialize)]
 struct TmdbSearchResponse {
@@ -295,7 +303,7 @@ impl TmdbService {
                                 score += 20_000.0;
                             }
 
-                            let full_url = format!("https://image.tmdb.org/t/p/original{}", path);
+                            let full_url = format!("https://image.tmdb.org/t/p/w1280{}", path);
                             let tmdb_identity = item.id.and_then(|tid| {
                                 let t = if item_type == "movie" || item_type == "tv" {
                                     item_type
@@ -332,11 +340,11 @@ impl TmdbService {
         // Write to cache (even if None, to prevent spamming failed queries)
         {
             let mut cache = self.cache.write().await;
-            cache.insert(cache_key.clone(), found_backdrop.clone());
+            bounded_insert(&mut cache, cache_key.clone(), found_backdrop.clone());
         }
         {
             let mut id_cache = self.id_cache.write().await;
-            id_cache.insert(cache_key, found_identity);
+            bounded_insert(&mut id_cache, cache_key, found_identity);
         }
 
         found_backdrop
@@ -349,7 +357,7 @@ impl TmdbService {
 
     pub async fn cache_recommendations(&self, key: String, items: Vec<crate::parser::MediaCard>) {
         let mut cache = self.rec_cache.write().await;
-        cache.insert(key, items);
+        bounded_insert(&mut cache, key, items);
     }
 
     pub async fn get_recommendations_list(
@@ -542,7 +550,8 @@ impl TmdbService {
 
         let result = best_match.map(|(_, url)| url);
         if result.is_some() || had_http_success {
-            self.poster_cache.write().await.insert(cache_key, result.clone());
+            let mut cache = self.poster_cache.write().await;
+            bounded_insert(&mut cache, cache_key, result.clone());
         }
         result
     }

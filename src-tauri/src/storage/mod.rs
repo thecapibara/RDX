@@ -116,6 +116,7 @@ pub struct DownloadItem {
 
 pub struct Storage {
     conn: Mutex<Connection>,
+    settings_cache: Mutex<Option<AppSettings>>,
 }
 
 impl Storage {
@@ -125,9 +126,10 @@ impl Storage {
         }
 
         let conn = Connection::open(path)?;
-        conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;")?;
+        conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000; PRAGMA temp_store = MEMORY;")?;
         let storage = Self {
             conn: Mutex::new(conn),
+            settings_cache: Mutex::new(None),
         };
         storage.init_schema()?;
         Ok(storage)
@@ -135,9 +137,10 @@ impl Storage {
 
     pub fn in_memory() -> SqlResult<Self> {
         let conn = Connection::open_in_memory()?;
-        conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;")?;
+        conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000; PRAGMA temp_store = MEMORY;")?;
         let storage = Self {
             conn: Mutex::new(conn),
+            settings_cache: Mutex::new(None),
         };
         storage.init_schema()?;
         Ok(storage)
@@ -252,12 +255,38 @@ impl Storage {
             )?;
         }
 
+        // One-time auto-sync bookmarks category from watch_progress for existing databases
+        let _ = conn.execute(
+            r#"
+            UPDATE bookmarks
+            SET category = CASE
+                WHEN EXISTS (
+                    SELECT 1 FROM watch_progress wp
+                    WHERE wp.media_id = bookmarks.media_id
+                      AND wp.duration_sec > 0 AND (wp.position_sec / wp.duration_sec) >= 0.90
+                ) THEN 'completed'
+                WHEN EXISTS (
+                    SELECT 1 FROM watch_progress wp
+                    WHERE wp.media_id = bookmarks.media_id
+                      AND wp.position_sec > 15.0
+                ) THEN 'watching'
+                ELSE category
+            END
+            WHERE category IN ('favorites', 'planned', 'watching')
+            "#,
+            [],
+        );
+
         Ok(())
     }
 
     // --- Settings API ---
 
     pub fn get_settings(&self) -> SqlResult<AppSettings> {
+        if let Some(cached) = self.settings_cache.lock().unwrap().as_ref() {
+            return Ok(cached.clone());
+        }
+
         let conn = self.conn.lock().unwrap();
         let mut defaults = AppSettings::default();
 
@@ -288,6 +317,7 @@ impl Storage {
             }
         }
 
+        *self.settings_cache.lock().unwrap() = Some(defaults.clone());
         Ok(defaults)
     }
 
@@ -322,7 +352,9 @@ impl Storage {
             }
         }
         tx.commit()?;
+        drop(conn);
 
+        *self.settings_cache.lock().unwrap() = Some(settings.clone());
         Ok(())
     }
 
@@ -597,28 +629,6 @@ impl Storage {
 
     pub fn get_bookmarks(&self, category: Option<&str>) -> SqlResult<Vec<Bookmark>> {
         let conn = self.conn.lock().unwrap();
-
-        // Auto-sync bookmarks category from watch_progress for any items where progress exists
-        let _ = conn.execute(
-            r#"
-            UPDATE bookmarks
-            SET category = CASE
-                WHEN EXISTS (
-                    SELECT 1 FROM watch_progress wp
-                    WHERE wp.media_id = bookmarks.media_id
-                      AND wp.duration_sec > 0 AND (wp.position_sec / wp.duration_sec) >= 0.90
-                ) THEN 'completed'
-                WHEN EXISTS (
-                    SELECT 1 FROM watch_progress wp
-                    WHERE wp.media_id = bookmarks.media_id
-                      AND wp.position_sec > 15.0
-                ) THEN 'watching'
-                ELSE category
-            END
-            WHERE category IN ('favorites', 'planned', 'watching')
-            "#,
-            [],
-        );
 
         let mut list = Vec::new();
 

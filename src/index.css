@@ -118,7 +118,7 @@
 /* Defer rendering for off-screen rows to keep 60fps scrolling frictionless (modern-web-guidance) */
 .cv-auto {
   content-visibility: auto;
-  contain-intrinsic-size: auto none auto 360px;
+  contain-intrinsic-size: auto 360px;
 }
 
 /* Custom scrollbars for TV/Desktop swimlanes */

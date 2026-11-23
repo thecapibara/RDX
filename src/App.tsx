@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
 import { RefreshCw, AlertCircle } from "lucide-react";
 import type {
   AppSettings,
@@ -17,18 +17,34 @@ import { HeroBanner } from "./components/HeroBanner";
 import { Swimlane } from "./components/Swimlane";
 import { ContinueWatchingSwimlane } from "./components/ContinueWatchingSwimlane";
 import { MediaCard } from "./components/MediaCard";
-import { MediaDetailsModal } from "./components/MediaDetailsModal";
-import { VideoPlayer, type PlayerMode } from "./components/VideoPlayer";
-import { MirrorModal } from "./components/MirrorModal";
-import { SearchModal } from "./components/SearchModal";
-import { UpdateModal } from "./components/UpdateModal";
-import { BookmarksView } from "./components/BookmarksView";
-import { DownloadsView } from "./components/DownloadsView";
+import type { PlayerMode } from "./components/VideoPlayer";
 import { CategoryFilterBar } from "./components/CategoryFilterBar";
 import { playButtonClickSound } from "./services/sound";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { downloadsStore, OPEN_DOWNLOADS_EVENT } from "./services/downloadsStore";
 import { checkForUpdates, type UpdateInfo } from "./services/updater";
+
+const VideoPlayer = lazy(() =>
+  import("./components/VideoPlayer").then((m) => ({ default: m.VideoPlayer }))
+);
+const MediaDetailsModal = lazy(() =>
+  import("./components/MediaDetailsModal").then((m) => ({ default: m.MediaDetailsModal }))
+);
+const MirrorModal = lazy(() =>
+  import("./components/MirrorModal").then((m) => ({ default: m.MirrorModal }))
+);
+const DownloadsView = lazy(() =>
+  import("./components/DownloadsView").then((m) => ({ default: m.DownloadsView }))
+);
+const SearchModal = lazy(() =>
+  import("./components/SearchModal").then((m) => ({ default: m.SearchModal }))
+);
+const UpdateModal = lazy(() =>
+  import("./components/UpdateModal").then((m) => ({ default: m.UpdateModal }))
+);
+const BookmarksView = lazy(() =>
+  import("./components/BookmarksView").then((m) => ({ default: m.BookmarksView }))
+);
 
 export default function App() {
   // Navigation & Settings State
@@ -71,6 +87,8 @@ export default function App() {
 
   // Active Downloads Count State
   const [activeDownloadsCount, setActiveDownloadsCount] = useState(0);
+  const activeDownloadsCountRef = useRef(0);
+  activeDownloadsCountRef.current = activeDownloadsCount;
 
   // Listen to download progress & track active downloads count
   useEffect(() => {
@@ -83,6 +101,7 @@ export default function App() {
         const active = items.filter(
           (i) => i.status === "downloading" || i.status === "queued"
         ).length;
+        activeDownloadsCountRef.current = active;
         setActiveDownloadsCount(active);
       } catch {}
     };
@@ -100,7 +119,7 @@ export default function App() {
     }
 
     const interval = setInterval(() => {
-      if (!document.hidden) {
+      if (!document.hidden && activeDownloadsCountRef.current > 0) {
         checkActiveDownloads();
       }
     }, 4000);
@@ -803,13 +822,17 @@ export default function App() {
       {/* Main Content Area (hidden when full-screen Details or full-screen VideoPlayer is open so WebKit skips compositing 90 background cards) */}
       <main className={isBackgroundHidden ? "hidden" : "flex-1 overflow-y-auto overflow-x-hidden flex flex-col pb-24"}>
         {activeTab === "bookmarks" ? (
-          <BookmarksView
-            onSelectMedia={handleOpenDetails}
-            onPlayDirect={handleDirectPlay}
-            refreshKey={`${bookmarksRefreshKey}-${isDetailsOpen}`}
-          />
+          <Suspense fallback={null}>
+            <BookmarksView
+              onSelectMedia={handleOpenDetails}
+              onPlayDirect={handleDirectPlay}
+              refreshKey={`${bookmarksRefreshKey}-${isDetailsOpen}`}
+            />
+          </Suspense>
         ) : activeTab === "downloads" ? (
-          <DownloadsView onPlayDownload={handlePlayDownload} />
+          <Suspense fallback={null}>
+            <DownloadsView onPlayDownload={handlePlayDownload} />
+          </Suspense>
         ) : catalogError ? (
           <div className="flex-1 flex flex-col items-center justify-center py-32 px-6 text-center space-y-4">
             <div className="w-16 h-16 rounded-3xl bg-rose-950/40 border border-rose-500/30 flex items-center justify-center text-rose-500">
@@ -1050,44 +1073,52 @@ export default function App() {
       </main>
 
       {/* Media Details Modal */}
-      <MediaDetailsModal
-        media={selectedMediaForDetails}
-        isOpen={isDetailsOpen}
-        onClose={() => setIsDetailsOpen(false)}
-        onPlay={handleStartPlayback}
-        onSelectMedia={handleOpenDetails}
-        isBookmarked={isCurrentBookmarked}
-        onToggleBookmark={handleToggleBookmark}
-        hidePremium={Boolean(settings?.hide_premium)}
-      />
+      <Suspense fallback={null}>
+        {isDetailsOpen && selectedMediaForDetails && (
+          <MediaDetailsModal
+            media={selectedMediaForDetails}
+            isOpen={isDetailsOpen}
+            onClose={() => setIsDetailsOpen(false)}
+            onPlay={handleStartPlayback}
+            onSelectMedia={handleOpenDetails}
+            isBookmarked={isCurrentBookmarked}
+            onToggleBookmark={handleToggleBookmark}
+            hidePremium={Boolean(settings?.hide_premium)}
+          />
+        )}
 
-      {/* Spotlight Search Modal */}
-      <SearchModal
-        isOpen={isSearchOpen}
-        onClose={() => setIsSearchOpen(false)}
-        onSelectMedia={handleOpenDetails}
-      />
+        {/* Spotlight Search Modal */}
+        {isSearchOpen && (
+          <SearchModal
+            isOpen={isSearchOpen}
+            onClose={() => setIsSearchOpen(false)}
+            onSelectMedia={handleOpenDetails}
+          />
+        )}
 
-      {/* Mirror Manager & Network Settings Modal */}
-      <MirrorModal
-        isOpen={isMirrorModalOpen}
-        onClose={() => setIsMirrorModalOpen(false)}
-        onMirrorChanged={(newMirror) => {
-          setSettings((prev) => (prev ? { ...prev, active_mirror: newMirror } : null));
-          loadCatalog();
-        }}
-        onSettingsChanged={(updated) => setSettings(updated)}
-        onCheckUpdates={() => handleCheckUpdates(true)}
-      />
+        {/* Mirror Manager & Network Settings Modal */}
+        {isMirrorModalOpen && (
+          <MirrorModal
+            isOpen={isMirrorModalOpen}
+            onClose={() => setIsMirrorModalOpen(false)}
+            onMirrorChanged={(newMirror) => {
+              setSettings((prev) => (prev ? { ...prev, active_mirror: newMirror } : null));
+              loadCatalog();
+            }}
+            onSettingsChanged={(updated) => setSettings(updated)}
+            onCheckUpdates={() => handleCheckUpdates(true)}
+          />
+        )}
 
-      {/* OTA GitHub Release Auto-Updater Modal */}
-      {availableUpdate && (
-        <UpdateModal
-          update={availableUpdate}
-          isOpen={isUpdateModalOpen}
-          onClose={() => setIsUpdateModalOpen(false)}
-        />
-      )}
+        {/* OTA GitHub Release Auto-Updater Modal */}
+        {isUpdateModalOpen && availableUpdate && (
+          <UpdateModal
+            update={availableUpdate}
+            isOpen={isUpdateModalOpen}
+            onClose={() => setIsUpdateModalOpen(false)}
+          />
+        )}
+      </Suspense>
 
       {/* Release Notifications Toast Stack (for bookmarked titles that left "В очікуванні") */}
       {releaseNotifications.length > 0 && (
@@ -1148,25 +1179,27 @@ export default function App() {
 
       {/* Custom Cinema Video Player (Overlay / Docked Mini-Player / OS PiP) */}
       {activePlayerDetails && (
-        <VideoPlayer
-          details={activePlayerDetails}
-          initialStreams={activePlayerDetails.initial_streams}
-          activeTranslatorId={activeTranslatorId}
-          activeSeason={activeSeason}
-          activeEpisode={activeEpisode}
-          initialPositionSec={initialPositionSec}
-          mode={playerMode}
-          onModeChange={setPlayerMode}
-          onClose={handleClosePlayer}
-          onEpisodeChange={(season, episode) => {
-            setActiveSeason(season);
-            setActiveEpisode(episode);
-            setInitialPositionSec(0);
-          }}
-          onTranslatorChange={handlePlayerTranslatorChange}
-          startFullscreen={Boolean(settings?.start_fullscreen)}
-          hidePremium={Boolean(settings?.hide_premium)}
-        />
+        <Suspense fallback={null}>
+          <VideoPlayer
+            details={activePlayerDetails}
+            initialStreams={activePlayerDetails.initial_streams}
+            activeTranslatorId={activeTranslatorId}
+            activeSeason={activeSeason}
+            activeEpisode={activeEpisode}
+            initialPositionSec={initialPositionSec}
+            mode={playerMode}
+            onModeChange={setPlayerMode}
+            onClose={handleClosePlayer}
+            onEpisodeChange={(season, episode) => {
+              setActiveSeason(season);
+              setActiveEpisode(episode);
+              setInitialPositionSec(0);
+            }}
+            onTranslatorChange={handlePlayerTranslatorChange}
+            startFullscreen={Boolean(settings?.start_fullscreen)}
+            hidePremium={Boolean(settings?.hide_premium)}
+          />
+        </Suspense>
       )}
     </div>
   );

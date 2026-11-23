@@ -174,7 +174,7 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
             }}
             onWheel={handleChevronWheel}
             aria-label="Прокрутити вліво"
-            className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full flex items-center justify-center bg-zinc-950/90 hover:bg-zinc-800 border border-white/20 text-white shadow-2xl backdrop-blur-md transition-all duration-150 hover:scale-110 active:scale-95 cursor-pointer"
+            className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full flex items-center justify-center bg-zinc-950/95 hover:bg-zinc-800 border border-white/20 text-white shadow-2xl transition-all duration-150 hover:scale-110 active:scale-95 cursor-pointer"
           >
             <ChevronLeft className="w-6 h-6 stroke-[2.5]" />
           </button>
@@ -194,7 +194,7 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
             }}
             onWheel={handleChevronWheel}
             aria-label="Прокрутити вправо"
-            className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full flex items-center justify-center bg-zinc-950/90 hover:bg-zinc-800 border border-white/20 text-white shadow-2xl backdrop-blur-md transition-all duration-150 hover:scale-110 active:scale-95 cursor-pointer"
+            className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full flex items-center justify-center bg-zinc-950/95 hover:bg-zinc-800 border border-white/20 text-white shadow-2xl transition-all duration-150 hover:scale-110 active:scale-95 cursor-pointer"
           >
             <ChevronRight className="w-6 h-6 stroke-[2.5]" />
           </button>
@@ -211,7 +211,7 @@ export const ContinueWatchingSwimlane: React.FC<ContinueWatchingSwimlaneProps> =
           onClickCapture={handleClickCapture}
           className={cn(
             "flex gap-4 overflow-x-auto px-[clamp(1.25rem,4vw,4rem)] pb-4 pt-1 no-scrollbar cursor-grab active:cursor-grabbing",
-            isDragging ? "cursor-grabbing select-none" : "scroll-smooth"
+            isDragging && "cursor-grabbing select-none"
           )}
           style={{
             scrollbarWidth: "none",

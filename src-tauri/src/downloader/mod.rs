@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 use tokio::fs::OpenOptions;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::sync::watch;
 
 use crate::storage::{DownloadItem, Storage};
@@ -44,8 +44,8 @@ pub struct DownloadManager {
 impl DownloadManager {
     pub fn new(storage: Arc<Storage>) -> Self {
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .connect_timeout(Duration::from_secs(10))
+            .connect_timeout(Duration::from_secs(15))
+            .read_timeout(Duration::from_secs(30))
             .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
             .build()
             .unwrap_or_default();
@@ -576,8 +576,8 @@ impl DownloadManager {
                         .open(&temp_path)
                         .await;
 
-                    let mut file = match open_res {
-                        Ok(f) => f,
+                    let mut writer = match open_res {
+                        Ok(f) => BufWriter::with_capacity(256 * 1024, f),
                         Err(e) => {
                             let msg = format!("File open error: {e}");
                             {
@@ -610,7 +610,7 @@ impl DownloadManager {
                     loop {
                         // Check if paused or cancelled by user
                         if *abort_rx.borrow() {
-                            let _ = file.flush().await;
+                            let _ = writer.flush().await;
                             {
                                 let mut p_guard = progress.lock().unwrap();
                                 if let Some(p) = p_guard.get_mut(&id) {
@@ -642,7 +642,7 @@ impl DownloadManager {
 
                         match resp.chunk().await {
                             Ok(Some(chunk)) => {
-                                if let Err(e) = file.write_all(&chunk).await {
+                                if let Err(e) = writer.write_all(&chunk).await {
                                     eprintln!("Download write error: {e}");
                                     stream_err = true;
                                     break;
@@ -707,7 +707,12 @@ impl DownloadManager {
                         }
                     }
 
-                    let _ = file.flush().await;
+                    if let Err(e) = writer.flush().await {
+                        eprintln!("Download flush error: {e}");
+                        if !was_paused {
+                            stream_err = true;
+                        }
+                    }
 
                     if was_paused {
                         break false;

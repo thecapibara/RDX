@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Download,
   Play,
@@ -79,6 +79,13 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
     onConfirm: () => Promise<void> | void;
   } | null>(null);
 
+  const hasActiveDownloadsRef = useRef(false);
+  useEffect(() => {
+    hasActiveDownloadsRef.current = downloads.some(
+      (d) => d.status === "downloading" || d.status === "queued"
+    );
+  }, [downloads]);
+
   // Load downloads from SQLite
   const loadDownloads = async () => {
     try {
@@ -93,9 +100,11 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
     loadDownloads();
     api.getDownloadsDir().then(setDownloadsDir).catch(() => {});
 
-    // Polling fallback to guarantee continuous 1s UI updates
+    // Polling fallback only when tab is visible and downloads are active
     const pollInterval = setInterval(() => {
-      loadDownloads();
+      if (!document.hidden && hasActiveDownloadsRef.current) {
+        loadDownloads();
+      }
     }, 1000);
 
     // Listen to real-time progress events from Rust
@@ -696,7 +705,7 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                       <span className="px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wide uppercase shadow-sm bg-rose-600 text-white">
                         Серіал {group.season ? `• С${group.season}` : ""}
                       </span>
-                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase bg-black/75 backdrop-blur-md text-zinc-300 border border-white/10 shadow-sm">
+                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase bg-black/85 text-zinc-300 border border-white/10 shadow-sm">
                         <Layers className="w-3 h-3 text-rose-400" />
                         <span>{group.totalCount} серій</span>
                       </span>
@@ -705,17 +714,17 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                     {/* Top-Right: Status Badge */}
                     <div className="absolute top-2.5 right-2.5 z-10 flex flex-col gap-1 items-end pointer-events-none">
                       {group.allCompleted ? (
-                        <span className="flex items-center gap-1 bg-emerald-500/90 text-white backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm">
+                        <span className="flex items-center gap-1 bg-emerald-600/95 text-white px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm">
                           <CheckCircle2 className="w-3 h-3" />
                           <span>Всі готові</span>
                         </span>
                       ) : group.downloadingCount > 0 ? (
-                        <span className="flex items-center gap-1 bg-rose-600/90 text-white backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm animate-pulse">
+                        <span className="flex items-center gap-1 bg-rose-600/95 text-white px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm animate-pulse">
                           <RefreshCw className="w-2.5 h-2.5 animate-spin" />
                           <span>{percent}%</span>
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1 bg-amber-500/90 text-black backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm">
+                        <span className="flex items-center gap-1 bg-amber-500/95 text-black px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm">
                           <Clock className="w-2.5 h-2.5" />
                           <span>{group.completedCount}/{group.totalCount}</span>
                         </span>
@@ -980,7 +989,7 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                     >
                       {typeLabel}
                     </span>
-                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-black tracking-wide uppercase bg-black/75 backdrop-blur-md text-zinc-200 border border-white/10 shadow-sm">
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-black tracking-wide uppercase bg-black/85 text-zinc-200 border border-white/10 shadow-sm">
                       <span>{item.quality}</span>
                       {isPrem && <Crown className="w-3 h-3 text-amber-400 fill-amber-400/25 flex-shrink-0" />}
                     </span>
@@ -989,31 +998,31 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                   {/* Top-Right Badges: Season/Episode & Status */}
                   <div className="absolute top-2.5 right-2.5 z-10 flex flex-col gap-1 items-end pointer-events-none">
                     {item.season != null && item.episode != null && (
-                      <span className="bg-zinc-950/90 backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-bold text-white border border-white/10 shadow-sm">
+                      <span className="bg-zinc-950/95 px-2 py-0.5 rounded-md text-[10px] font-bold text-white border border-white/10 shadow-sm">
                         S{item.season}E{item.episode}
                       </span>
                     )}
                     {isCompleted ? (
-                      <span className="flex items-center gap-1 bg-emerald-500/90 text-white backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm">
+                      <span className="flex items-center gap-1 bg-emerald-600/95 text-white px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm">
                         <CheckCircle2 className="w-3 h-3" />
                         <span>Готово</span>
                       </span>
                     ) : isDownloading ? (
-                      <span className="flex items-center gap-1 bg-rose-600/90 text-white backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm animate-pulse">
+                      <span className="flex items-center gap-1 bg-rose-600/95 text-white px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm animate-pulse">
                         <RefreshCw className="w-2.5 h-2.5 animate-spin" />
                         <span>{percent}%</span>
                       </span>
                     ) : item.status === "queued" ? (
-                      <span className="flex items-center gap-1 bg-amber-500/90 text-black backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm">
+                      <span className="flex items-center gap-1 bg-amber-500/95 text-black px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm">
                         <Clock className="w-2.5 h-2.5" />
                         <span>В черзі</span>
                       </span>
                     ) : isPaused ? (
-                      <span className="bg-zinc-800/90 text-zinc-300 backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-bold border border-white/10">
+                      <span className="bg-zinc-900/95 text-zinc-300 px-2 py-0.5 rounded-md text-[10px] font-bold border border-white/10">
                         Пауза
                       </span>
                     ) : isError ? (
-                      <span className="bg-red-600/90 text-white backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-bold">
+                      <span className="bg-red-600/95 text-white px-2 py-0.5 rounded-md text-[10px] font-bold">
                         Помилка
                       </span>
                     ) : null}
@@ -1021,7 +1030,7 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
 
                   {/* Center Hover Action for Completed: Big Play Button */}
                   {isCompleted && (
-                    <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10 pointer-events-none">
+                    <div className="absolute inset-0 bg-black/55 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10 pointer-events-none">
                       <div className="w-12 h-12 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-xl shadow-rose-950/60 group-hover:scale-110 transition-transform">
                         <Play className="w-5 h-5 fill-white ml-0.5" />
                       </div>

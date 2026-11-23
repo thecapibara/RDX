@@ -8,7 +8,6 @@ pub mod mpris;
 pub mod parser;
 pub mod storage;
 pub mod tmdb;
-pub mod turbo;
 
 use std::sync::Arc;
 use client::{default_cookie_path, HttpClient, PersistentCookieStore};
@@ -39,16 +38,9 @@ pub fn run() {
 
     let mpris = Arc::new(MprisState::new());
     let downloader = Arc::new(downloader::DownloadManager::new(storage.clone()));
-    let turbo = Arc::new(turbo::TurboServer::new(client.get_reqwest_client()));
     let tmdb = Arc::new(tmdb::TmdbService::new());
-    let turbo_spawn = turbo.clone();
-    tauri::async_runtime::spawn(async move {
-        if let Err(e) = turbo_spawn.start().await {
-            eprintln!("[RDX Turbo] Server start warning: {}", e);
-        }
-    });
 
-    let state = AppState { storage, client, mpris, downloader, turbo, tmdb };
+    let state = AppState { storage, client, mpris, downloader, tmdb };
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -75,12 +67,15 @@ pub fn run() {
             {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.with_webview(|webview| {
-                        use webkit2gtk::{SettingsExt, WebViewExt};
+                        use webkit2gtk::{SettingsExt, WebContextExt, WebViewExt};
                         let wk = webview.inner();
                         if let Some(settings) = wk.settings() {
                             settings.set_enable_smooth_scrolling(true);
-                            settings.set_enable_page_cache(true);
+                            settings.set_enable_page_cache(false);
                             settings.set_media_playback_requires_user_gesture(false);
+                        }
+                        if let Some(ctx) = wk.context() {
+                            ctx.set_cache_model(webkit2gtk::CacheModel::DocumentViewer);
                         }
                     });
                 }
@@ -133,8 +128,6 @@ pub fn run() {
             commands::clear_mpris_state,
             commands::play_startup_sound,
             commands::play_ui_sound,
-            commands::get_turbo_stream_url,
-            commands::get_turbo_stats,
             commands::select_fastest_cdn,
             commands::get_backdrop,
             commands::get_tmdb_recommendations,
