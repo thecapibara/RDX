@@ -446,10 +446,11 @@ impl RezkaParser {
 
         // Seasons tabs (.b-simple_season__item matches both <li> and <a>)
         let mut seasons: Vec<SeasonTab> = Vec::new();
+        let mut seen_seasons: std::collections::HashSet<&str> = std::collections::HashSet::new();
         for elem in document.select(&SEASON_SEL) {
             let tab_id = elem.value().attr("data-tab_id").unwrap_or_default();
-            let title = elem.text().collect::<Vec<_>>().join(" ").trim().to_string();
-            if !tab_id.is_empty() && !seasons.iter().any(|s| s.id == tab_id) {
+            if !tab_id.is_empty() && seen_seasons.insert(tab_id) {
+                let title = elem.text().collect::<Vec<_>>().join(" ").trim().to_string();
                 seasons.push(SeasonTab {
                     id: tab_id.to_string(),
                     title,
@@ -459,15 +460,16 @@ impl RezkaParser {
 
         // Episodes tabs (.b-simple_episode__item matches both <li> and <a>)
         let mut episodes: Vec<EpisodeTab> = Vec::new();
+        let mut seen_episodes: std::collections::HashSet<(&str, &str)> = std::collections::HashSet::new();
         for elem in document.select(&EPISODE_SEL) {
             let season_id = elem.value().attr("data-season_id").unwrap_or_default();
             let episode_id = elem.value().attr("data-episode_id").unwrap_or_default();
-            let ep_title = elem.text().collect::<Vec<_>>().join(" ").trim().to_string();
 
             if !season_id.is_empty()
                 && !episode_id.is_empty()
-                && !episodes.iter().any(|e| e.season_id == season_id && e.episode_id == episode_id)
+                && seen_episodes.insert((season_id, episode_id))
             {
+                let ep_title = elem.text().collect::<Vec<_>>().join(" ").trim().to_string();
                 episodes.push(EpisodeTab {
                     season_id: season_id.to_string(),
                     episode_id: episode_id.to_string(),
@@ -869,10 +871,11 @@ impl RezkaParser {
 
         if let Some(seasons_html) = json.get("seasons").and_then(|v| v.as_str()) {
             let doc = Html::parse_fragment(seasons_html);
+            let mut seen_seasons: std::collections::HashSet<&str> = std::collections::HashSet::new();
             for elem in doc.select(&SEASON_SEL) {
                 let tab_id = elem.value().attr("data-tab_id").unwrap_or_default();
-                let title = elem.text().collect::<Vec<_>>().join(" ").trim().to_string();
-                if !tab_id.is_empty() && !seasons.iter().any(|s| s.id == tab_id) {
+                if !tab_id.is_empty() && seen_seasons.insert(tab_id) {
+                    let title = elem.text().collect::<Vec<_>>().join(" ").trim().to_string();
                     seasons.push(SeasonTab {
                         id: tab_id.to_string(),
                         title,
@@ -883,14 +886,15 @@ impl RezkaParser {
 
         if let Some(episodes_html) = json.get("episodes").and_then(|v| v.as_str()) {
             let doc = Html::parse_fragment(episodes_html);
+            let mut seen_episodes: std::collections::HashSet<(&str, &str)> = std::collections::HashSet::new();
             for elem in doc.select(&EPISODE_SEL) {
                 let s_id = elem.value().attr("data-season_id").unwrap_or_default();
                 let ep_id = elem.value().attr("data-episode_id").unwrap_or_default();
-                let title = elem.text().collect::<Vec<_>>().join(" ").trim().to_string();
                 if !s_id.is_empty()
                     && !ep_id.is_empty()
-                    && !episodes.iter().any(|e| e.season_id == s_id && e.episode_id == ep_id)
+                    && seen_episodes.insert((s_id, ep_id))
                 {
+                    let title = elem.text().collect::<Vec<_>>().join(" ").trim().to_string();
                     episodes.push(EpisodeTab {
                         season_id: s_id.to_string(),
                         episode_id: ep_id.to_string(),
