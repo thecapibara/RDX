@@ -4,7 +4,6 @@ import {
   Play,
   Pause,
   Trash2,
-  RefreshCw,
   Search,
   HardDrive,
   CheckCircle2,
@@ -519,7 +518,7 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
           {/* Active status pill */}
           {(activeDownloadsCount > 0 || queuedDownloadsCount > 0) && (
             <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400 font-semibold">
-              <RefreshCw className={cn("w-3.5 h-3.5", activeDownloadsCount > 0 && "animate-spin")} />
+              <Download className="w-3.5 h-3.5" />
               <span>
                 {activeDownloadsCount > 0 ? `${activeDownloadsCount} активні` : "В черзі"}
                 {queuedDownloadsCount > 0 && ` • ${queuedDownloadsCount} очікують`}
@@ -686,7 +685,7 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                   {/* Poster Box */}
                   <div
                     onClick={(e) => toggleSeriesExpand(key, e)}
-                    className="relative aspect-[2/3] w-full overflow-hidden rounded-2xl bg-zinc-900 border border-white/10 group-hover:border-rose-500/50 transition-all duration-200 group-hover:scale-[1.025] transform-gpu shadow-lg shadow-black/40 cursor-pointer"
+                    className="relative aspect-[2/3] w-full overflow-hidden rounded-2xl bg-zinc-900 border border-white/10 group-hover:border-rose-500/50 transition-all duration-200 group-hover:scale-[1.025] shadow-lg shadow-black/40 cursor-pointer"
                   >
                     <img
                       src={group.posterUrl}
@@ -719,8 +718,8 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                           <span>Всі готові</span>
                         </span>
                       ) : group.downloadingCount > 0 ? (
-                        <span className="flex items-center gap-1 bg-rose-600/95 text-white px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm animate-pulse">
-                          <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                        <span className="flex items-center gap-1 bg-rose-600/95 text-white px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm">
+                          <Download className="w-2.5 h-2.5" />
                           <span>{percent}%</span>
                         </span>
                       ) : (
@@ -832,7 +831,7 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                                       </span>
                                     ) : epDownloading ? (
                                       <span className="text-rose-400 font-semibold flex items-center gap-0.5">
-                                        <RefreshCw className="w-2.5 h-2.5 animate-spin" /> {epPercent}%
+                                        <Download className="w-2.5 h-2.5" /> {epPercent}%
                                       </span>
                                     ) : epQueued ? (
                                       <span className="text-amber-400 font-semibold flex items-center gap-0.5">
@@ -961,7 +960,7 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                 )}
               >
                 {/* 2:3 Vertical Poster Container */}
-                <div className="relative aspect-[2/3] w-full overflow-hidden rounded-2xl bg-zinc-900 border border-white/10 group-hover:border-rose-500/50 transition-all duration-200 group-hover:scale-[1.025] transform-gpu shadow-lg shadow-black/40">
+                <div className="relative aspect-[2/3] w-full overflow-hidden rounded-2xl bg-zinc-900 border border-white/10 group-hover:border-rose-500/50 transition-all duration-200 group-hover:scale-[1.025] shadow-lg shadow-black/40">
                   <img
                     src={item.poster_url}
                     alt={item.title}
@@ -1008,8 +1007,8 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                         <span>Готово</span>
                       </span>
                     ) : isDownloading ? (
-                      <span className="flex items-center gap-1 bg-rose-600/95 text-white px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm animate-pulse">
-                        <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                      <span className="flex items-center gap-1 bg-rose-600/95 text-white px-2 py-0.5 rounded-md text-[10px] font-bold shadow-sm">
+                        <Download className="w-2.5 h-2.5" />
                         <span>{percent}%</span>
                       </span>
                     ) : item.status === "queued" ? (

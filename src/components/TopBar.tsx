@@ -258,7 +258,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             activeTab === "downloads"
               ? "text-rose-500"
               : activeDownloadsCount && activeDownloadsCount > 0
-              ? "text-amber-400 animate-pulse"
+              ? "text-amber-400"
               : "text-zinc-300 hover:text-white"
           )}
         >

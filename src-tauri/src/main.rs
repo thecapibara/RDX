@@ -32,11 +32,23 @@ fn main() {
         // GBM/DMABUF leaks `drm-total-system0` (~250 MB/min -> 16+ GB in Shmem/zram), whereas
         // `WEBKIT_DMABUF_RENDERER_FORCE_SHM=1` keeps accelerated compositing & smooth threaded
         // scrolling enabled while routing frame transport over SHM with 0 DRM buffer leaks.
-        if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()
-            && std::env::var_os("WEBKIT_DMABUF_RENDERER_FORCE_SHM").is_none()
-        {
-            unsafe {
-                std::env::set_var("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1");
+        // Also disable GBM pool initialization for DMABUF renderer & WebGL so WebKitWebProcess
+        // skips opening `/dev/dri/renderD128` GBM buffer allocations.
+        if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+            if std::env::var_os("WEBKIT_DMABUF_RENDERER_FORCE_SHM").is_none() {
+                unsafe {
+                    std::env::set_var("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1");
+                }
+            }
+            if std::env::var_os("WEBKIT_DMABUF_RENDERER_DISABLE_GBM").is_none() {
+                unsafe {
+                    std::env::set_var("WEBKIT_DMABUF_RENDERER_DISABLE_GBM", "1");
+                }
+            }
+            if std::env::var_os("WEBKIT_WEBGL_DISABLE_GBM").is_none() {
+                unsafe {
+                    std::env::set_var("WEBKIT_WEBGL_DISABLE_GBM", "1");
+                }
             }
         }
 
@@ -53,23 +65,37 @@ fn main() {
             }
         }
 
-        // Since software `avdec_h264` is already prioritized, disabling GStreamer's DMABUF video sink
-        // prevents GStreamer from leaking DRM/DMABUF surface pools without affecting UI scrolling.
+        // Both `WEBKIT_GST_DMABUF_SINK_DISABLED=1` and `WEBKIT_GST_DISABLE_GL_SINK=1` are required:
+        // disabling only the DMABUF sink causes WebKitGTK to fall back to `createVideoSinkGL()`
+        // (`WebKitGLVideoSink` / `gstglcontext`), which uploads every `avdec_h264` I420 frame into
+        // Mesa `i915.gem` YUV textures and leaks cross-context `GstGLMemory` / `EGLImage` BOs
+        // (~250 MB/min -> 13+ GB in Shmem/zram). Disabling the GL sink forces WebKitGTK's clean
+        // CPU `AppSink` path with zero `gstglcontext` and zero DRM buffer allocations.
         if std::env::var_os("WEBKIT_GST_DMABUF_SINK_DISABLED").is_none() {
             unsafe {
                 std::env::set_var("WEBKIT_GST_DMABUF_SINK_DISABLED", "1");
             }
         }
+        if std::env::var_os("WEBKIT_GST_DISABLE_GL_SINK").is_none() {
+            unsafe {
+                std::env::set_var("WEBKIT_GST_DISABLE_GL_SINK", "1");
+            }
+        }
 
-        // 4. Scale Skia GPU painting threads dynamically by CPU core count (1 thread on 2-core Lubuntu/LXDE
-        // netbooks to avoid thread contention, up to 4 threads on modern multi-core CPUs).
-        if std::env::var_os("WEBKIT_SKIA_GPU_PAINTING_THREADS").is_none() {
+        // 4. Enable Skia CPU tile rendering to eliminate `SkiaGPUWorker` GL contexts (`GrDirectContext`
+        // `i915.gem` caches) and redundant CPU->GPU->CPU tile round-trips under SHM frame transport.
+        if std::env::var_os("WEBKIT_SKIA_ENABLE_CPU_RENDERING").is_none() {
+            unsafe {
+                std::env::set_var("WEBKIT_SKIA_ENABLE_CPU_RENDERING", "1");
+            }
+        }
+        if std::env::var_os("WEBKIT_SKIA_CPU_PAINTING_THREADS").is_none() {
             let cores = std::thread::available_parallelism()
                 .map(|n| n.get())
                 .unwrap_or(2);
-            let skia_threads = (cores / 2).clamp(1, 4);
+            let skia_threads = (cores / 2).clamp(1, 2);
             unsafe {
-                std::env::set_var("WEBKIT_SKIA_GPU_PAINTING_THREADS", skia_threads.to_string());
+                std::env::set_var("WEBKIT_SKIA_CPU_PAINTING_THREADS", skia_threads.to_string());
             }
         }
     }

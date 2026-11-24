@@ -62,7 +62,7 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
     >
       <div
         onClick={handleResumeClick}
-        className="relative aspect-[2/3] w-full overflow-hidden rounded-2xl bg-zinc-900 border border-white/10 shadow-md transition-transform duration-200 ease-out transform-gpu group-hover:scale-[1.025] group-hover:border-rose-500/50"
+        className="relative aspect-[2/3] w-full overflow-hidden rounded-2xl bg-zinc-900 border border-white/10 shadow-md transition-transform duration-200 ease-out group-hover:scale-[1.025] group-hover:border-rose-500/50"
       >
         <img
           src={item.poster_url}
@@ -101,7 +101,7 @@ export const ContinueWatchingCard: React.FC<ContinueWatchingCardProps> = React.m
           >
             {downloadInfo.status === "downloading" ? (
               <>
-                <ArrowDownCircle className="w-3 h-3 animate-pulse text-rose-500 shrink-0" />
+                <ArrowDownCircle className="w-3 h-3 text-rose-500 shrink-0" />
                 <span className="text-[10px] font-bold tracking-tight">
                   {downloadInfo.progress}%
                 </span>

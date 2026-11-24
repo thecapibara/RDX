@@ -72,10 +72,10 @@ export const MediaCard: React.FC<MediaCardProps> = React.memo(({
         className
       )}
     >
-      {/* Poster 2:3 container — flat single-layer composite on idle, hardware scale only on hover */}
+      {/* Poster 2:3 container — flat single-layer composite on idle */}
       <div
         className={cn(
-          "relative aspect-[2/3] w-full overflow-hidden rounded-2xl bg-zinc-900 border transition-transform duration-150 ease-out group-hover:scale-[1.025] transform-gpu",
+          "relative aspect-[2/3] w-full overflow-hidden rounded-2xl bg-zinc-900 border transition-transform duration-150 ease-out group-hover:scale-[1.025]",
           card.is_current_part
             ? "border-rose-500 ring-2 ring-rose-500/40"
             : "border-white/10 group-hover:border-rose-500/50"
@@ -166,7 +166,7 @@ export const MediaCard: React.FC<MediaCardProps> = React.memo(({
           >
             {downloadInfo.status === "downloading" ? (
               <>
-                <ArrowDownCircle className="w-3.5 h-3.5 animate-pulse text-rose-500 group-hover/badge:rotate-12 transition-transform shrink-0" />
+                <ArrowDownCircle className="w-3.5 h-3.5 text-rose-500 group-hover/badge:rotate-12 transition-transform shrink-0" />
                 <span className="text-[11px] font-bold tracking-tight">
                   {downloadInfo.progress}%
                 </span>

@@ -749,7 +749,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                                 className={cn(
                                   "w-2 h-2 rounded-full",
                                   activeSt?.online
-                                    ? "bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400"
+                                    ? "bg-emerald-400 shadow-sm shadow-emerald-400"
                                     : activeSt
                                     ? "bg-rose-500"
                                     : "bg-zinc-600"

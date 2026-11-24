@@ -90,13 +90,18 @@ export default function App() {
   const activeDownloadsCountRef = useRef(0);
   activeDownloadsCountRef.current = activeDownloadsCount;
 
-  // Listen to download progress & track active downloads count
+  // Listen to download progress & track active downloads count (throttled to avoid IPC flood)
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
+    let isMounted = true;
+    const unlisteners: (() => void)[] = [];
+    let progressThrottleTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastCheckAt = 0;
 
     const checkActiveDownloads = async () => {
+      lastCheckAt = performance.now();
       try {
         const items = await api.getDownloads();
+        if (!isMounted) return;
         downloadsStore.updateFromItems(items);
         const active = items.filter(
           (i) => i.status === "downloading" || i.status === "queued"
@@ -106,15 +111,38 @@ export default function App() {
       } catch {}
     };
 
+    const scheduleThrottledCheck = () => {
+      const elapsed = performance.now() - lastCheckAt;
+      if (elapsed >= 1500) {
+        if (progressThrottleTimer) {
+          clearTimeout(progressThrottleTimer);
+          progressThrottleTimer = null;
+        }
+        checkActiveDownloads();
+      } else if (!progressThrottleTimer) {
+        progressThrottleTimer = setTimeout(() => {
+          progressThrottleTimer = null;
+          if (isMounted) checkActiveDownloads();
+        }, 1500 - elapsed);
+      }
+    };
+
     checkActiveDownloads();
 
     if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
       import("@tauri-apps/api/event").then(({ listen }) => {
-        listen("download://progress", () => {
-          checkActiveDownloads();
-        }).then((u) => {
-          unlisten = u;
-        });
+        const bind = (eventName: string, handler: () => void) => {
+          listen(eventName, handler).then((u) => {
+            if (isMounted) {
+              unlisteners.push(u);
+            } else {
+              u();
+            }
+          });
+        };
+        bind("download://progress", scheduleThrottledCheck);
+        bind("download://complete", checkActiveDownloads);
+        bind("download://reload", checkActiveDownloads);
       });
     }
 
@@ -132,9 +160,11 @@ export default function App() {
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
+      isMounted = false;
       clearInterval(interval);
+      if (progressThrottleTimer) clearTimeout(progressThrottleTimer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      if (unlisten) unlisten();
+      unlisteners.forEach((u) => u());
     };
   }, []);
 
@@ -214,11 +244,14 @@ export default function App() {
     }
   }, [activeTab, activeGenre, activeSort, categoryPage]);
 
+  const loadCatalogRef = useRef(loadCatalog);
+  loadCatalogRef.current = loadCatalog;
+
   useEffect(() => {
     loadCatalog();
   }, [loadCatalog]);
 
-  // Load initial settings and mirror status (Happy Eyeballs Startup & Auto-Pilot)
+  // Load initial settings and mirror status once on mount (Happy Eyeballs Startup & Auto-Pilot)
   const initializeApp = useCallback(async () => {
     try {
       const s = await api.getSettings();
@@ -257,7 +290,7 @@ export default function App() {
                 setMirrorStatus(bestStatus);
               }
               if (rot.switched) {
-                loadCatalog();
+                loadCatalogRef.current();
               }
             }
           } catch (e) {
@@ -275,7 +308,7 @@ export default function App() {
     } catch (e) {
       console.warn("Failed to get initial settings:", e);
     }
-  }, [loadCatalog]);
+  }, []);
 
   useEffect(() => {
     initializeApp();
@@ -795,7 +828,9 @@ export default function App() {
   const handleMoreSeries = useCallback(() => handleTabChange("series"), [handleTabChange]);
   const handleMoreCartoons = useCallback(() => handleTabChange("cartoons"), [handleTabChange]);
 
-  const isBackgroundHidden = isDetailsOpen || Boolean(activePlayerDetails && playerMode === "full");
+  const isBackgroundHidden =
+    isDetailsOpen ||
+    Boolean(activePlayerDetails && (playerMode === "full" || playerMode === "os_pip"));
 
   // Close Video Player
   const handleClosePlayer = useCallback(() => {
@@ -922,6 +957,7 @@ export default function App() {
                 items={featuredHeroItems}
                 onPlay={handleDirectPlay}
                 onOpenDetails={handleOpenDetails}
+                paused={Boolean(activePlayerDetails)}
               />
 
               {/* Special "Продовжити перегляд" Swimlane */}

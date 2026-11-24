@@ -1131,17 +1131,16 @@ export const MediaDetailsModal: React.FC<MediaDetailsModalProps> = ({
           <div className="relative z-30 min-h-[58vh] sm:min-h-[66vh] w-full flex flex-col justify-end">
             {/* Background Backdrop Wrapper (overflow-hidden only here so voiceover dropdown is not clipped) */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
-              {/* Base HDRezka fallback layer (always rendered) */}
-              <img
-                src={fallbackPoster}
-                alt=""
-                aria-hidden="true"
-                decoding="async"
-                className={cn(
-                  "w-full h-full object-cover object-right blur-[6px] scale-105 transition-opacity duration-500",
-                  backdropUrl && backdropLoaded ? "opacity-0" : "opacity-50"
-                )}
-              />
+              {/* Base HDRezka fallback layer (unmounted once high-res backdrop finishes loading) */}
+              {!(backdropUrl && backdropLoaded) && (
+                <img
+                  src={fallbackPoster}
+                  alt=""
+                  aria-hidden="true"
+                  decoding="async"
+                  className="w-full h-full object-cover object-right blur-[6px] scale-105 opacity-50 transition-opacity duration-500"
+                />
+              )}
               {/* High-res TMDB backdrop layer */}
               {backdropUrl && (
                 <img

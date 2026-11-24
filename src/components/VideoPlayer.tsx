@@ -184,6 +184,8 @@ function parseVttCues(vttContent: string, baseUrl: string): ThumbnailCue[] {
   return cues;
 }
 
+const STATIC_PLAYER_ANIMATE = { x: 0, y: 0 };
+
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   details,
   initialStreams,
@@ -486,6 +488,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const handleMiniMouseMove = useCallback(() => {
     setMiniControlsVisible(true);
+    if (videoRef.current && Number.isFinite(videoRef.current.currentTime)) {
+      const t = videoRef.current.currentTime;
+      setCurrentTime((prev) => (Math.abs(t - prev) >= 0.25 ? t : prev));
+    }
     if (miniHideTimerRef.current) clearTimeout(miniHideTimerRef.current);
     if (isPlaying) {
       miniHideTimerRef.current = setTimeout(() => {
@@ -805,19 +811,26 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     shaderRendererRef.current.start();
   }, [videoEnhanceMode, streamData]);
 
+  // Sync live timestamp immediately when Stream Info overlay opens
+  useEffect(() => {
+    if (showMediaInfo && videoRef.current && Number.isFinite(videoRef.current.currentTime)) {
+      setCurrentTime(videoRef.current.currentTime);
+    }
+  }, [showMediaInfo]);
+
   // Real-time video decoder framerate monitor for Stream Info overlay when shaders are off
   useEffect(() => {
     if (!showMediaInfo || videoEnhanceMode !== "off" || !isPlaying) return;
 
+    const videoEl = videoRef.current as any;
+    const hasRvfc = Boolean(videoEl && typeof videoEl.requestVideoFrameCallback === "function");
+
     let frameCount = 0;
     let lastTime = performance.now();
     let animId: number | null = null;
+    let rvfcId: number | null = null;
 
-    const measureFps = () => {
-      if (document.hidden) {
-        animId = null;
-        return;
-      }
+    const recordTick = () => {
       frameCount++;
       const now = performance.now();
       const elapsed = (now - lastTime) / 1000;
@@ -827,30 +840,63 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         frameCount = 0;
         lastTime = now;
       }
+    };
+
+    const measureRvfc = () => {
+      if (document.hidden) {
+        rvfcId = null;
+        return;
+      }
+      recordTick();
+      rvfcId = videoEl.requestVideoFrameCallback(measureRvfc);
+    };
+
+    const measureFps = () => {
+      if (document.hidden) {
+        animId = null;
+        return;
+      }
+      recordTick();
       animId = requestAnimationFrame(measureFps);
+    };
+
+    const startMonitor = () => {
+      frameCount = 0;
+      lastTime = performance.now();
+      if (hasRvfc) {
+        if (rvfcId === null) rvfcId = videoEl.requestVideoFrameCallback(measureRvfc);
+      } else if (animId === null) {
+        animId = requestAnimationFrame(measureFps);
+      }
+    };
+
+    const stopMonitor = () => {
+      if (rvfcId !== null && typeof videoEl?.cancelVideoFrameCallback === "function") {
+        videoEl.cancelVideoFrameCallback(rvfcId);
+        rvfcId = null;
+      }
+      if (animId !== null) {
+        cancelAnimationFrame(animId);
+        animId = null;
+      }
     };
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        if (animId !== null) {
-          cancelAnimationFrame(animId);
-          animId = null;
-        }
-      } else if (animId === null) {
-        frameCount = 0;
-        lastTime = performance.now();
-        animId = requestAnimationFrame(measureFps);
+        stopMonitor();
+      } else {
+        startMonitor();
       }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     if (!document.hidden) {
-      animId = requestAnimationFrame(measureFps);
+      startMonitor();
     }
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      if (animId !== null) cancelAnimationFrame(animId);
+      stopMonitor();
     };
   }, [showMediaInfo, isPlaying, videoEnhanceMode]);
 
@@ -957,12 +1003,19 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       canvas.width = video.videoWidth || 1920;
       canvas.height = video.videoHeight || 1080;
       const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+      if (!ctx) {
+        canvas.width = 0;
+        canvas.height = 0;
+        return;
+      }
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const url = canvas.toDataURL("image/png");
+      canvas.width = 0;
+      canvas.height = 0;
       const a = document.createElement("a");
       const cleanTitle = details.title.replace(/[^\w\sа-яіїєґА-ЯІЇЄҐ-]/gi, "").trim();
-      a.download = `rdx-${cleanTitle || "screenshot"}-${formatTime(currentTime).replace(/:/g, "-")}.png`;
+      const snapTime = Number.isFinite(video.currentTime) ? video.currentTime : 0;
+      a.download = `rdx-${cleanTitle || "screenshot"}-${formatTime(snapTime).replace(/:/g, "-")}.png`;
       a.href = url;
       document.body.appendChild(a);
       a.click();
@@ -1490,6 +1543,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
+      if (video.hasAttribute("src")) {
+        try {
+          video.pause();
+          video.removeAttribute("src");
+          video.load();
+        } catch {}
+      }
 
       if (Hls.isSupported()) {
         let mediaErrorRecovered = false;
@@ -1507,12 +1567,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           enableWorker: true,
           lowLatencyMode: false,
           startPosition: prevTime > 0 ? prevTime : -1,
-          maxBufferLength: turboBufferEnabled ? 300 : 60,
-          maxMaxBufferLength: turboBufferEnabled ? 600 : 120,
-          backBufferLength: turboBufferEnabled ? 120 : 60,
+          maxBufferLength: turboBufferEnabled ? 90 : 45,
+          maxMaxBufferLength: turboBufferEnabled ? 180 : 90,
+          backBufferLength: 30,
           progressive: true,
           maxBufferHole: 1.2,
-          highBufferWatchdogPeriod: 1,
+          highBufferWatchdogPeriod: 2,
           nudgeOffset: 0.2,
           nudgeMaxRetry: 10,
         });
@@ -1621,6 +1681,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
+      try {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+      } catch {}
     };
   }, [
     selectedQuality,
@@ -1634,6 +1699,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   ]);
 
   // Auto-save watch progress every 5 seconds & on unmount
+  const lastSavedProgressKeyRef = useRef<string>("");
   const saveCurrentProgress = useCallback(() => {
     if (!videoRef.current) return;
     const time = videoRef.current.currentTime;
@@ -1642,12 +1708,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     const posSec = Math.floor(time);
     const durSec = Math.floor(dur);
+    const saveKey = `${details.id}|${currentTranslator?.id || ""}|${activeSeason || 0}|${activeEpisode || 0}|${posSec}`;
+    if (lastSavedProgressKeyRef.current === saveKey) {
+      return;
+    }
+    lastSavedProgressKeyRef.current = saveKey;
 
     if (isSeries && activeSeason && activeEpisode) {
+      const epKey = `${activeSeason}-${activeEpisode}`;
       setEpisodeProgressMap((prev) => {
+        if (prev[epKey]?.position_sec === posSec && prev[epKey]?.duration_sec === durSec) {
+          return prev;
+        }
         const next = {
           ...prev,
-          [`${activeSeason}-${activeEpisode}`]: {
+          [epKey]: {
             position_sec: posSec,
             duration_sec: durSec,
           },
@@ -1876,6 +1951,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // Controls activity timer
   const triggerActivity = () => {
     setShowControls(true);
+    if (videoRef.current && Number.isFinite(videoRef.current.currentTime)) {
+      const t = videoRef.current.currentTime;
+      setCurrentTime((prev) => (Math.abs(t - prev) >= 0.25 ? t : prev));
+    }
     if (hideControlsTimer.current) {
       clearTimeout(hideControlsTimer.current);
     }
@@ -2452,6 +2531,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }, [isSeries, seasons, drawerSeason, drawerSeasonEpisodes.length]);
 
   // ==================== RENDERING (UNIFIED SINGLE VIDEO TREE) ====================
+  const isTimeUiVisible =
+    (isMiniMode ? miniControlsVisible : showControls) ||
+    showMediaInfo ||
+    !isPlaying ||
+    Boolean(resumeNotice);
+
   return (
     <motion.div
       ref={containerRef}
@@ -2459,7 +2544,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       drag={mode === "docked"}
       dragMomentum={false}
       dragElastic={0.08}
-      animate={mode !== "docked" ? { x: 0, y: 0 } : undefined}
+      animate={mode !== "docked" ? STATIC_PLAYER_ANIMATE : undefined}
       onMouseMove={(e) => {
         if (mode === "full") {
           triggerActivity();
@@ -2558,8 +2643,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             if (!videoRef.current) return;
             setIsBuffering((prev) => (prev ? false : prev));
             const time = videoRef.current.currentTime;
-            if (!isDraggingSeek && Number.isFinite(time)) {
-              const minUiDelta = showControls || showMediaInfo ? 0.25 : 0.9;
+            if (!isDraggingSeek && isTimeUiVisible && Number.isFinite(time)) {
+              const minUiDelta = showMediaInfo ? 0.25 : 0.5;
               setCurrentTime((prev) =>
                 Math.abs(time - prev) >= minUiDelta ? time : prev
               );
@@ -2599,6 +2684,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onPause={() => {
             if (isSeekingRef.current || videoRef.current?.seeking) {
               return;
+            }
+            if (videoRef.current && Number.isFinite(videoRef.current.currentTime)) {
+              setCurrentTime(videoRef.current.currentTime);
             }
             setIsPlaying(false);
             syncMprisState(true, false);

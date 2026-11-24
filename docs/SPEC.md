@@ -90,3 +90,11 @@ flowchart LR
     MirrorMgr --> Http
     Http <-->|"HTTPS (rezka-tv.org / Mirror)"| Remote["HDRezka Mirrors & CDN"]
 ```
+
+---
+
+## 4. Linux WebKitGTK Runtime & Memory Safeguards (`src-tauri/src/main.rs`)
+To prevent Wayland DRM/GBM (`i915.gem` / `drm-total-system0`) Shmem leaks and excessive `WebKitWebProcess` CPU usage on Linux (especially Intel Iris Xe / Wayland AppImage builds):
+- **GStreamer CPU Sink Path**: Sets both `WEBKIT_GST_DMABUF_SINK_DISABLED=1` and `WEBKIT_GST_DISABLE_GL_SINK=1` alongside software `avdec_h264:MAX`, preventing fallback to `WebKitGLVideoSink` (`gstglcontext`) that otherwise leaks `i915.gem` YUV textures into Shmem/zram.
+- **SHM Transport & GBM Disable**: Sets `WEBKIT_DMABUF_RENDERER_FORCE_SHM=1`, `WEBKIT_DMABUF_RENDERER_DISABLE_GBM=1`, and `WEBKIT_WEBGL_DISABLE_GBM=1` on non-NVIDIA Linux GPUs (NVIDIA uses `WEBKIT_DISABLE_DMABUF_RENDERER=1`).
+- **Skia CPU Tile Rendering**: Sets `WEBKIT_SKIA_ENABLE_CPU_RENDERING=1` and bounded `WEBKIT_SKIA_CPU_PAINTING_THREADS` (`1–2` threads) to avoid `SkiaGPUWorker` GL contexts and GPU->CPU tile readbacks under SHM transport.

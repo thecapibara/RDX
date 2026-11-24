@@ -301,6 +301,9 @@ export class VideoShaderRenderer {
           return;
         }
         this.newVideoFrameAvailable = true;
+        if (!document.hidden && this.mode !== "off" && this.animFrameId === null) {
+          this.animFrameId = requestAnimationFrame(this.renderLoop);
+        }
         this.rvfcId = vid.requestVideoFrameCallback(onFrame);
       };
       this.rvfcId = vid.requestVideoFrameCallback(onFrame);
@@ -354,7 +357,8 @@ export class VideoShaderRenderer {
     ) {
       this.fpsFrameCount = 0;
       this.lastFpsTime = performance.now();
-      this.renderLoop();
+      this.setupRvfc();
+      this.animFrameId = requestAnimationFrame(this.renderLoop);
     }
   };
 
@@ -376,7 +380,8 @@ export class VideoShaderRenderer {
     ) {
       this.fpsFrameCount = 0;
       this.lastFpsTime = performance.now();
-      this.renderLoop();
+      this.setupRvfc();
+      this.animFrameId = requestAnimationFrame(this.renderLoop);
     }
   };
 
@@ -400,7 +405,7 @@ export class VideoShaderRenderer {
     if (this.mode === "off" || this.isDestroyed) {
       return;
     }
-    if (this.isRunning && this.animFrameId !== null) {
+    if (this.isRunning && (this.animFrameId !== null || this.rvfcId !== null)) {
       return;
     }
     this.isRunning = true;
@@ -410,7 +415,9 @@ export class VideoShaderRenderer {
     this.lastFpsTime = performance.now();
     this.attachListeners();
     this.setupRvfc();
-    this.renderLoop();
+    if (this.animFrameId === null && !document.hidden) {
+      this.animFrameId = requestAnimationFrame(this.renderLoop);
+    }
   }
 
   public stop() {
@@ -424,6 +431,7 @@ export class VideoShaderRenderer {
   }
 
   private renderLoop = () => {
+    this.animFrameId = null;
     if (
       !this.isRunning ||
       this.isDestroyed ||
@@ -432,28 +440,16 @@ export class VideoShaderRenderer {
       this.video.paused ||
       this.video.ended
     ) {
-      this.animFrameId = null;
       return;
     }
 
-    // Track real-time compositor framerate smoothly over a 750ms sliding window
-    this.fpsFrameCount++;
-    const now = performance.now();
-    const elapsed = now - this.lastFpsTime;
-    if (elapsed >= 750) {
-      const nextFps = Math.round((this.fpsFrameCount * 1000) / elapsed);
-      this.fpsFrameCount = 0;
-      this.lastFpsTime = now;
-      if (this.fps !== nextFps) {
-        this.fps = nextFps;
-        if (this.onFpsUpdate) {
-          this.onFpsUpdate(nextFps);
-        }
-      }
-    }
-
     this.renderFrame();
-    this.animFrameId = requestAnimationFrame(this.renderLoop);
+
+    // When requestVideoFrameCallback is active, it schedules the next rAF only when a new
+    // decoded film frame arrives. Keep continuous rAF only as a fallback when rVFC is absent.
+    if (this.rvfcId === null) {
+      this.animFrameId = requestAnimationFrame(this.renderLoop);
+    }
   };
 
   private ensureTextureAllocation(width: number, height: number): boolean {
@@ -514,27 +510,29 @@ export class VideoShaderRenderer {
       }
     }
 
+    if (!isNewFrame) {
+      return;
+    }
+
     gl.useProgram(this.program);
 
     // Update texture pixels IN-PLACE ONLY when video actually advances a film frame
-    if (isNewFrame) {
-      gl.bindTexture(gl.TEXTURE_2D, this.texture);
-      try {
-        gl.texSubImage2D(
-          gl.TEXTURE_2D,
-          0,
-          0,
-          0,
-          gl.RGBA,
-          gl.UNSIGNED_BYTE,
-          this.video
-        );
-        this.lastRenderedTime = curTime;
-        this.newVideoFrameAvailable = false;
-      } catch {
-        if (this.onFrameError) this.onFrameError();
-        return;
-      }
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    try {
+      gl.texSubImage2D(
+        gl.TEXTURE_2D,
+        0,
+        0,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        this.video
+      );
+      this.lastRenderedTime = curTime;
+      this.newVideoFrameAvailable = false;
+    } catch {
+      if (this.onFrameError) this.onFrameError();
+      return;
     }
 
     // Set uniforms
@@ -550,13 +548,27 @@ export class VideoShaderRenderer {
     gl.uniform1f(this.uSharpnessLoc, this.sharpness);
     gl.uniform1f(this.uDebandThresholdLoc, this.debandThreshold);
 
-    // Draw full-screen quad on every VSync tick (runs at 0.02ms on GPU using cached texture)
+    // Draw full-screen quad only when a new video frame arrived (avoids 60Hz SHM readback on 24fps VOD)
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-    if (this.onFrameSuccess) {
-      if (!this.hasReportedSuccess) {
-        this.hasReportedSuccess = true;
+    // Track actual rendered video frames smoothly over a 750ms sliding window
+    this.fpsFrameCount++;
+    const now = performance.now();
+    const elapsed = now - this.lastFpsTime;
+    if (elapsed >= 750) {
+      const nextFps = Math.round((this.fpsFrameCount * 1000) / elapsed);
+      this.fpsFrameCount = 0;
+      this.lastFpsTime = now;
+      if (this.fps !== nextFps) {
+        this.fps = nextFps;
+        if (this.onFpsUpdate) {
+          this.onFpsUpdate(nextFps);
+        }
       }
+    }
+
+    if (this.onFrameSuccess && !this.hasReportedSuccess) {
+      this.hasReportedSuccess = true;
       this.onFrameSuccess();
     }
   }

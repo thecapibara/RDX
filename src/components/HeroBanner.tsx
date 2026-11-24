@@ -13,6 +13,7 @@ interface HeroBannerProps {
   onOpenDetails: (media: MediaCard) => void;
   onToggleBookmark?: (media: MediaCard) => void;
   isBookmarked?: boolean;
+  paused?: boolean;
 }
 
 const ROTATION_INTERVAL_MS = 8000;
@@ -24,6 +25,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
   onOpenDetails,
   onToggleBookmark,
   isBookmarked = false,
+  paused = false,
 }) => {
   const slides = useMemo(() => {
     if (items && items.length > 0) return items.slice(0, 8);
@@ -108,10 +110,15 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
   const handleNext = useCallback(() => {
     if (slides.length <= 1) return;
     setCurrentIndex((prev) => (prev + 1) % slides.length);
+  }, [slides.length]);
+
+  const handleManualNext = useCallback(() => {
+    if (slides.length <= 1) return;
+    setCurrentIndex((prev) => (prev + 1) % slides.length);
     setSlideKey((k) => k + 1);
   }, [slides.length]);
 
-  const handlePrev = useCallback(() => {
+  const handleManualPrev = useCallback(() => {
     if (slides.length <= 1) return;
     setCurrentIndex((prev) => (prev - 1 + slides.length) % slides.length);
     setSlideKey((k) => k + 1);
@@ -123,14 +130,14 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
   }, []);
 
   useEffect(() => {
-    if (slides.length <= 1 || isHovered || !isVisible || !isPageActive) return;
+    if (slides.length <= 1 || isHovered || !isVisible || !isPageActive || paused) return;
 
     const timer = setInterval(() => {
       handleNext();
     }, ROTATION_INTERVAL_MS);
 
     return () => clearInterval(timer);
-  }, [slides.length, isHovered, isVisible, isPageActive, handleNext, slideKey]);
+  }, [slides.length, isHovered, isVisible, isPageActive, paused, handleNext, slideKey]);
 
   if (slides.length === 0) {
     return null;
@@ -167,7 +174,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
               src={currentBackdrop}
               alt={currentMedia.title}
               decoding="async"
-              className="w-full h-full object-cover object-center sm:object-[center_20%] opacity-90 transition-transform duration-1000 ease-out group-hover:scale-105 transform-gpu"
+              className="w-full h-full object-cover object-center sm:object-[center_20%] opacity-90 transition-transform duration-1000 ease-out group-hover:scale-105"
             />
             {/* Cinematic Edge Blends */}
             <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/85 via-40% to-transparent w-full" />
@@ -189,7 +196,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
               alt=""
               aria-hidden="true"
               decoding="async"
-              className="w-full h-full object-cover object-center opacity-40 blur-3xl scale-125 saturate-200 transform-gpu"
+              className="w-full h-full object-cover object-center opacity-40 blur-xl scale-110 saturate-150"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-base,#000000)] via-transparent to-transparent opacity-95" />
             <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-base,#000000)] via-[var(--bg-base,#000000)]/80 to-transparent w-full" />
@@ -286,10 +293,10 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
 
       {/* Subtle Slide Navigation Controls at Bottom Right */}
       {slides.length > 1 && (
-        <div className="absolute z-20 right-6 sm:right-10 bottom-10 flex items-center gap-3 transform-gpu">
+        <div className="absolute z-20 right-6 sm:right-10 bottom-10 flex items-center gap-3">
           <div className="flex items-center gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
             <button
-              onClick={handlePrev}
+              onClick={handleManualPrev}
               title="Попередній хіт"
               aria-label="Попередній хіт"
               className="w-8 h-8 rounded-full bg-zinc-900/90 hover:bg-zinc-800 border border-white/15 flex items-center justify-center text-white active:scale-90 transition-all cursor-pointer shadow-md"
@@ -297,7 +304,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
-              onClick={handleNext}
+              onClick={handleManualNext}
               title="Наступний хіт"
               aria-label="Наступний хіт"
               className="w-8 h-8 rounded-full bg-zinc-900/90 hover:bg-zinc-800 border border-white/15 flex items-center justify-center text-white active:scale-90 transition-all cursor-pointer shadow-md"
@@ -306,8 +313,8 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
             </button>
           </div>
 
-          {/* Clean Apple TV / Cinema Indicators (Zero-artifact GPU layout) */}
-          <div className="flex items-center gap-2 px-3 py-2 rounded-full bg-zinc-950/90 border border-white/10 shadow-xl transform-gpu">
+          {/* Clean Apple TV / Cinema Indicators (Zero-artifact layout) */}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-full bg-zinc-950/90 border border-white/10 shadow-xl">
             {slides.map((s, idx) => {
               const isActive = idx === currentIndex;
               return (
