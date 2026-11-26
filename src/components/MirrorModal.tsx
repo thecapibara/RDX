@@ -25,11 +25,14 @@ import {
   Maximize2,
   EyeOff,
   Tv,
+  FlaskConical,
 } from "lucide-react";
 import type { AppSettings, MirrorStatus } from "../types";
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
 import type { WindowControlsMode } from "./WindowControls";
+import { LabsSettingsPanel } from "./LabsSettingsPanel";
+import { useLabsSettings, countActiveLabsFeatures } from "../services/labs";
 import {
   getUiSoundsEnabled,
   setUiSoundsEnabled,
@@ -75,8 +78,10 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
 }) => {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<
-    "network" | "playback" | "appearance" | "about"
+    "network" | "playback" | "appearance" | "labs" | "about"
   >("network");
+  const labsState = useLabsSettings();
+  const activeLabsCount = countActiveLabsFeatures(labsState);
   const [preferredQuality, setPreferredQuality] = useState<string>("720p");
   const [preferredTranslator, setPreferredTranslator] = useState<string>("");
   const [customInput, setCustomInput] = useState("");
@@ -95,7 +100,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
         if (found) {
           setUpdateCheckResult("Знайдено оновлення! Відкрито вікно встановлення.");
         } else {
-          setUpdateCheckResult("У вас встановлено найновішу версію (v1.2.1)");
+          setUpdateCheckResult("У вас встановлено найновішу версію (v1.3.0)");
         }
       }
     } catch {
@@ -590,7 +595,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                   Налаштування RDX<span className="text-rose-500 text-lg leading-none">.</span>
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-white/5 border border-white/10 text-zinc-400">
-                  v1.2.1
+                  v1.3.0
                 </span>
               </div>
               <p className="text-xs text-zinc-400">
@@ -692,7 +697,48 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
               <span className="md:hidden text-xs font-bold">Вигляд</span>
             </button>
 
-            {/* Tab 4: About & Shortcuts */}
+            {/* Tab 4: RDX Labs (Experimental) */}
+            <button
+              onClick={() => setActiveModalTab("labs")}
+              className={cn(
+                "w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-left transition-all cursor-pointer flex-shrink-0",
+                activeModalTab === "labs"
+                  ? "bg-rose-600/15 text-white border-l-2 border-rose-500 shadow-inner font-bold"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-white/5 font-medium"
+              )}
+            >
+              <div
+                className={cn(
+                  "w-8 h-8 rounded-xl flex items-center justify-center transition-colors relative",
+                  activeModalTab === "labs"
+                    ? "bg-rose-500/20 text-rose-400"
+                    : labsState.isActive
+                    ? "bg-emerald-500/15 text-emerald-400"
+                    : "bg-white/5 text-zinc-400"
+                )}
+              >
+                <FlaskConical className="w-4 h-4" />
+                {labsState.isActive && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-zinc-950" />
+                )}
+              </div>
+              <div className="hidden md:block min-w-0">
+                <div className="text-xs font-bold leading-tight flex items-center gap-1.5">
+                  <span>Лабораторія</span>
+                  {labsState.isActive && (
+                    <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-mono">
+                      {activeLabsCount}
+                    </span>
+                  )}
+                </div>
+                <div className="text-[10px] text-zinc-500 font-normal mt-0.5 truncate">
+                  Frame Boost, Upscale, Ambilight
+                </div>
+              </div>
+              <span className="md:hidden text-xs font-bold">Labs</span>
+            </button>
+
+            {/* Tab 5: About & Shortcuts */}
             <button
               onClick={() => setActiveModalTab("about")}
               className={cn(
@@ -1676,7 +1722,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                       <h3 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-baseline">
                         RDX<span className="text-rose-500">.</span>
                         <span className="text-xs font-mono font-bold text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-full ml-2.5">
-                          v1.2.1
+                          v1.3.0
                         </span>
                       </h3>
                       <p className="text-xs text-zinc-300 mt-1 max-w-lg leading-relaxed">
@@ -1810,6 +1856,9 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                 </div>
               </div>
             )}
+
+            {/* ================= TAB 4: RDX LABS (EXPERIMENTAL) ================= */}
+            {activeModalTab === "labs" && <LabsSettingsPanel />}
           </div>
         </div>
       </div>
