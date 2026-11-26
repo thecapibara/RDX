@@ -34,6 +34,10 @@ import {
   Sparkles,
   Zap,
   AlertCircle,
+  FlaskConical,
+  Sun,
+  Mic,
+  BatteryCharging,
 } from "lucide-react";
 import type {
   MediaDetails,
@@ -46,7 +50,27 @@ import type {
 } from "../types";
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
-import { VideoEnhanceMode, VideoShaderRenderer } from "../utils/videoShaders";
+import {
+  VideoEnhanceMode,
+  VideoShaderRenderer,
+  type ResolvedUpscaleMode,
+} from "../utils/videoShaders";
+import {
+  useLabsSettings,
+  updateLabsSettings,
+  countActiveLabsFeatures,
+  type FrameBoostMode,
+  type SmartUpscaleMode,
+} from "../services/labs";
+import { AmbilightRenderer } from "../utils/ambilight";
+import { DialogueEnhancerController } from "../utils/dialogueEnhancer";
+import {
+  detectSeriesIntro,
+  saveSeasonIntro,
+  clearSeasonIntro,
+  getSavedSeasonIntro,
+  type IntroSegment,
+} from "../utils/introDetector";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
@@ -528,7 +552,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     open: boolean;
     x: number;
     y: number;
-    page: "main" | "translators" | "episodes" | "quality" | "speed" | "aspect" | "sleep" | "subtitles" | "boost" | "enhance";
+    page: "main" | "translators" | "episodes" | "quality" | "speed" | "aspect" | "sleep" | "subtitles" | "boost" | "enhance" | "labs";
   } | null>(null);
 
   // 1. True Fullscreen State & Sync
@@ -760,6 +784,52 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const shaderCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const shaderRendererRef = useRef<VideoShaderRenderer | null>(null);
 
+  // 6b. RDX Labs Experimental Pipeline (Master Kill-Switch controlled via `useLabsSettings`)
+  const labs = useLabsSettings();
+  const activeLabsCount = countActiveLabsFeatures(labs);
+  const [labsSplitCompare, setLabsSplitCompare] = useState(false);
+
+  useEffect(() => {
+    if (!labs.isActive) setLabsSplitCompare(false);
+  }, [labs.isActive]);
+
+  const isAnimatedContent = useMemo(() => {
+    const u = (details.url || "").toLowerCase();
+    if (u.includes("/animation/") || u.includes("/cartoons/")) return true;
+    return (details.info_table || []).some(
+      ([k, v]) =>
+        /жанр/i.test(k) && /(аніме|аниме|мультфільм|мультфильм)/i.test(v)
+    );
+  }, [details.url, details.info_table]);
+
+  const resolvedUpscaleMode: ResolvedUpscaleMode = useMemo(() => {
+    if (labs.smartUpscale === "off") return "off";
+    if (labs.smartUpscale === "auto") {
+      return isAnimatedContent ? "anime" : "cinema";
+    }
+    return labs.smartUpscale;
+  }, [labs.smartUpscale, isAnimatedContent]);
+
+  const effectiveEnhanceMode: VideoEnhanceMode = labs.ecoActive ? "off" : videoEnhanceMode;
+  const isShaderPipelineActive =
+    effectiveEnhanceMode !== "off" ||
+    resolvedUpscaleMode !== "off" ||
+    labs.frameBoost !== "off";
+
+  // Cinema Ambilight state & refs
+  const ambilightCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const ambilightRendererRef = useRef<AmbilightRenderer | null>(null);
+  const [ambilightReady, setAmbilightReady] = useState(false);
+
+  // Dialogue Enhancer 2.0 ref
+  const dialogueControllerRef = useRef<DialogueEnhancerController | null>(null);
+
+  // Smart Series Intro Skip state & refs
+  const [introSegment, setIntroSegment] = useState<IntroSegment | null>(null);
+  const [isInIntroWindow, setIsInIntroWindow] = useState(false);
+  const [introDismissed, setIntroDismissed] = useState(false);
+  const autoSkippedIntroRef = useRef(false);
+
   const handleSelectEnhanceMode = useCallback((mode: VideoEnhanceMode) => {
     setVideoEnhanceMode(mode);
     setShaderReady(false);
@@ -777,7 +847,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }, []);
 
   useEffect(() => {
-    if (videoEnhanceMode === "off") {
+    if (!isShaderPipelineActive) {
       shaderRendererRef.current?.destroy();
       shaderRendererRef.current = null;
       setShaderReady(false);
@@ -801,15 +871,169 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {
           onFrameSuccess: () => setShaderReady(true),
           onFrameError: () => setShaderReady(false),
-          onFpsUpdate: (fps) =>
-            setRenderFps((prev) => (prev === fps ? prev : fps)),
+          onFpsUpdate: (fps, srcFps) => {
+            setRenderFps((prev) => (prev === fps ? prev : fps));
+            if (srcFps && srcFps > 0) {
+              setStreamFps((prev) => (prev === srcFps ? prev : srcFps));
+            }
+          },
+          onPerformanceDrop: () => {
+            // Auto-step down heavy Frame Boost mode on weak laptops
+            if (labs.frameBoost === "flow") {
+              updateLabsSettings({ frameBoost: "smooth" });
+              showHud("⚡ Frame Boost переключено на м'який режим (захист FPS)");
+            } else if (labs.frameBoost === "smooth") {
+              updateLabsSettings({ frameBoost: "off" });
+              showHud("⚡ Frame Boost призупинено для стабільного відтворення");
+            }
+          },
         }
       );
     }
 
-    shaderRendererRef.current.setMode(videoEnhanceMode);
+    shaderRendererRef.current.setConfig({
+      enhance: effectiveEnhanceMode,
+      upscale: resolvedUpscaleMode,
+      frameBoost: labs.frameBoost,
+      splitCompare: labsSplitCompare && labs.isActive,
+    });
     shaderRendererRef.current.start();
-  }, [videoEnhanceMode, streamData]);
+  }, [
+    isShaderPipelineActive,
+    effectiveEnhanceMode,
+    resolvedUpscaleMode,
+    labs.frameBoost,
+    labsSplitCompare,
+    labs.isActive,
+    streamData,
+    details.id,
+    activeSeason,
+    activeEpisode,
+  ]);
+
+  // Cinema Ambilight lifecycle (mounted ONLY when labs.ambilight && mode === "full")
+  useEffect(() => {
+    if (!labs.ambilight || mode !== "full" || !ambilightCanvasRef.current || !videoRef.current) {
+      ambilightRendererRef.current?.destroy();
+      ambilightRendererRef.current = null;
+      setAmbilightReady(false);
+      return;
+    }
+
+    const renderer = new AmbilightRenderer(
+      ambilightCanvasRef.current,
+      videoRef.current,
+      (ready) => setAmbilightReady(ready)
+    );
+    ambilightRendererRef.current = renderer;
+    renderer.start();
+
+    return () => {
+      renderer.destroy();
+      if (ambilightRendererRef.current === renderer) {
+        ambilightRendererRef.current = null;
+      }
+      setAmbilightReady(false);
+    };
+  }, [labs.ambilight, mode, streamData]);
+
+  // Dialogue Boost 2.0 lifecycle (with automatic bypass when Labs or toggle turns OFF)
+  const syncDialogueBoost = useCallback(() => {
+    if (!videoRef.current) return;
+    if (!labs.dialogueBoost) {
+      dialogueControllerRef.current?.sync(false);
+      return;
+    }
+    if (!dialogueControllerRef.current) {
+      dialogueControllerRef.current = new DialogueEnhancerController(
+        videoRef.current,
+        (reason) => showHud(`🎙️ ${reason}`)
+      );
+    }
+    dialogueControllerRef.current.sync(true);
+  }, [labs.dialogueBoost]);
+
+  useEffect(() => {
+    syncDialogueBoost();
+  }, [syncDialogueBoost, streamData, selectedQuality]);
+
+  useEffect(() => {
+    return () => {
+      dialogueControllerRef.current?.destroy();
+      dialogueControllerRef.current = null;
+    };
+  }, []);
+
+  // Smart Series Intro Detection (WebVTT Sprite dHash + Season Manual Memory)
+  useEffect(() => {
+    setIntroSegment(null);
+    setIsInIntroWindow(false);
+    setIntroDismissed(false);
+    autoSkippedIntroRef.current = false;
+
+    const isSeriesMedia = details.seasons.length > 0 || details.episodes.length > 0;
+    if (!isSeriesMedia || labs.introSkip === "off") {
+      return;
+    }
+
+    const seasonNum = activeSeason || 1;
+    const episodeNum = activeEpisode || 1;
+
+    // Immediately load saved season intro if present
+    const saved = getSavedSeasonIntro(details.id, seasonNum);
+    if (saved) {
+      setIntroSegment(saved);
+      if (saved.source === "manual") return;
+    }
+
+    if (thumbnailCues.length < 6) {
+      return;
+    }
+
+    let cancelled = false;
+    const seasonEps = details.episodes
+      .filter((ep) => parseInt(ep.season_id, 10) === seasonNum)
+      .map((ep) => parseInt(ep.episode_id, 10))
+      .filter((n) => !Number.isNaN(n));
+
+    detectSeriesIntro({
+      mediaId: details.id,
+      mediaUrl: details.url,
+      season: seasonNum,
+      episode: episodeNum,
+      translatorId: activeTranslatorId,
+      availableEpisodesInSeason: seasonEps,
+      currentCues: thumbnailCues.map((c) => ({
+        start: c.start,
+        end: c.end,
+        url: c.url,
+        x: c.x ?? 0,
+        y: c.y ?? 0,
+        w: c.w ?? 160,
+        h: c.h ?? 90,
+      })),
+    })
+      .then((detected) => {
+        if (!cancelled && detected) {
+          setIntroSegment(detected);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    details.id,
+    details.url,
+    details.seasons.length,
+    details.episodes,
+    activeSeason,
+    activeEpisode,
+    activeTranslatorId,
+    labs.introSkip,
+    thumbnailCues,
+  ]);
 
   // Sync live timestamp immediately when Stream Info overlay opens
   useEffect(() => {
@@ -820,7 +1044,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Real-time video decoder framerate monitor for Stream Info overlay when shaders are off
   useEffect(() => {
-    if (!showMediaInfo || videoEnhanceMode !== "off" || !isPlaying) return;
+    if (!showMediaInfo || isShaderPipelineActive || !isPlaying) return;
 
     const videoEl = videoRef.current as any;
     const hasRvfc = Boolean(videoEl && typeof videoEl.requestVideoFrameCallback === "function");
@@ -898,7 +1122,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       stopMonitor();
     };
-  }, [showMediaInfo, isPlaying, videoEnhanceMode]);
+  }, [showMediaInfo, isPlaying, isShaderPipelineActive]);
 
   useEffect(() => {
     return () => {
@@ -1375,17 +1599,19 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return nonPrem.length > 0 ? nonPrem : all;
   }, [streamData?.qualities, hidePremium]);
 
-  // When streamData arrives, pick user's saved quality (or default 720p, avoiding Premium-only 1080p Ultra unless explicitly chosen)
+  // When streamData arrives, pick user's saved quality (or 720p in Eco Mode, avoiding Premium-only 1080p Ultra unless explicitly chosen)
   useEffect(() => {
     if (visibleQualities.length === 0) return;
 
-    const rawTarget = selectedQuality?.label || preferredQualityLabel || "720p";
+    const rawTarget =
+      selectedQuality?.label ||
+      (labs.ecoActive ? "720p" : preferredQualityLabel || "720p");
     const targetLabel =
       hidePremium && isPremiumQuality(rawTarget) ? "" : rawTarget;
 
     const preferred =
       (targetLabel ? visibleQualities.find((q) => q.label === targetLabel) : undefined) ||
-      visibleQualities.find((q) => q.label === "1080p") ||
+      (!labs.ecoActive ? visibleQualities.find((q) => q.label === "1080p") : undefined) ||
       visibleQualities.find((q) => q.label === "720p") ||
       visibleQualities.find((q) => q.label === "480p") ||
       visibleQualities.find(
@@ -1490,13 +1716,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
     };
 
-    const startMp4 = (mp4Url: string) => {
+    const startMp4 = (mp4Url: string, allowCors = !details.is_offline) => {
       clearWatchdog();
       if (hlsRef.current) {
         hlsRef.current.stopLoad();
         hlsRef.current.detachMedia();
         hlsRef.current.destroy();
         hlsRef.current = null;
+      }
+      if (allowCors) {
+        video.crossOrigin = "anonymous";
+      } else {
+        video.removeAttribute("crossorigin");
       }
       video.src = mp4Url;
       activeWatchdog = setTimeout(() => {
@@ -1525,6 +1756,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         video.play().catch(() => {});
       };
       const onError = () => {
+        video.removeEventListener("loadedmetadata", onMetadata);
+        if (allowCors && !isEffectCleanedUp) {
+          // Rare CDN without CORS headers on MP4: seamlessly retry without crossorigin
+          startMp4(mp4Url, false);
+          return;
+        }
         console.warn(`Direct MP4 stream (${selectedQuality.label}) error`);
         failMp4();
       };
@@ -1551,6 +1788,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         } catch {}
       }
 
+      if (!details.is_offline) {
+        video.crossOrigin = "anonymous";
+      } else {
+        video.removeAttribute("crossorigin");
+      }
+
       if (Hls.isSupported()) {
         let mediaErrorRecovered = false;
         let networkErrorRetries = 0;
@@ -1567,8 +1810,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           enableWorker: true,
           lowLatencyMode: false,
           startPosition: prevTime > 0 ? prevTime : -1,
-          maxBufferLength: turboBufferEnabled ? 90 : 45,
-          maxMaxBufferLength: turboBufferEnabled ? 180 : 90,
+          maxBufferLength: labs.ecoActive ? 150 : turboBufferEnabled ? 90 : 45,
+          maxMaxBufferLength: labs.ecoActive ? 240 : turboBufferEnabled ? 180 : 90,
           backBufferLength: 30,
           progressive: true,
           maxBufferHole: 1.2,
@@ -2616,15 +2859,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         key="video-stage"
         className="relative w-full h-full overflow-hidden bg-black flex items-center justify-center"
       >
+        {/* RDX Labs: Ultra-Light 32x18 Cinema Ambilight behind letterbox/pillarbox bars */}
+        {labs.ambilight && mode === "full" && (
+          <canvas
+            ref={ambilightCanvasRef}
+            aria-hidden="true"
+            className={cn(
+              "absolute inset-0 w-full h-full object-fill pointer-events-none z-0 scale-110 blur-[52px] saturate-[1.8] transition-opacity duration-500",
+              ambilightReady ? "opacity-65" : "opacity-0"
+            )}
+          />
+        )}
+
         <video
           ref={videoRef}
           title=""
+          crossOrigin={details.is_offline ? undefined : "anonymous"}
           controls={false}
           disablePictureInPicture={false}
           controlsList="nodownload nofullscreen noremoteplayback"
           onContextMenu={handleContextMenu}
           className={cn(
-            "w-full h-full cursor-pointer relative z-0",
+            "w-full h-full cursor-pointer relative z-[2]",
             getVideoObjectFitClass()
           )}
           style={getVideoStyle()}
@@ -2634,15 +2890,33 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onPlaying={() => {
             setIsBuffering(false);
             if (!isSeekingRef.current) setIsPlaying(true);
+            syncDialogueBoost();
           }}
           onCanPlay={() => {
             syncDurationFromVideo();
             setIsBuffering(false);
+            syncDialogueBoost();
           }}
           onTimeUpdate={() => {
             if (!videoRef.current) return;
             setIsBuffering((prev) => (prev ? false : prev));
             const time = videoRef.current.currentTime;
+            if (Number.isFinite(time) && introSegment && labs.introSkip !== "off") {
+              const insideIntro =
+                time >= introSegment.start && time < introSegment.end - 1.5;
+              setIsInIntroWindow((prev) => (prev === insideIntro ? prev : insideIntro));
+              if (
+                insideIntro &&
+                labs.introSkip === "auto" &&
+                !autoSkippedIntroRef.current &&
+                !isDraggingSeek
+              ) {
+                autoSkippedIntroRef.current = true;
+                setCurrentTime(introSegment.end);
+                commitSeekToVideo(introSegment.end);
+                showHud("⏭ Заставку пропущено автоматично");
+              }
+            }
             if (!isDraggingSeek && isTimeUiVisible && Number.isFinite(time)) {
               const minUiDelta = showMediaInfo ? 0.25 : 0.5;
               setCurrentTime((prev) =>
@@ -2696,10 +2970,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onDoubleClick={handleVideoDoubleClick}
         />
 
-        {/* Real-time WebGL Deband + AMD CAS Canvas (Layered at z-10, mounted only when active so lost WebGL contexts are cleanly recycled) */}
-        {videoEnhanceMode !== "off" && (
+        {/* Real-time WebGL2 Deband + CAS + RDX Labs (Frame Boost & Smart Upscaler) Canvas */}
+        {isShaderPipelineActive && (
           <canvas
-            key={`shader-${details.id}-${activeSeason ?? 0}-${activeEpisode ?? 0}`}
+            key={`shader-v10-${details.id}-${activeSeason ?? 0}-${activeEpisode ?? 0}`}
             ref={shaderCanvasRef}
             aria-hidden="true"
             className={cn(
@@ -2709,6 +2983,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             )}
             style={getVideoStyle()}
           />
+        )}
+
+        {/* Split-Screen 50/50 Live Comparison Labels */}
+        {labsSplitCompare && labs.isActive && isShaderPipelineActive && shaderReady && mode === "full" && (
+          <div className="absolute top-24 inset-x-0 z-20 flex items-center justify-center gap-8 pointer-events-none select-none">
+            <span className="px-3 py-1 rounded-full bg-black/80 border border-white/15 text-[11px] font-bold font-mono text-zinc-300 shadow-xl">
+              ◀ ОРИГІНАЛ ({streamFps || 24} FPS)
+            </span>
+            <span className="px-3 py-1 rounded-full bg-rose-950/90 border border-rose-500/50 text-[11px] font-bold font-mono text-emerald-300 shadow-xl">
+              RDX LABS ({renderFps || 60} FPS ⚡) ▶
+            </span>
+          </div>
         )}
 
         {/* ================= DOUBLE-TAP SEEK RIPPLE INDICATORS ================= */}
@@ -3045,6 +3331,40 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               </div>
             )}
 
+            {/* RDX Labs: Smart Skip Intro Floating Action Pill */}
+            {mode === "full" &&
+              isSeries &&
+              labs.introSkip === "button" &&
+              introSegment !== null &&
+              isInIntroWindow &&
+              !introDismissed &&
+              !loadingStream && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute bottom-28 right-6 sm:right-10 z-40 flex items-center gap-1.5 rounded-2xl bg-zinc-950/90 backdrop-blur-xl border border-rose-500/40 p-1.5 pl-4 shadow-2xl shadow-black/80 pointer-events-auto animate-in fade-in slide-in-from-bottom-2 duration-200"
+                >
+                  <button
+                    onClick={() => {
+                      setCurrentTime(introSegment.end);
+                      commitSeekToVideo(introSegment.end);
+                      setIsInIntroWindow(false);
+                      showHud(`⏭ Пропущено заставку (${formatTime(introSegment.end)})`);
+                    }}
+                    className="flex items-center gap-2 text-xs font-bold text-white hover:text-rose-300 py-1.5 pr-2 cursor-pointer transition-colors"
+                  >
+                    <SkipForward className="w-4 h-4 text-rose-400 fill-rose-400/25" />
+                    <span>Пропустити заставку</span>
+                  </button>
+                  <button
+                    onClick={() => setIntroDismissed(true)}
+                    title="Приховати для цієї серії"
+                    className="w-7 h-7 rounded-xl bg-white/5 hover:bg-white/15 text-zinc-400 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
             {/* Next Episode Countdown Overlay Card */}
             {mode === "full" &&
               isSeries &&
@@ -3295,6 +3615,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         className="absolute top-0 bottom-0 left-0 bg-rose-600 rounded-full shadow-lg shadow-rose-600/50 pointer-events-none"
                         style={{ width: `${playedPct}%` }}
                       />
+
+                      {/* RDX Labs: Intro Segment Highlight Bar */}
+                      {effectiveDur > 0 && introSegment !== null && labs.introSkip !== "off" && (
+                        <div
+                          className="absolute top-0 bottom-0 bg-emerald-400/45 rounded-full pointer-events-none"
+                          style={{
+                            left: `${Math.min(100, (introSegment.start / effectiveDur) * 100)}%`,
+                            width: `${Math.max(
+                              0.5,
+                              Math.min(
+                                100,
+                                ((introSegment.end - introSegment.start) / effectiveDur) * 100
+                              )
+                            )}%`,
+                          }}
+                        />
+                      )}
                     </div>
 
                     {/* A Marker Tick */}
@@ -3812,18 +4149,40 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </span>
               </div>
               <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-500 shrink-0">Частота кадрів:</span>
+                <span className="text-zinc-500 shrink-0">Вхід декодера:</span>
+                <span className="font-mono text-zinc-300">
+                  {videoRef.current && videoRef.current.videoWidth > 0
+                    ? isPlaying
+                      ? `${Math.min(streamFps || 24, 30)} FPS`
+                      : "Пауза"
+                    : "—"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-zinc-500 shrink-0">Вихід на екран:</span>
                 <span
                   className={cn(
                     "font-bold font-mono",
-                    (videoEnhanceMode !== "off" ? renderFps : streamFps) >= 23
+                    isShaderPipelineActive
+                      ? shaderReady && renderFps >= 23
+                        ? "text-emerald-400"
+                        : "text-amber-400"
+                      : streamFps >= 23
                       ? "text-emerald-400"
-                      : "text-amber-400"
+                      : "text-zinc-300"
                   )}
                 >
                   {videoRef.current && videoRef.current.videoWidth > 0 ? (
                     isPlaying ? (
-                      `${(videoEnhanceMode !== "off" ? renderFps : streamFps) || 24} FPS`
+                      isShaderPipelineActive && shaderReady ? (
+                        labs.frameBoost !== "off" ? (
+                          `${renderFps || 60} FPS ⚡ (Boost)`
+                        ) : (
+                          `${renderFps || 24} FPS (WebGL)`
+                        )
+                      ) : (
+                        `${streamFps || 24} FPS (нативний)`
+                      )
                     ) : (
                       "Пауза"
                     )
@@ -3837,22 +4196,40 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <span
                   className={cn(
                     "font-medium text-right truncate max-w-[220px]",
-                    videoEnhanceMode === "off"
+                    effectiveEnhanceMode === "off"
                       ? "text-zinc-400"
-                      : videoEnhanceMode === "max"
+                      : effectiveEnhanceMode === "max"
                       ? "text-rose-400"
                       : "text-amber-400"
                   )}
                 >
-                  {videoEnhanceMode === "off"
-                    ? "Вимкнено (0% GPU)"
-                    : videoEnhanceMode === "deband"
+                  {effectiveEnhanceMode === "off"
+                    ? "Вимкнено"
+                    : effectiveEnhanceMode === "deband"
                     ? "Deband (згладжування)"
-                    : videoEnhanceMode === "cas"
-                    ? "AMD CAS (чіткість)"
+                    : effectiveEnhanceMode === "cas"
+                    ? "CAS (чіткість)"
                     : "Макс (Deband + CAS)"}
                 </span>
               </div>
+              {labs.isActive && (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-zinc-500 shrink-0">RDX Labs:</span>
+                  <span className="text-emerald-300 font-medium text-right truncate max-w-[220px]">
+                    {[
+                      labs.ecoActive && "🔋 Еко",
+                      labs.frameBoost !== "off" &&
+                        (labs.frameBoost === "flow" ? "Flow 60" : "Smooth"),
+                      resolvedUpscaleMode !== "off" &&
+                        (resolvedUpscaleMode === "anime" ? "Anime4K" : "Edge-HD"),
+                      labs.ambilight && "Ambilight",
+                      labs.dialogueBoost && "Діалоги",
+                    ]
+                      .filter(Boolean)
+                      .join(" • ") || "Увімкнено (очікування)"}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center justify-between gap-3">
                 <span className="text-zinc-500 shrink-0">Якість:</span>
                 <span className="text-white font-mono">{selectedQuality?.label || "Auto"}</span>
@@ -3860,7 +4237,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               <div className="flex items-center justify-between gap-3">
                 <span className="text-zinc-500 shrink-0">Тип потоку:</span>
                 <span className="text-rose-400 truncate ml-2 font-medium">
-                  {selectedQuality?.mp4_url ? "Прямий MP4 (Voidboost)" : "HLS Manifest"}
+                  {details.is_offline
+                    ? "Локальний файл"
+                    : hlsRef.current
+                    ? "HLS Потік (MSE)"
+                    : "Прямий MP4 (Voidboost)"}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-3">
@@ -4050,6 +4431,25 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
                 </div>
               </button>
+
+              {/* RDX Labs Experimental Submenu (Visible ONLY when Labs Master Switch is ON) */}
+              {labs.isActive && (
+                <button
+                  onClick={() => setContextMenu({ ...contextMenu, page: "labs" })}
+                  className="w-full flex items-center justify-between gap-3 px-3 py-2 text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer group"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <FlaskConical className="w-4 h-4 flex-shrink-0 text-emerald-400" />
+                    <span className="truncate">Лабораторія (Labs)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-zinc-400 font-medium">
+                    <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono">
+                      {activeLabsCount} акт.
+                    </span>
+                    <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
+                  </div>
+                </button>
+              )}
 
               {/* Autoplay Next Series toggle */}
               {isSeries && (
@@ -4653,6 +5053,261 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   </button>
                 );
               })}
+            </div>
+          )}
+
+          {/* Submenu: RDX Labs (Experimental Quick Controls) */}
+          {contextMenu.page === "labs" && labs.isActive && (
+            <div className="space-y-2 max-h-[72vh] overflow-y-auto px-1">
+              <button
+                onClick={() => setContextMenu({ ...contextMenu, page: "main" })}
+                className="w-full flex items-center justify-between px-2.5 py-1.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer font-semibold text-[11px]"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Лабораторія RDX</span>
+                </span>
+                <FlaskConical className="w-3.5 h-3.5 text-emerald-400" />
+              </button>
+              <div className="h-px bg-white/10 mx-1.5" />
+
+              {/* 1. Frame Boost */}
+              <div className="px-2 space-y-1">
+                <div className="text-[10px] font-bold text-zinc-400 flex items-center justify-between">
+                  <span className="inline-flex items-center gap-1">
+                    <Zap className="w-3 h-3 text-amber-400" />
+                    Frame Boost (24 → 60 FPS)
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-1">
+                  {(
+                    [
+                      { id: "off", label: "Вимк" },
+                      { id: "smooth", label: "Smooth" },
+                      { id: "flow", label: "Flow 60" },
+                    ] as { id: FrameBoostMode; label: string }[]
+                  ).map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => {
+                        updateLabsSettings({ frameBoost: opt.id });
+                        showHud(
+                          opt.id === "off"
+                            ? "⚡ Frame Boost: Вимкнено"
+                            : opt.id === "smooth"
+                            ? "⚡ Frame Boost: М'який Anti-Judder"
+                            : "⚡ Frame Boost: Motion Flow 60 FPS"
+                        );
+                      }}
+                      className={cn(
+                        "py-1.5 rounded-lg text-[11px] font-bold cursor-pointer transition-colors",
+                        labs.raw.frameBoost === opt.id
+                          ? "bg-rose-600 text-white"
+                          : "bg-white/5 hover:bg-white/15 text-zinc-300"
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 2. Smart Upscaler */}
+              <div className="px-2 space-y-1">
+                <div className="text-[10px] font-bold text-zinc-400 flex items-center justify-between">
+                  <span className="inline-flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-purple-400" />
+                    Smart Upscaler (Intel / NVIDIA / AMD)
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 gap-1">
+                  {(
+                    [
+                      { id: "off", label: "Вимк" },
+                      { id: "auto", label: "Авто" },
+                      { id: "cinema", label: "Кіно" },
+                      { id: "anime", label: "Anime4K" },
+                    ] as { id: SmartUpscaleMode; label: string }[]
+                  ).map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => {
+                        updateLabsSettings({ smartUpscale: opt.id });
+                        showHud(`✨ Upscaler: ${opt.label}`);
+                      }}
+                      className={cn(
+                        "py-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-colors",
+                        labs.raw.smartUpscale === opt.id
+                          ? "bg-rose-600 text-white"
+                          : "bg-white/5 hover:bg-white/15 text-zinc-300"
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3. Quick Toggles: Ambilight, Dialogue 2.0, Eco Mode */}
+              <div className="px-1 space-y-0.5 pt-0.5">
+                <button
+                  onClick={() => {
+                    const next = !labs.raw.ambilight;
+                    updateLabsSettings({ ambilight: next });
+                    showHud(next ? "🌈 Ambilight: Увімкнено" : "🌈 Ambilight: Вимкнено");
+                  }}
+                  className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-white/10 text-zinc-200 cursor-pointer transition-colors"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Sun className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Cinema Ambilight</span>
+                  </span>
+                  <span
+                    className={cn(
+                      "text-[10px] font-bold font-mono",
+                      labs.raw.ambilight ? "text-emerald-400" : "text-zinc-500"
+                    )}
+                  >
+                    {labs.raw.ambilight ? "Увімк" : "Вимк"}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    const next = !labs.raw.dialogueBoost;
+                    updateLabsSettings({ dialogueBoost: next });
+                    showHud(
+                      next ? "🎙️ Чіткі діалоги 2.0: Увімкнено" : "🎙️ Чіткі діалоги: Вимкнено"
+                    );
+                  }}
+                  className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-white/10 text-zinc-200 cursor-pointer transition-colors"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Mic className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Чіткі діалоги 2.0</span>
+                  </span>
+                  <span
+                    className={cn(
+                      "text-[10px] font-bold font-mono",
+                      labs.raw.dialogueBoost ? "text-emerald-400" : "text-zinc-500"
+                    )}
+                  >
+                    {labs.raw.dialogueBoost ? "Увімк" : "Вимк"}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    const next = labs.raw.ecoMode === "on" ? "off" : "on";
+                    updateLabsSettings({ ecoMode: next });
+                    showHud(
+                      next === "on"
+                        ? "🔋 Еко-режим: Увімкнено (OLED + 720p)"
+                        : "🔋 Еко-режим: Вимкнено"
+                    );
+                  }}
+                  className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-white/10 text-zinc-200 cursor-pointer transition-colors"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <BatteryCharging className="w-3.5 h-3.5 text-teal-400" />
+                    <span>Еко-режим ноутбука</span>
+                  </span>
+                  <span
+                    className={cn(
+                      "text-[10px] font-bold font-mono",
+                      labs.ecoActive ? "text-emerald-400" : "text-zinc-500"
+                    )}
+                  >
+                    {labs.ecoActive ? "Активно" : "Вимк"}
+                  </span>
+                </button>
+
+                {isShaderPipelineActive && (
+                  <button
+                    onClick={() => {
+                      const next = !labsSplitCompare;
+                      setLabsSplitCompare(next);
+                      showHud(
+                        next
+                          ? "🌗 Екран 50/50: Зліва 24 FPS • Справа 60 FPS Labs"
+                          : "🌗 Порівняння 50/50 вимкнено"
+                      );
+                    }}
+                    className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-white/10 text-zinc-200 cursor-pointer transition-colors"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Порівняти До/Після (50/50)</span>
+                    </span>
+                    <span
+                      className={cn(
+                        "text-[10px] font-bold font-mono",
+                        labsSplitCompare ? "text-emerald-400" : "text-zinc-500"
+                      )}
+                    >
+                      {labsSplitCompare ? "Увімк" : "Вимк"}
+                    </span>
+                  </button>
+                )}
+              </div>
+
+              {/* 4. Series Intro Manual Calibration */}
+              {isSeries && (
+                <div className="px-2 pt-1 pb-1 border-t border-white/10 space-y-1.5">
+                  <div className="text-[10px] font-bold text-zinc-400 flex items-center justify-between">
+                    <span>Заставка сезону (S{activeSeason || 1})</span>
+                    {introSegment && (
+                      <span className="font-mono text-emerald-400">
+                        {formatTime(introSegment.start)}–{formatTime(introSegment.end)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-1">
+                    <button
+                      onClick={() => {
+                        const nowSec = Math.floor(videoRef.current?.currentTime || currentTime || 0);
+                        const seg: IntroSegment =
+                          nowSec >= 25 && nowSec <= 480
+                            ? {
+                                start: Math.max(0, nowSec - 85),
+                                end: nowSec,
+                                source: "manual",
+                              }
+                            : {
+                                start: nowSec,
+                                end: nowSec + 85,
+                                source: "manual",
+                              };
+                        saveSeasonIntro(details.id, activeSeason || 1, seg);
+                        if (labs.raw.introSkip === "off") {
+                          updateLabsSettings({ introSkip: "button" });
+                        }
+                        setIntroSegment(seg);
+                        setIntroDismissed(false);
+                        showHud(
+                          `⏭ Запам'ятали заставку: ${formatTime(seg.start)}–${formatTime(seg.end)}`
+                        );
+                        setContextMenu(null);
+                      }}
+                      className="py-1.5 px-2 rounded-lg text-[10px] font-bold bg-emerald-600/25 hover:bg-emerald-600/40 border border-emerald-500/30 text-emerald-200 cursor-pointer text-center"
+                    >
+                      📌 Позначити інтро
+                    </button>
+                    <button
+                      onClick={() => {
+                        clearSeasonIntro(details.id, activeSeason || 1);
+                        setIntroSegment(null);
+                        setIsInIntroWindow(false);
+                        showHud("Мітку заставки скинуто");
+                        setContextMenu(null);
+                      }}
+                      className="py-1.5 px-2 rounded-lg text-[10px] font-semibold bg-white/5 hover:bg-white/15 text-zinc-300 cursor-pointer text-center"
+                    >
+                      Скинути мітку
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

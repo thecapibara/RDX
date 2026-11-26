@@ -98,3 +98,15 @@ To prevent Wayland DRM/GBM (`i915.gem` / `drm-total-system0`) Shmem leaks and ex
 - **GStreamer CPU Sink Path**: Sets both `WEBKIT_GST_DMABUF_SINK_DISABLED=1` and `WEBKIT_GST_DISABLE_GL_SINK=1` alongside software `avdec_h264:MAX`, preventing fallback to `WebKitGLVideoSink` (`gstglcontext`) that otherwise leaks `i915.gem` YUV textures into Shmem/zram.
 - **SHM Transport & GBM Disable**: Sets `WEBKIT_DMABUF_RENDERER_FORCE_SHM=1`, `WEBKIT_DMABUF_RENDERER_DISABLE_GBM=1`, and `WEBKIT_WEBGL_DISABLE_GBM=1` on non-NVIDIA Linux GPUs (NVIDIA uses `WEBKIT_DISABLE_DMABUF_RENDERER=1`).
 - **Skia CPU Tile Rendering**: Sets `WEBKIT_SKIA_ENABLE_CPU_RENDERING=1` and bounded `WEBKIT_SKIA_CPU_PAINTING_THREADS` (`1–2` threads) to avoid `SkiaGPUWorker` GL contexts and GPU->CPU tile readbacks under SHM transport.
+
+---
+
+## 5. RDX Labs — Experimental Suite (`src/services/labs.ts`, `src/components/LabsSettingsPanel.tsx`)
+Controlled by a strict **Master Kill-Switch** (`enabled = false` by default; turning Labs off immediately deactivates and unmounts all experimental shaders, canvases, timers, and UI menus):
+- **Frame Boost (24 FPS → 48/60 FPS)** (`src/utils/videoShaders.ts` v6): Ping-pong 2-frame motion-adaptive Anti-Judder blending (`smooth`) and WebGL2 `240×135` pyramid coarse Lucas-Kanade/block optical flow with bidirectional warp & confidence fallback (`flow`), plus automatic FPS watchdog degradation on low-end GPUs.
+- **Vendor-Agnostic Smart Upscaler (Intel UHD/Iris Xe, NVIDIA, AMD, Apple Silicon)**: Edge-Adaptive directional spatial upscaling (`cinema`), `Anime4K-Fast` contour line thinning (`anime`), and content-aware `auto` mode scaling `<1080p` streams up to Full HD.
+- **Cinema Ambilight (`src/utils/ambilight.ts`)**: `32×18` temporal-smoothed ambient canvas (~11 Hz, `<0.2%` CPU/GPU) illuminating 21:9 / 4:3 black bars.
+- **Smart Series Intro Skip (`src/utils/introDetector.ts`)**: Local 64-bit `dHash` perceptual matching across episode WebVTT thumbnail sprite sheets + 1-click manual season intro calibration.
+- **Clear Dialogue 2.0 (`src/utils/dialogueEnhancer.ts`)**: CORS-safe Mid/Side speech isolator & compressor (`185Hz` HPF, `+6dB` @ `1.65kHz`) with an `AnalyserNode` silence watchdog and bit-transparent bypass.
+- **Laptop Eco Battery Saver**: Manual or automatic (`<= 30%` unplugged via `navigator.getBattery()`) pure `#000000` OLED override, `720p` stream cap, extended HLS Wi-Fi sleep buffer (`150s/240s`), and automatic pause of GPU-intensive Labs shaders.
+- **Local Loopback CORS Stream Proxy (`src-tauri/src/stream_proxy.rs`)**: Ephemeral `127.0.0.1:<port>` Rust proxy rewriting `.m3u8` manifests, `.vtt` sprites, and Range `.mp4`/`.ts` streams with `Access-Control-Allow-Origin: *` so HLS.js MSE, WebGL Frame Boost/Upscaler, Ambilight, Screenshots, and WebAudio work across 302-redirected Voidboost storage nodes.

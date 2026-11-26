@@ -7,6 +7,7 @@ pub mod mirror;
 pub mod mpris;
 pub mod parser;
 pub mod storage;
+pub mod stream_proxy;
 pub mod tmdb;
 
 use std::sync::Arc;
@@ -47,6 +48,9 @@ pub fn run() {
         .manage(state)
         .setup(|app| {
             use tauri::Manager;
+
+            // 0. Start local loopback CORS stream proxy (127.0.0.1:<port>)
+            let _ = crate::stream_proxy::ensure_started();
 
             // 1. Initialize native Rust MPRIS while DBUS_SESSION_BUS_ADDRESS is valid
             let state: tauri::State<AppState> = app.state();

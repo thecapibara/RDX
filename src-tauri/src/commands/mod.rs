@@ -193,7 +193,7 @@ pub async fn start_download(
         season,
         episode,
         quality,
-        stream_url,
+        stream_url: crate::stream_proxy::unwrap_url(&stream_url),
         file_path: final_path.to_string_lossy().to_string(),
         temp_path: temp_path.to_string_lossy().to_string(),
         total_bytes: 0,
@@ -733,6 +733,7 @@ pub async fn get_media_details(state: State<'_, AppState>, item_url: String) -> 
 
     if let Some(ref mut s) = details.initial_streams {
         crate::cdn::CdnSelector::optimize_stream(&state.client, s).await;
+        crate::stream_proxy::wrap_stream_data(s);
     }
 
     Ok(details)
@@ -837,6 +838,7 @@ pub async fn get_stream(
     };
 
     crate::cdn::CdnSelector::optimize_stream(&state.client, &mut stream).await;
+    crate::stream_proxy::wrap_stream_data(&mut stream);
     Ok(stream)
 }
 
@@ -890,6 +892,7 @@ pub async fn get_episodes(
 
     if let Some(ref mut s) = stream_data {
         crate::cdn::CdnSelector::optimize_stream(&state.client, s).await;
+        crate::stream_proxy::wrap_stream_data(s);
     }
 
     Ok(EpisodesData {
@@ -1032,6 +1035,7 @@ pub async fn open_in_external_player(
     position_sec: Option<f64>,
     title: Option<String>,
 ) -> Result<(), String> {
+    let stream_url = crate::stream_proxy::unwrap_url(&stream_url);
     // Try mpv first, then vlc
     let mut mpv_cmd = std::process::Command::new("mpv");
     mpv_cmd.arg(&stream_url);
