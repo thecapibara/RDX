@@ -24,7 +24,7 @@ interface StreamStatsOverlayProps {
   activeEpisode?: number;
   qualityLabel: string;
   isOffline?: boolean;
-  isHlsActive: boolean;
+  hlsRef: React.RefObject<unknown>;
   cdnHost?: string;
   cdnPingMs?: number;
   turboBufferEnabled: boolean;
@@ -56,7 +56,7 @@ export const StreamStatsOverlay: React.FC<StreamStatsOverlayProps> = React.memo(
     activeEpisode,
     qualityLabel,
     isOffline,
-    isHlsActive,
+    hlsRef,
     cdnHost,
     cdnPingMs,
     turboBufferEnabled,
@@ -225,7 +225,7 @@ export const StreamStatsOverlay: React.FC<StreamStatsOverlayProps> = React.memo(
             <span className="text-rose-400 truncate ml-2 font-medium">
               {isOffline
                 ? "Локальний файл"
-                : isHlsActive
+                : Boolean(hlsRef.current)
                 ? "HLS Потік (MSE)"
                 : "Прямий MP4 (Voidboost)"}
             </span>

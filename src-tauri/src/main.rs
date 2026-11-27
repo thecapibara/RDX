@@ -4,6 +4,35 @@
 fn main() {
     #[cfg(target_os = "linux")]
     {
+        // 0. Raise soft open-file-descriptor limit (`RLIMIT_NOFILE`) from the default 1024 to 65536.
+        // Under `WEBKIT_DMABUF_RENDERER_FORCE_SHM=1`, WebKitGTK allocates anonymous `memfd` SHM
+        // descriptors for 512x512 Skia backing-store tiles alongside HLS/proxy sockets; hitting the
+        // 1024 soft limit causes `EMFILE` tile allocation failures (black flickering strips in UI).
+        #[repr(C)]
+        #[derive(Copy, Clone)]
+        struct RLimit {
+            rlim_cur: u64,
+            rlim_max: u64,
+        }
+        const RLIMIT_NOFILE: i32 = 7;
+        extern "C" {
+            fn getrlimit(resource: i32, rlim: *mut RLimit) -> i32;
+            fn setrlimit(resource: i32, rlim: *const RLimit) -> i32;
+        }
+        unsafe {
+            let mut rlim = RLimit {
+                rlim_cur: 0,
+                rlim_max: 0,
+            };
+            if getrlimit(RLIMIT_NOFILE, &mut rlim) == 0 && rlim.rlim_cur < 65536 {
+                let target = rlim.rlim_max.min(65536).max(rlim.rlim_cur);
+                if target > rlim.rlim_cur {
+                    rlim.rlim_cur = target;
+                    let _ = setrlimit(RLIMIT_NOFILE, &rlim);
+                }
+            }
+        }
+
         // 1. Disable WebKitGTK Bubblewrap sandbox in AppImage / FUSE mount namespaces.
         // On Arch Linux, Ubuntu 24.04+, and modern kernels, unprivileged user namespaces inside
         // a FUSE-mounted AppImage are blocked, causing WebKitWebProcess to abort with a fatal error.

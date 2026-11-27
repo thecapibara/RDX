@@ -862,14 +862,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             }
           },
           onPerformanceDrop: () => {
-            // Auto-step down heavy Frame Boost mode on weak laptops
-            if (labs.frameBoost === "flow") {
-              updateLabsSettings({ frameBoost: "smooth" });
-              showHud("⚡ Frame Boost переключено на м'який режим (захист FPS)");
-            } else if (labs.frameBoost === "smooth") {
-              updateLabsSettings({ frameBoost: "off" });
-              showHud("⚡ Frame Boost призупинено для стабільного відтворення");
-            }
+            // Handled non-destructively inside VideoShaderRenderer (`runtimeDowngradedFlow`)
+            // without overwriting user's saved LabsSettings or popping noisy toast loops!
           },
         }
       );
@@ -1777,14 +1771,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       if (Hls.isSupported()) {
         let mediaErrorRecovered = false;
         let networkErrorRetries = 0;
+        let hasManifestParsed = false;
         activeWatchdog = setTimeout(() => {
-          if (hlsRef.current && (!hlsDurationRef.current || hlsDurationRef.current <= 0)) {
-            console.warn(`HLS manifest/level (${selectedQuality.label}) timed out after 6s`);
+          if (
+            hlsRef.current &&
+            !hasManifestParsed &&
+            video.readyState < 2 &&
+            (!hlsDurationRef.current || hlsDurationRef.current <= 0)
+          ) {
+            console.warn(`HLS manifest/level (${selectedQuality.label}) timed out after 14s`);
             hls.destroy();
             hlsRef.current = null;
             failHls();
           }
-        }, 6000);
+        }, 14000);
 
         const hls = new Hls({
           enableWorker: true,
@@ -1804,6 +1804,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         hls.attachMedia(video);
 
         hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+          hasManifestParsed = true;
           clearWatchdog();
           const totalDur = data.details?.totalduration;
           if (totalDur && Number.isFinite(totalDur) && totalDur > 0) {
@@ -1818,6 +1819,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         });
 
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          hasManifestParsed = true;
           clearWatchdog();
           if (prevTime > 0) {
             setCurrentTime(prevTime);
@@ -1831,17 +1833,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           video.play().catch(() => {});
         });
 
+        hls.on(Hls.Events.FRAG_LOADED, () => {
+          // Reset transient error counters whenever segments stream normally
+          networkErrorRetries = 0;
+          mediaErrorRecovered = false;
+        });
+
         hls.on(Hls.Events.ERROR, (_, data) => {
           if (data.fatal) {
             console.warn("HLS fatal error:", data.type, data.details);
             switch (data.type) {
-              case Hls.ErrorTypes.NETWORK_ERROR:
+              case Hls.ErrorTypes.NETWORK_ERROR: {
+                const maxRetries = hasManifestParsed ? 5 : 2;
                 if (
-                  networkErrorRetries < 1 &&
-                  data.details !== Hls.ErrorDetails.MANIFEST_LOAD_ERROR &&
-                  data.details !== Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT &&
-                  data.details !== Hls.ErrorDetails.LEVEL_LOAD_ERROR &&
-                  data.details !== Hls.ErrorDetails.LEVEL_LOAD_TIMEOUT
+                  networkErrorRetries < maxRetries &&
+                  (hasManifestParsed ||
+                    (data.details !== Hls.ErrorDetails.MANIFEST_LOAD_ERROR &&
+                      data.details !== Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT))
                 ) {
                   networkErrorRetries++;
                   hls.startLoad();
@@ -1851,6 +1859,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   failHls();
                 }
                 break;
+              }
               case Hls.ErrorTypes.MEDIA_ERROR:
                 if (!mediaErrorRecovered) {
                   mediaErrorRecovered = true;
@@ -2969,7 +2978,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {/* Real-time WebGL Deband + CAS + RDX Labs (Frame Boost, Smart Upscaler & GPU Ambilight) Canvas */}
         {isShaderPipelineActive && (
           <canvas
-            key={`shader-v13-${details.id}-${activeSeason ?? 0}-${activeEpisode ?? 0}`}
+            key={`shader-v15-${details.id}-${activeSeason ?? 0}-${activeEpisode ?? 0}`}
             ref={shaderCanvasRef}
             aria-hidden="true"
             className={cn(
@@ -4125,7 +4134,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             activeEpisode={activeEpisode}
             qualityLabel={selectedQuality?.label || "Auto"}
             isOffline={details.is_offline}
-            isHlsActive={Boolean(hlsRef.current)}
+            hlsRef={hlsRef}
             cdnHost={streamData?.cdn_host}
             cdnPingMs={streamData?.cdn_ping_ms}
             turboBufferEnabled={turboBufferEnabled}
