@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { playHoverSound } from "../services/sound";
+import { unlockSharedAudioContext } from "../utils/dialogueEnhancer";
 import {
   useLabsSettings,
   updateLabsSettings,
@@ -355,7 +356,9 @@ export const LabsSettingsPanel: React.FC = () => {
               role="switch"
               aria-checked={raw.dialogueBoost}
               onClick={() => {
-                updateLabsSettings({ dialogueBoost: !raw.dialogueBoost });
+                const next = !raw.dialogueBoost;
+                if (next) unlockSharedAudioContext();
+                updateLabsSettings({ dialogueBoost: next });
                 playHoverSound();
               }}
               className={cn(

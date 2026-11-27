@@ -62,8 +62,10 @@ import {
   type FrameBoostMode,
   type SmartUpscaleMode,
 } from "../services/labs";
-import { AmbilightRenderer } from "../utils/ambilight";
-import { DialogueEnhancerController } from "../utils/dialogueEnhancer";
+import {
+  DialogueEnhancerController,
+  unlockSharedAudioContext,
+} from "../utils/dialogueEnhancer";
 import {
   detectSeriesIntro,
   saveSeasonIntro,
@@ -811,15 +813,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }, [labs.smartUpscale, isAnimatedContent]);
 
   const effectiveEnhanceMode: VideoEnhanceMode = labs.ecoActive ? "off" : videoEnhanceMode;
+  const effectiveAmbilight =
+    labs.ambilight &&
+    mode === "full" &&
+    aspectRatioMode !== "cover" &&
+    aspectRatioMode !== "fill";
   const isShaderPipelineActive =
     effectiveEnhanceMode !== "off" ||
     resolvedUpscaleMode !== "off" ||
-    labs.frameBoost !== "off";
-
-  // Cinema Ambilight state & refs
-  const ambilightCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const ambilightRendererRef = useRef<AmbilightRenderer | null>(null);
-  const [ambilightReady, setAmbilightReady] = useState(false);
+    labs.frameBoost !== "off" ||
+    effectiveAmbilight;
 
   // Dialogue Enhancer 2.0 ref
   const dialogueControllerRef = useRef<DialogueEnhancerController | null>(null);
@@ -896,6 +899,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       upscale: resolvedUpscaleMode,
       frameBoost: labs.frameBoost,
       splitCompare: labsSplitCompare && labs.isActive,
+      ambilight: effectiveAmbilight,
+      aspectMode: aspectRatioMode,
     });
     shaderRendererRef.current.start();
   }, [
@@ -904,38 +909,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     resolvedUpscaleMode,
     labs.frameBoost,
     labsSplitCompare,
+    effectiveAmbilight,
+    aspectRatioMode,
     labs.isActive,
     streamData,
     details.id,
     activeSeason,
     activeEpisode,
   ]);
-
-  // Cinema Ambilight lifecycle (mounted ONLY when labs.ambilight && mode === "full")
-  useEffect(() => {
-    if (!labs.ambilight || mode !== "full" || !ambilightCanvasRef.current || !videoRef.current) {
-      ambilightRendererRef.current?.destroy();
-      ambilightRendererRef.current = null;
-      setAmbilightReady(false);
-      return;
-    }
-
-    const renderer = new AmbilightRenderer(
-      ambilightCanvasRef.current,
-      videoRef.current,
-      (ready) => setAmbilightReady(ready)
-    );
-    ambilightRendererRef.current = renderer;
-    renderer.start();
-
-    return () => {
-      renderer.destroy();
-      if (ambilightRendererRef.current === renderer) {
-        ambilightRendererRef.current = null;
-      }
-      setAmbilightReady(false);
-    };
-  }, [labs.ambilight, mode, streamData]);
 
   // Dialogue Boost 2.0 lifecycle (with automatic bypass when Labs or toggle turns OFF)
   const syncDialogueBoost = useCallback(() => {
@@ -2859,18 +2840,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         key="video-stage"
         className="relative w-full h-full overflow-hidden bg-black flex items-center justify-center"
       >
-        {/* RDX Labs: Ultra-Light 32x18 Cinema Ambilight behind letterbox/pillarbox bars */}
-        {labs.ambilight && mode === "full" && (
-          <canvas
-            ref={ambilightCanvasRef}
-            aria-hidden="true"
-            className={cn(
-              "absolute inset-0 w-full h-full object-fill pointer-events-none z-0 scale-110 blur-[52px] saturate-[1.8] transition-opacity duration-500",
-              ambilightReady ? "opacity-65" : "opacity-0"
-            )}
-          />
-        )}
-
         <video
           ref={videoRef}
           title=""
@@ -2881,7 +2850,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onContextMenu={handleContextMenu}
           className={cn(
             "w-full h-full cursor-pointer relative z-[2]",
-            getVideoObjectFitClass()
+            getVideoObjectFitClass(),
+            isShaderPipelineActive && shaderReady ? "opacity-0" : "opacity-100"
           )}
           style={getVideoStyle()}
           onWaiting={() => {
@@ -2970,18 +2940,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onDoubleClick={handleVideoDoubleClick}
         />
 
-        {/* Real-time WebGL2 Deband + CAS + RDX Labs (Frame Boost & Smart Upscaler) Canvas */}
+        {/* Real-time WebGL Deband + CAS + RDX Labs (Frame Boost, Smart Upscaler & GPU Ambilight) Canvas */}
         {isShaderPipelineActive && (
           <canvas
-            key={`shader-v10-${details.id}-${activeSeason ?? 0}-${activeEpisode ?? 0}`}
+            key={`shader-v11-${details.id}-${activeSeason ?? 0}-${activeEpisode ?? 0}`}
             ref={shaderCanvasRef}
             aria-hidden="true"
             className={cn(
               "absolute inset-0 m-auto w-full h-full pointer-events-none z-10 transition-opacity duration-150",
-              getVideoObjectFitClass(),
+              effectiveAmbilight ? "object-fill" : getVideoObjectFitClass(),
               shaderReady ? "opacity-100" : "opacity-0"
             )}
-            style={getVideoStyle()}
+            style={effectiveAmbilight ? undefined : getVideoStyle()}
           />
         )}
 
@@ -5175,6 +5145,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <button
                   onClick={() => {
                     const next = !labs.raw.dialogueBoost;
+                    if (next) unlockSharedAudioContext();
                     updateLabsSettings({ dialogueBoost: next });
                     showHud(
                       next ? "🎙️ Чіткі діалоги 2.0: Увімкнено" : "🎙️ Чіткі діалоги: Вимкнено"
