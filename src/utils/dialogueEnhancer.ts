@@ -45,7 +45,12 @@ export function unlockSharedAudioContext(): AudioContext | null {
 
   if (!sharedAudioCtx || sharedAudioCtx.state === "closed") {
     try {
-      sharedAudioCtx = new AudioCtx();
+      // Request lowest-latency interactive PipeWire/PulseAudio quantum (~10-20ms instead of ~180ms)
+      try {
+        sharedAudioCtx = new AudioCtx({ latencyHint: "interactive" });
+      } catch {
+        sharedAudioCtx = new AudioCtx();
+      }
       sharedAudioCtx.addEventListener("statechange", () => {
         if (sharedAudioCtx?.state === "running") {
           stateListeners.forEach((fn) => {
@@ -98,10 +103,19 @@ interface VideoAudioGraph {
   compressor: DynamicsCompressorNode;
   makeupGain: GainNode;
   analyser: AnalyserNode;
+  outputGate: GainNode;
   mode: "bypass" | "enhanced";
 }
 
-const graphRegistry = new WeakMap<HTMLVideoElement, VideoAudioGraph>();
+type VideoWithAudioGraph = HTMLVideoElement & { __rdxAudioGraph?: VideoAudioGraph };
+
+function getCachedGraph(video: HTMLVideoElement): VideoAudioGraph | undefined {
+  return (video as VideoWithAudioGraph).__rdxAudioGraph;
+}
+
+function setCachedGraph(video: HTMLVideoElement, graph: VideoAudioGraph): void {
+  (video as VideoWithAudioGraph).__rdxAudioGraph = graph;
+}
 
 export function isStreamSafeForWebAudio(video: HTMLVideoElement): boolean {
   const src = video.currentSrc || video.src || "";
@@ -125,7 +139,7 @@ function getOrCreateGraph(
   video: HTMLVideoElement,
   ctx: AudioContext
 ): VideoAudioGraph | null {
-  const existing = graphRegistry.get(video);
+  const existing = getCachedGraph(video);
   if (existing) return existing;
 
   try {
@@ -169,6 +183,37 @@ function getOrCreateGraph(
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 256;
 
+    // Zero-lag output gate: cuts WebAudio ringbuffer/compressor tail immediately on pause & seek
+    const outputGate = ctx.createGain();
+    outputGate.gain.value = video.paused ? 0 : 1;
+
+    const muteGateNow = () => {
+      try {
+        const t = ctx.currentTime;
+        outputGate.gain.cancelScheduledValues(t);
+        outputGate.gain.setValueAtTime(0, t);
+      } catch {}
+    };
+
+    const unmuteGateSmooth = () => {
+      if (video.paused) return;
+      try {
+        if (ctx.state === "suspended") {
+          ctx.resume().catch(() => {});
+        }
+        const t = ctx.currentTime;
+        outputGate.gain.cancelScheduledValues(t);
+        outputGate.gain.setValueAtTime(Math.max(0.0001, outputGate.gain.value), t);
+        outputGate.gain.linearRampToValueAtTime(1, t + 0.014);
+      } catch {}
+    };
+
+    video.addEventListener("pause", muteGateNow);
+    video.addEventListener("seeking", muteGateNow);
+    video.addEventListener("play", unmuteGateSmooth);
+    video.addEventListener("playing", unmuteGateSmooth);
+    video.addEventListener("seeked", unmuteGateSmooth);
+
     // Wire internal serial stereo/mono-compatible filter chain once
     highPass.connect(bassTame);
     bassTame.connect(presencePeak);
@@ -177,8 +222,9 @@ function getOrCreateGraph(
     compressor.connect(makeupGain);
     makeupGain.connect(analyser);
 
-    // Default initial state: bit-transparent direct bypass
-    source.connect(ctx.destination);
+    // Default initial state: bit-transparent bypass routed through zero-lag outputGate
+    source.connect(outputGate);
+    outputGate.connect(ctx.destination);
 
     const graph: VideoAudioGraph = {
       ctx,
@@ -190,9 +236,10 @@ function getOrCreateGraph(
       compressor,
       makeupGain,
       analyser,
+      outputGate,
       mode: "bypass",
     };
-    graphRegistry.set(video, graph);
+    setCachedGraph(video, graph);
     return graph;
   } catch (err) {
     console.warn("RDX DialogueEnhancer init skipped:", err);
@@ -229,7 +276,7 @@ export class DialogueEnhancerController {
     this.clearWatchdog();
 
     if (!enabled) {
-      const existing = graphRegistry.get(this.video);
+      const existing = getCachedGraph(this.video);
       if (existing) {
         if (existing.ctx.state === "suspended") {
           existing.ctx.resume().catch(() => {});
@@ -238,7 +285,7 @@ export class DialogueEnhancerController {
           try {
             existing.source.disconnect();
             existing.analyser.disconnect();
-            existing.source.connect(existing.ctx.destination);
+            existing.source.connect(existing.outputGate);
             existing.mode = "bypass";
           } catch {}
         }
@@ -271,7 +318,7 @@ export class DialogueEnhancerController {
         graph.analyser.disconnect();
 
         graph.source.connect(graph.highPass);
-        graph.analyser.connect(graph.ctx.destination);
+        graph.analyser.connect(graph.outputGate);
         graph.mode = "enhanced";
       } catch {
         return false;
@@ -336,12 +383,12 @@ export class DialogueEnhancerController {
     this.wantEnabled = false;
     stateListeners.delete(this.onCtxUnlocked);
     this.clearWatchdog();
-    const existing = graphRegistry.get(this.video);
+    const existing = getCachedGraph(this.video);
     if (existing && existing.mode !== "bypass") {
       try {
         existing.source.disconnect();
         existing.analyser.disconnect();
-        existing.source.connect(existing.ctx.destination);
+        existing.source.connect(existing.outputGate);
         existing.mode = "bypass";
       } catch {}
     }

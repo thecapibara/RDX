@@ -1310,6 +1310,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   );
 
   const lastDragSeekCommitRef = useRef<number>(0);
+  const seekPointerDownXRef = useRef<number>(0);
+  const didDragSeekRef = useRef<boolean>(false);
+  const lastCommittedSeekSecRef = useRef<number>(-1);
 
   const handleSeekPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
@@ -1319,8 +1322,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch {}
     setIsDraggingSeek(true);
+    seekPointerDownXRef.current = e.clientX;
+    didDragSeekRef.current = false;
     const target = calcTimeFromEvent(e.clientX);
     lastDragSeekCommitRef.current = performance.now();
+    lastCommittedSeekSecRef.current = target;
     commitSeekToVideo(target);
   };
 
@@ -1335,12 +1341,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setHoverX(x);
     setHoverTime(hoveredTarget);
 
-    if (isDraggingSeek) {
+    if (isDraggingSeek && Math.abs(e.clientX - seekPointerDownXRef.current) >= 3) {
+      didDragSeekRef.current = true;
       setCurrentTime(hoveredTarget);
       // Throttle live video.currentTime updates during drag to avoid flooding MSE/GStreamer
       const now = performance.now();
       if (now - lastDragSeekCommitRef.current > 180) {
         lastDragSeekCommitRef.current = now;
+        lastCommittedSeekSecRef.current = hoveredTarget;
         commitSeekToVideo(hoveredTarget);
       }
     }
@@ -1354,7 +1362,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     } catch {}
     setIsDraggingSeek(false);
     const target = calcTimeFromEvent(e.clientX);
-    commitSeekToVideo(target);
+    // Only commit a second seek on pointerup if the user actually dragged to a new timestamp!
+    // Prevents re-seeking 80-120ms after pointerdown on a click (which caused a 2-3 frame audio double-echo).
+    if (didDragSeekRef.current && Math.abs(target - lastCommittedSeekSecRef.current) > 0.08) {
+      lastCommittedSeekSecRef.current = target;
+      commitSeekToVideo(target);
+    }
+    didDragSeekRef.current = false;
   };
 
   const handleSeekPointerLeave = () => {
@@ -2364,6 +2378,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setContextMenu(null);
   };
 
+  const preClickPausedRef = useRef<boolean | null>(null);
+
   const handleVideoClick = (e: React.MouseEvent) => {
     if (hasOpenMenu) {
       if (clickTimerRef.current) {
@@ -2373,16 +2389,30 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       closeAllMenus();
       return;
     }
-    if (clickTimerRef.current) {
-      clearTimeout(clickTimerRef.current);
-      clickTimerRef.current = null;
-      handleVideoDoubleClick(e);
+
+    // In mini-player (OS PiP / Docked), keep 200ms window so double-tap ±5s doesn't toggle pause
+    if (mode === "os_pip" || mode === "docked") {
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = null;
+        handleVideoDoubleClick(e);
+        return;
+      }
+      clickTimerRef.current = setTimeout(() => {
+        togglePlay();
+        clickTimerRef.current = null;
+      }, 200);
       return;
     }
-    clickTimerRef.current = setTimeout(() => {
-      togglePlay();
-      clickTimerRef.current = null;
-    }, 230);
+
+    // In full cinema mode: YouTube-style 0ms instant Play/Pause!
+    // Ignore the 2nd click of a double-click (`e.detail >= 2`) and let `handleVideoDoubleClick`
+    // seamlessly restore pre-click playback state while toggling Fullscreen.
+    if (e.detail >= 2) {
+      return;
+    }
+    preClickPausedRef.current = videoRef.current ? videoRef.current.paused : !isPlaying;
+    togglePlay();
   };
 
   const handleVideoDoubleClick = (e: React.MouseEvent) => {
@@ -2407,12 +2437,25 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
       return;
     }
+
+    // Restore playback state that was toggled on click #1 of this double-click
+    if (preClickPausedRef.current !== null && videoRef.current) {
+      const wasPaused = preClickPausedRef.current;
+      preClickPausedRef.current = null;
+      if (!wasPaused && videoRef.current.paused) {
+        videoRef.current.play().catch(() => {});
+        setIsPlaying(true);
+        syncMprisState(true, true);
+      } else if (wasPaused && !videoRef.current.paused) {
+        videoRef.current.pause();
+        setIsPlaying(false);
+        syncMprisState(true, false);
+      }
+    }
+
     if (mode === "full") {
       toggleFullscreen();
     } else {
-      if (mode === "os_pip") {
-        handleSetOsPip(false);
-      }
       onModeChange("full");
     }
   };
