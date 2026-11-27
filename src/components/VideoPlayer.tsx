@@ -2926,7 +2926,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {/* Real-time WebGL Deband + CAS + RDX Labs (Frame Boost, Smart Upscaler & GPU Ambilight) Canvas */}
         {isShaderPipelineActive && (
           <canvas
-            key={`shader-v11-${details.id}-${activeSeason ?? 0}-${activeEpisode ?? 0}`}
+            key={`shader-v13-${details.id}-${activeSeason ?? 0}-${activeEpisode ?? 0}`}
             ref={shaderCanvasRef}
             aria-hidden="true"
             className={cn(
@@ -4906,15 +4906,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     updateLabsSettings({ hdrToneMap: next });
                     showHud(
                       next
-                        ? "🌑 Fake-HDR: Увімкнено (витягування темних сцен)"
-                        : "🌑 Fake-HDR: Вимкнено"
+                        ? "🌑 HDR Контраст: Увімкнено (глибокий чорний + 3D деталі)"
+                        : "🌑 HDR Контраст: Вимкнено"
                     );
                   }}
                   className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-white/10 text-zinc-200 cursor-pointer transition-colors"
                 >
                   <span className="inline-flex items-center gap-2">
                     <Contrast className="w-3.5 h-3.5 text-amber-300" />
-                    <span>Fake-HDR (Темні сцени)</span>
+                    <span>HDR Контраст (OLED Black)</span>
                   </span>
                   <span
                     className={cn(

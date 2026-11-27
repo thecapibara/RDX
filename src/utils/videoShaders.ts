@@ -358,39 +358,39 @@ vec3 sampleUpscaled(vec2 uv) {
 }
 
 // mpv-style Stochastic Blue-Noise / IGN Deband 2.0:
-// Randomized multi-radius rotated quad sampling + triangular PDF sub-bit dithering
+// Precision threshold (~2.7/255) dissolves 8-bit sky/shadow bands while keeping 100% of wood/skin/film texture
 vec3 applyBlueNoiseDeband(vec3 orig, vec2 uv) {
     float n1 = ign(gl_FragCoord.xy, u_frameSeed);
     float n2 = ign(gl_FragCoord.xy + vec2(19.3, 47.1), u_frameSeed);
 
-    float radius = mix(4.0, 16.0, n1);
+    float radius = mix(2.5, 9.0, n1);
     float angle = n2 * 6.2831853;
     vec2 dirA = vec2(cos(angle), sin(angle)) * u_texelSize * radius;
     vec2 dirB = vec2(-dirA.y, dirA.x);
 
-    vec3 s1 = texture2D(u_currTex, clamp(uv + dirA, vec2(0.001), vec2(0.999))).rgb;
-    vec3 s2 = texture2D(u_currTex, clamp(uv - dirA, vec2(0.001), vec2(0.999))).rgb;
-    vec3 s3 = texture2D(u_currTex, clamp(uv + dirB, vec2(0.001), vec2(0.999))).rgb;
-    vec3 s4 = texture2D(u_currTex, clamp(uv - dirB, vec2(0.001), vec2(0.999))).rgb;
+    vec3 s1 = sampleBoosted(clamp(uv + dirA, vec2(0.001), vec2(0.999)));
+    vec3 s2 = sampleBoosted(clamp(uv - dirA, vec2(0.001), vec2(0.999)));
+    vec3 s3 = sampleBoosted(clamp(uv + dirB, vec2(0.001), vec2(0.999)));
+    vec3 s4 = sampleBoosted(clamp(uv - dirB, vec2(0.001), vec2(0.999)));
 
     vec3 avg = (s1 + s2 + s3 + s4) * 0.25;
     vec3 maxSpan = max(max(abs(s1 - orig), abs(s2 - orig)), max(abs(s3 - orig), abs(s4 - orig)));
     float maxDiff = max(max(maxSpan.r, maxSpan.g), maxSpan.b);
 
-    // Smooth threshold ramp instead of hard step — preserves film grain & crisp edges while dissolving bands
-    float weight = 1.0 - smoothstep(u_debandThreshold * 0.65, u_debandThreshold * 1.65, maxDiff);
-    vec3 smoothed = mix(orig, avg, weight * 0.78);
+    float weight = 1.0 - smoothstep(u_debandThreshold * 0.55, u_debandThreshold * 1.35, maxDiff);
+    vec3 smoothed = mix(orig, avg, weight * 0.65);
 
-    // Triangular PDF dither (+/- 0.85 / 255) prevents 8-bit framebuffer re-quantization bands
-    float triDither = (n1 - n2) * (0.85 / 255.0);
+    // Triangular PDF dither (+/- 0.7 / 255) prevents 8-bit framebuffer re-quantization bands
+    float triDither = (n1 - n2) * (0.70 / 255.0);
     return clamp(smoothed + vec3(triDither), 0.0, 1.0);
 }
 
-vec3 applyCAS(vec3 center, vec2 uv) {
-    vec3 a = texture2D(u_currTex, uv - vec2(0.0, u_texelSize.y)).rgb;
-    vec3 b = texture2D(u_currTex, uv - vec2(u_texelSize.x, 0.0)).rgb;
-    vec3 c = texture2D(u_currTex, uv + vec2(u_texelSize.x, 0.0)).rgb;
-    vec3 d = texture2D(u_currTex, uv + vec2(0.0, u_texelSize.y)).rgb;
+vec3 applyCAS(vec3 baseColor, vec2 uv) {
+    vec3 center = sampleBoosted(uv);
+    vec3 a = sampleBoosted(uv - vec2(0.0, u_texelSize.y));
+    vec3 b = sampleBoosted(uv - vec2(u_texelSize.x, 0.0));
+    vec3 c = sampleBoosted(uv + vec2(u_texelSize.x, 0.0));
+    vec3 d = sampleBoosted(uv + vec2(0.0, u_texelSize.y));
 
     vec3 minRGB = min(min(min(a, b), min(c, d)), center);
     vec3 maxRGB = max(max(max(a, b), max(c, d)), center);
@@ -398,50 +398,66 @@ vec3 applyCAS(vec3 center, vec2 uv) {
     float minLuma = luma(minRGB);
     float maxLuma = luma(maxRGB);
     float amp = clamp(min(minLuma, 1.0 - maxLuma) / max(maxLuma, 0.0001), 0.0, 1.0);
-    float w = -sqrt(amp) * (u_sharpness * 0.20);
+    // Attenuate sharpening in ultra-dark shadows (< 0.05) so H.264 dark block noise stays clean
+    float darkGuard = smoothstep(0.025, 0.085, luma(baseColor));
+    float w = -sqrt(amp) * (u_sharpness * 0.19) * darkGuard;
 
-    vec3 filtered = (center + w * (a + b + c + d)) / (1.0 + 4.0 * w);
-    return clamp(filtered, minRGB, maxRGB);
+    vec3 casSharp = clamp((center + w * (a + b + c + d)) / (1.0 + 4.0 * w), minRGB, maxRGB);
+    return clamp(baseColor + (casSharp - center), 0.0, 1.0);
 }
 
-// Fake-HDR Auto Shadow-Lift & Filmic Highlight Roll-off (adapted to smooth scene luminance!)
-vec3 applyFakeHDR(vec3 color) {
-    float sceneLum = texture2D(u_ambiTex, vec2(0.5, 0.5)).a;
+// Cinema HDR Contrast & Local 3D Micro-Contrast (madVR / OLED Cinema style):
+// NEVER washes out blacks into milky fog! Anchors deep OLED blacks, adds local 3D relief
+// in midtones, and recovers detail in bright lamps/fireplaces.
+vec3 applyFakeHDR(vec3 color, vec2 uv) {
     float pxLum = luma(color);
+    if (pxLum <= 0.001) return color;
 
-    // Protect true black bars (pxLum < 0.012 stays black) while lifting dark scene shadows (0.015 .. 0.30)
-    float darkSceneFactor = 1.0 - smoothstep(0.06, 0.34, sceneLum);
-    float toeMask = smoothstep(0.008, 0.032, pxLum) * (1.0 - smoothstep(0.18, 0.55, pxLum));
+    // Wide 4-tap diagonal neighborhood (~9x9 area) measures local scene illumination
+    vec2 wideStep = u_texelSize * 4.5;
+    float l1 = luma(texture2D(u_currTex, clamp(uv + vec2( wideStep.x,  wideStep.y), vec2(0.001), vec2(0.999))).rgb);
+    float l2 = luma(texture2D(u_currTex, clamp(uv + vec2(-wideStep.x,  wideStep.y), vec2(0.001), vec2(0.999))).rgb);
+    float l3 = luma(texture2D(u_currTex, clamp(uv + vec2( wideStep.x, -wideStep.y), vec2(0.001), vec2(0.999))).rgb);
+    float l4 = luma(texture2D(u_currTex, clamp(uv + vec2(-wideStep.x, -wideStep.y), vec2(0.001), vec2(0.999))).rgb);
+    float localLum = (l1 + l2 + l3 + l4) * 0.25;
 
-    // Adaptive shadow reveal + subtle micro-contrast S-curve
-    float liftStrength = (0.14 + darkSceneFactor * 0.28) * toeMask;
-    float targetLum = pxLum + liftStrength * (0.35 - pxLum);
+    // 1. Local 3D Micro-Contrast (Clarity) — protected in dark shadows (< 0.06) so noise is never boosted
+    float clarityMask = smoothstep(0.055, 0.16, pxLum) * (1.0 - smoothstep(0.82, 0.98, pxLum));
+    float localDetail = (pxLum - localLum) * 0.36 * clarityMask;
 
-    // Gentle filmic shoulder prevents blowing out bright explosions or lamps
-    targetLum = targetLum / (1.0 + max(0.0, targetLum - 0.78) * 0.35);
+    // 2. Subtle Cinema S-Curve: deepens murky streaming grey-blacks while keeping rich midtones
+    float sCurve = smoothstep(0.0, 1.0, pxLum);
+    float curvedLum = mix(pxLum, sCurve, 0.13) + localDetail;
 
-    float ratio = targetLum / max(pxLum, 0.0001);
-    return clamp(color * mix(1.0, ratio, 0.92), 0.0, 1.0);
+    // 3. Highlight roll-off preserves texture in bright flames & lamps without dimming midtones
+    curvedLum = curvedLum - max(0.0, curvedLum - 0.82) * 0.18;
+
+    // Strictly bounded multiplier [0.84 .. 1.20] — zero milky lift, zero color tint explosion!
+    float ratio = clamp(curvedLum / max(pxLum, 0.001), 0.84, 1.20);
+    return clamp(color * ratio, 0.0, 1.0);
 }
 
-// Smart Vibrance with Human Skin-Tone Protection
+// Smart Vibrance with Shadow-Noise Guard & Human Skin-Tone Protection
 vec3 applySmartVibrance(vec3 color) {
     float maxC = max(max(color.r, color.g), color.b);
     float minC = min(min(color.r, color.g), color.b);
     float sat = maxC - minC;
     float lum = luma(color);
 
-    // Detect human skin-tone hue sector (warm R > G > B with peach/tan R-G/G-B balance)
+    // Never boost chroma in dark H.264 shadows (lum < 0.10 has 8-bit green/brown quantization noise!)
+    float lumaSafety = smoothstep(0.10, 0.26, lum) * (1.0 - smoothstep(0.80, 0.96, lum));
+    if (lumaSafety <= 0.001) return color;
+
+    // Detect human skin-tone hue sector (warm R > G > B with natural R-G/G-B balance)
     float rg = color.r - color.g;
     float gb = color.g - color.b;
     float warmOrder = step(0.0, rg) * step(0.0, gb);
     float hueRatio = rg / max(sat, 0.001);
-    float skinHue = 1.0 - smoothstep(0.16, 0.42, abs(hueRatio - 0.52));
-    float skinLuma = smoothstep(0.08, 0.22, lum) * (1.0 - smoothstep(0.75, 0.95, lum));
-    float skinMask = warmOrder * skinHue * skinLuma;
+    float skinHue = 1.0 - smoothstep(0.14, 0.44, abs(hueRatio - 0.52));
+    float skinMask = warmOrder * skinHue;
 
-    // Boost muted colors (+34%) while protecting skin tones (only +8% max on faces)
-    float vibranceAmount = mix(0.34, 0.08, skinMask) * (1.0 - sat);
+    // Tasteful +22% vibrance on muted scenery, strictly capped to +3% on human skin
+    float vibranceAmount = mix(0.22, 0.03, skinMask) * (1.0 - sat) * lumaSafety;
     return clamp(vec3(lum) + (color - vec3(lum)) * (1.0 + vibranceAmount), 0.0, 1.0);
 }
 
@@ -498,7 +514,7 @@ void main() {
         color = applyCAS(color, vidUV);
     }
     if (runHdr) {
-        color = applyFakeHDR(color);
+        color = applyFakeHDR(color, vidUV);
     }
     if (runVibrance) {
         color = applySmartVibrance(color);
@@ -516,7 +532,7 @@ interface PassProgram {
 }
 
 export class VideoShaderRenderer {
-  public static readonly VERSION = 12;
+  public static readonly VERSION = 13;
   public readonly version = VideoShaderRenderer.VERSION;
 
   private canvas: HTMLCanvasElement;
@@ -584,8 +600,8 @@ export class VideoShaderRenderer {
   private hdrToneMap = false;
   private smartVibrance = false;
   private aspectMode = "auto";
-  private sharpness = 0.85;
-  private debandThreshold = 0.018;
+  private sharpness = 0.82;
+  private debandThreshold = 0.0105;
 
   private animFrameId: number | null = null;
   private rvfcId: number | null = null;

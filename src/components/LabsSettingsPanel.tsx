@@ -333,7 +333,7 @@ export const LabsSettingsPanel: React.FC = () => {
 
         {/* CARD 3: Cinema Video 2.0 Grid (Fake-HDR, Smart Vibrance, Ambilight, Dialogue 2.0) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-          {/* Fake-HDR Shadow Lift */}
+          {/* HDR Local Contrast & Deep Black */}
           <div className="p-4 rounded-2xl bg-zinc-900/60 border border-white/10 flex items-start justify-between gap-3">
             <div className="flex items-start gap-3 min-w-0">
               <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-300 flex-shrink-0 mt-0.5">
@@ -341,13 +341,13 @@ export const LabsSettingsPanel: React.FC = () => {
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <h4 className="text-xs font-bold text-white">Fake-HDR (Темні сцени)</h4>
+                  <h4 className="text-xs font-bold text-white">HDR Контраст (OLED Black)</h4>
                   <span className="px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-300 text-[9px] font-bold">
                     2.0
                   </span>
                 </div>
                 <p className="text-[11px] text-zinc-400 mt-1 leading-snug">
-                  Авто-витягування деталей у глибоких тінях на IPS-ноутбуках без засвітки чорних смуг
+                  Локальний 3D-мікроконтраст і глибокий чорний без сірої пелени із захистом яскравого вогню й ламп
                 </p>
               </div>
             </div>
