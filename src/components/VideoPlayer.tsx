@@ -38,6 +38,8 @@ import {
   Sun,
   Mic,
   BatteryCharging,
+  Contrast,
+  Palette,
 } from "lucide-react";
 import type {
   MediaDetails,
@@ -77,6 +79,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { UaFlag } from "./UaFlag";
+import { StreamStatsOverlay, type LiveFpsTelemetry } from "./StreamStatsOverlay";
 
 export interface ThumbnailCue {
   start: number;
@@ -554,7 +557,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     open: boolean;
     x: number;
     y: number;
-    page: "main" | "translators" | "episodes" | "quality" | "speed" | "aspect" | "sleep" | "subtitles" | "boost" | "enhance" | "labs";
+    page: "main" | "translators" | "episodes" | "quality" | "speed" | "aspect" | "sleep" | "subtitles" | "boost" | "labs";
   } | null>(null);
 
   // 1. True Fullscreen State & Sync
@@ -765,7 +768,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     } catch {}
   }, []);
 
-  // 6. Video Enhancement (High-Performance Zero-Leak Deband & CAS Sharpening)
+  // 6. Turbo-Buffer & RDX Labs WebGL Pipeline (Master Kill-Switch controlled via `useLabsSettings`)
   const [turboBufferEnabled, setTurboBufferEnabled] = useState<boolean>(() => {
     try {
       return localStorage.getItem("rdx_turbo_buffer") !== "false";
@@ -773,20 +776,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       return true;
     }
   });
-  const [videoEnhanceMode, setVideoEnhanceMode] = useState<VideoEnhanceMode>(() => {
-    try {
-      return (localStorage.getItem("rdx_video_enhance") as VideoEnhanceMode) || "off";
-    } catch {
-      return "off";
-    }
-  });
   const [shaderReady, setShaderReady] = useState(false);
-  const [renderFps, setRenderFps] = useState<number>(0);
-  const [streamFps, setStreamFps] = useState<number>(0);
+  const telemetryRef = useRef<LiveFpsTelemetry>({ renderFps: 0, streamFps: 24 });
   const shaderCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const shaderRendererRef = useRef<VideoShaderRenderer | null>(null);
 
-  // 6b. RDX Labs Experimental Pipeline (Master Kill-Switch controlled via `useLabsSettings`)
   const labs = useLabsSettings();
   const activeLabsCount = countActiveLabsFeatures(labs);
   const [labsSplitCompare, setLabsSplitCompare] = useState(false);
@@ -812,7 +806,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return labs.smartUpscale;
   }, [labs.smartUpscale, isAnimatedContent]);
 
-  const effectiveEnhanceMode: VideoEnhanceMode = labs.ecoActive ? "off" : videoEnhanceMode;
+  const effectiveEnhanceMode: VideoEnhanceMode = labs.videoEnhance;
   const effectiveAmbilight =
     labs.ambilight &&
     mode === "full" &&
@@ -822,7 +816,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     effectiveEnhanceMode !== "off" ||
     resolvedUpscaleMode !== "off" ||
     labs.frameBoost !== "off" ||
-    effectiveAmbilight;
+    effectiveAmbilight ||
+    labs.hdrToneMap ||
+    labs.smartVibrance;
 
   // Dialogue Enhancer 2.0 ref
   const dialogueControllerRef = useRef<DialogueEnhancerController | null>(null);
@@ -833,26 +829,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [introDismissed, setIntroDismissed] = useState(false);
   const autoSkippedIntroRef = useRef(false);
 
-  const handleSelectEnhanceMode = useCallback((mode: VideoEnhanceMode) => {
-    setVideoEnhanceMode(mode);
-    setShaderReady(false);
-    try {
-      localStorage.setItem("rdx_video_enhance", mode);
-    } catch {}
-
-    const labels: Record<VideoEnhanceMode, string> = {
-      off: "Покращення: Вимкнено",
-      deband: "Покращення: Згладжування (Deband)",
-      cas: "Покращення: Чіткість (CAS)",
-      max: "Покращення: Максимальне (Deband + CAS)",
-    };
-    showHud(`✨ ${labels[mode]}`);
-  }, []);
-
   useEffect(() => {
     if (!isShaderPipelineActive) {
       shaderRendererRef.current?.destroy();
       shaderRendererRef.current = null;
+      telemetryRef.current.renderFps = 0;
       setShaderReady(false);
       return;
     }
@@ -875,9 +856,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onFrameSuccess: () => setShaderReady(true),
           onFrameError: () => setShaderReady(false),
           onFpsUpdate: (fps, srcFps) => {
-            setRenderFps((prev) => (prev === fps ? prev : fps));
+            telemetryRef.current.renderFps = fps;
             if (srcFps && srcFps > 0) {
-              setStreamFps((prev) => (prev === srcFps ? prev : srcFps));
+              telemetryRef.current.streamFps = srcFps;
             }
           },
           onPerformanceDrop: () => {
@@ -900,6 +881,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       frameBoost: labs.frameBoost,
       splitCompare: labsSplitCompare && labs.isActive,
       ambilight: effectiveAmbilight,
+      hdrToneMap: labs.hdrToneMap,
+      smartVibrance: labs.smartVibrance,
       aspectMode: aspectRatioMode,
     });
     shaderRendererRef.current.start();
@@ -910,6 +893,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     labs.frameBoost,
     labsSplitCompare,
     effectiveAmbilight,
+    labs.hdrToneMap,
+    labs.smartVibrance,
     aspectRatioMode,
     labs.isActive,
     streamData,
@@ -1041,7 +1026,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       const elapsed = (now - lastTime) / 1000;
       if (elapsed >= 0.8) {
         const nextFps = Math.round(frameCount / elapsed);
-        setStreamFps((prev) => (prev === nextFps ? prev : nextFps));
+        telemetryRef.current.streamFps = nextFps;
         frameCount = 0;
         lastTime = now;
       }
@@ -2757,7 +2742,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // ==================== RENDERING (UNIFIED SINGLE VIDEO TREE) ====================
   const isTimeUiVisible =
     (isMiniMode ? miniControlsVisible : showControls) ||
-    showMediaInfo ||
     !isPlaying ||
     Boolean(resumeNotice);
 
@@ -2888,9 +2872,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               }
             }
             if (!isDraggingSeek && isTimeUiVisible && Number.isFinite(time)) {
-              const minUiDelta = showMediaInfo ? 0.25 : 0.5;
               setCurrentTime((prev) =>
-                Math.abs(time - prev) >= minUiDelta ? time : prev
+                Math.abs(time - prev) >= 0.5 ? time : prev
               );
             }
             if (effectiveDur <= 0) {
@@ -2959,10 +2942,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {labsSplitCompare && labs.isActive && isShaderPipelineActive && shaderReady && mode === "full" && (
           <div className="absolute top-24 inset-x-0 z-20 flex items-center justify-center gap-8 pointer-events-none select-none">
             <span className="px-3 py-1 rounded-full bg-black/80 border border-white/15 text-[11px] font-bold font-mono text-zinc-300 shadow-xl">
-              ◀ ОРИГІНАЛ ({streamFps || 24} FPS)
+              ◀ ОРИГІНАЛ (24 FPS)
             </span>
             <span className="px-3 py-1 rounded-full bg-rose-950/90 border border-rose-500/50 text-[11px] font-bold font-mono text-emerald-300 shadow-xl">
-              RDX LABS ({renderFps || 60} FPS ⚡) ▶
+              RDX LABS (BOOST ⚡) ▶
             </span>
           </div>
         )}
@@ -4082,172 +4065,32 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </div>
           </>
         )}
-        {/* ================= VAYOU-STYLE MEDIA INFO OVERLAY ================= */}
+        {/* ================= ISOLATED ZERO-RERENDER MEDIA INFO OVERLAY ================= */}
         {showMediaInfo && (
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="absolute top-16 left-6 z-50 w-[380px] max-w-[calc(100vw-3rem)] bg-zinc-950/90 border border-white/15 rounded-2xl p-4.5 text-xs font-mono text-zinc-300 shadow-2xl shadow-black/80 space-y-2.5 select-none animate-in fade-in duration-150"
-          >
-            <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
-              <div className="flex items-center gap-2 text-white font-bold text-xs">
-                <Info className="w-4 h-4 text-rose-500" />
-                <span>Статистика потоку</span>
-              </div>
-              <button
-                onClick={() => setShowMediaInfo(false)}
-                className="p-1 rounded-lg hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="space-y-2 text-[11px]">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-500 shrink-0">Назва:</span>
-                <span className="text-right truncate ml-2 max-w-[220px] text-white font-sans">{details.title}</span>
-              </div>
-              {isSeries && (
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-zinc-500 shrink-0">Серія:</span>
-                  <span className="text-white font-bold font-mono">S{activeSeason}E{activeEpisode}</span>
-                </div>
-              )}
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-500 shrink-0">Роздільність:</span>
-                <span className="text-emerald-400 font-bold font-mono">
-                  {videoRef.current ? `${videoRef.current.videoWidth}×${videoRef.current.videoHeight}` : "—"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-500 shrink-0">Вхід декодера:</span>
-                <span className="font-mono text-zinc-300">
-                  {videoRef.current && videoRef.current.videoWidth > 0
-                    ? isPlaying
-                      ? `${Math.min(streamFps || 24, 30)} FPS`
-                      : "Пауза"
-                    : "—"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-500 shrink-0">Вихід на екран:</span>
-                <span
-                  className={cn(
-                    "font-bold font-mono",
-                    isShaderPipelineActive
-                      ? shaderReady && renderFps >= 23
-                        ? "text-emerald-400"
-                        : "text-amber-400"
-                      : streamFps >= 23
-                      ? "text-emerald-400"
-                      : "text-zinc-300"
-                  )}
-                >
-                  {videoRef.current && videoRef.current.videoWidth > 0 ? (
-                    isPlaying ? (
-                      isShaderPipelineActive && shaderReady ? (
-                        labs.frameBoost !== "off" ? (
-                          `${renderFps || 60} FPS ⚡ (Boost)`
-                        ) : (
-                          `${renderFps || 24} FPS (WebGL)`
-                        )
-                      ) : (
-                        `${streamFps || 24} FPS (нативний)`
-                      )
-                    ) : (
-                      "Пауза"
-                    )
-                  ) : (
-                    "—"
-                  )}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-500 shrink-0">Покращення:</span>
-                <span
-                  className={cn(
-                    "font-medium text-right truncate max-w-[220px]",
-                    effectiveEnhanceMode === "off"
-                      ? "text-zinc-400"
-                      : effectiveEnhanceMode === "max"
-                      ? "text-rose-400"
-                      : "text-amber-400"
-                  )}
-                >
-                  {effectiveEnhanceMode === "off"
-                    ? "Вимкнено"
-                    : effectiveEnhanceMode === "deband"
-                    ? "Deband (згладжування)"
-                    : effectiveEnhanceMode === "cas"
-                    ? "CAS (чіткість)"
-                    : "Макс (Deband + CAS)"}
-                </span>
-              </div>
-              {labs.isActive && (
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-zinc-500 shrink-0">RDX Labs:</span>
-                  <span className="text-emerald-300 font-medium text-right truncate max-w-[220px]">
-                    {[
-                      labs.ecoActive && "🔋 Еко",
-                      labs.frameBoost !== "off" &&
-                        (labs.frameBoost === "flow" ? "Flow 60" : "Smooth"),
-                      resolvedUpscaleMode !== "off" &&
-                        (resolvedUpscaleMode === "anime" ? "Anime4K" : "Edge-HD"),
-                      labs.ambilight && "Ambilight",
-                      labs.dialogueBoost && "Діалоги",
-                    ]
-                      .filter(Boolean)
-                      .join(" • ") || "Увімкнено (очікування)"}
-                  </span>
-                </div>
-              )}
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-500 shrink-0">Якість:</span>
-                <span className="text-white font-mono">{selectedQuality?.label || "Auto"}</span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-500 shrink-0">Тип потоку:</span>
-                <span className="text-rose-400 truncate ml-2 font-medium">
-                  {details.is_offline
-                    ? "Локальний файл"
-                    : hlsRef.current
-                    ? "HLS Потік (MSE)"
-                    : "Прямий MP4 (Voidboost)"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-500 shrink-0">Smart CDN:</span>
-                <span className="text-emerald-400 font-mono font-medium truncate ml-2 max-w-[220px]" title={streamData?.cdn_host || "Voidboost Edge"}>
-                  {streamData?.cdn_host || "Voidboost Edge"} {streamData?.cdn_ping_ms ? `(${streamData.cdn_ping_ms} мс)` : ""}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-500 shrink-0">Turbo-буфер:</span>
-                <span className={cn("font-medium shrink-0", turboBufferEnabled ? "text-amber-400 font-bold" : "text-zinc-400")}>
-                  {turboBufferEnabled ? "⚡ Активний (Multi-segment)" : "Вимкнено"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-500 shrink-0">Буфер:</span>
-                <span className="text-white font-mono">
-                  {videoRef.current ? `${Math.max(0, getBufferedEnd() - currentTime).toFixed(1)} сек` : "—"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-500 shrink-0">Швидкість:</span>
-                <span className="text-white font-mono">{playbackSpeed}x</span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-500 shrink-0">Пропорції:</span>
-                <span className="text-white font-mono uppercase">{aspectRatioMode}</span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-500 shrink-0">Озвучка:</span>
-                <span className="text-right truncate ml-2 max-w-[200px] text-white">
-                  {currentTranslator?.name || "Оригінал"}
-                </span>
-              </div>
-            </div>
-          </div>
+          <StreamStatsOverlay
+            videoRef={videoRef}
+            telemetryRef={telemetryRef}
+            isPlaying={isPlaying}
+            isShaderPipelineActive={isShaderPipelineActive}
+            shaderReady={shaderReady}
+            effectiveEnhanceMode={effectiveEnhanceMode}
+            resolvedUpscaleMode={resolvedUpscaleMode}
+            labs={labs}
+            title={details.title}
+            isSeries={isSeries}
+            activeSeason={activeSeason}
+            activeEpisode={activeEpisode}
+            qualityLabel={selectedQuality?.label || "Auto"}
+            isOffline={details.is_offline}
+            isHlsActive={Boolean(hlsRef.current)}
+            cdnHost={streamData?.cdn_host}
+            cdnPingMs={streamData?.cdn_ping_ms}
+            turboBufferEnabled={turboBufferEnabled}
+            playbackSpeed={playbackSpeed}
+            aspectRatioMode={aspectRatioMode}
+            translatorName={currentTranslator?.name || "Оригінал"}
+            onClose={() => setShowMediaInfo(false)}
+          />
         )}
       </div>
 
@@ -4363,41 +4206,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </div>
                 <div className="flex items-center gap-1 text-[11px] text-zinc-400 font-medium uppercase font-mono">
                   <span>{aspectRatioMode}</span>
-                  <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
-                </div>
-              </button>
-
-              {/* Video Enhancement Submenu */}
-              <button
-                onClick={() => setContextMenu({ ...contextMenu, page: "enhance" })}
-                className="w-full flex items-center justify-between gap-3 px-3 py-2 text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer group"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <Sparkles
-                    className={cn(
-                      "w-4 h-4 flex-shrink-0 transition-colors",
-                      videoEnhanceMode !== "off" ? "text-rose-400" : "text-zinc-400 group-hover:text-zinc-300"
-                    )}
-                  />
-                  <span className="truncate">Покращення відео</span>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-zinc-400 font-medium">
-                  <span
-                    className={cn(
-                      "px-1.5 py-0.5 rounded-md text-[10px] font-medium transition-colors",
-                      videoEnhanceMode !== "off"
-                        ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
-                        : "bg-white/5 text-zinc-400"
-                    )}
-                  >
-                    {videoEnhanceMode === "off"
-                      ? "Вимк"
-                      : videoEnhanceMode === "deband"
-                      ? "Deband"
-                      : videoEnhanceMode === "cas"
-                      ? "CAS"
-                      : "Макс"}
-                  </span>
                   <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
                 </div>
               </button>
@@ -4960,72 +4768,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </div>
           )}
 
-          {/* Submenu: Video Enhance */}
-          {contextMenu.page === "enhance" && (
-            <div className="space-y-1">
-              <button
-                onClick={() => setContextMenu({ ...contextMenu, page: "main" })}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer font-semibold text-[11px]"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Покращення відео</span>
-              </button>
-              <div className="h-px bg-white/10 my-1 mx-2" />
-              {[
-                {
-                  mode: "off",
-                  label: "Вимкнено",
-                  desc: "Нативний потік (0% навантаження)",
-                },
-                {
-                  mode: "deband",
-                  label: "Згладжування (Deband)",
-                  desc: "Прибирає сходинки градієнтів та квадрати",
-                },
-                {
-                  mode: "cas",
-                  label: "Чіткість (AMD CAS)",
-                  desc: "Адаптивна різкість деталей без шуму",
-                },
-                {
-                  mode: "max",
-                  label: "Максимальне (Deband + CAS)",
-                  desc: "Гладкі темні сцени + кришталева чіткість",
-                },
-              ].map((item) => {
-                const isSelected = videoEnhanceMode === item.mode;
-                return (
-                  <button
-                    key={item.mode}
-                    onClick={() => {
-                      handleSelectEnhanceMode(item.mode as VideoEnhanceMode);
-                      setContextMenu(null);
-                    }}
-                    className={cn(
-                      "w-full flex items-center justify-between px-3 py-2 rounded-xl text-left cursor-pointer transition-colors",
-                      isSelected
-                        ? "bg-rose-600 text-white"
-                        : "text-zinc-300 hover:bg-white/10"
-                    )}
-                  >
-                    <div>
-                      <div className="text-xs font-semibold">{item.label}</div>
-                      <div
-                        className={cn(
-                          "text-[10px]",
-                          isSelected ? "text-rose-100" : "text-zinc-400"
-                        )}
-                      >
-                        {item.desc}
-                      </div>
-                    </div>
-                    {isSelected && <Check className="w-4 h-4 flex-shrink-0 ml-2" />}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
           {/* Submenu: RDX Labs (Experimental Quick Controls) */}
           {contextMenu.page === "labs" && labs.isActive && (
             <div className="space-y-2 max-h-[72vh] overflow-y-auto px-1">
@@ -5040,6 +4782,44 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <FlaskConical className="w-3.5 h-3.5 text-emerald-400" />
               </button>
               <div className="h-px bg-white/10 mx-1.5" />
+
+              {/* 0. Video Enhancement (Deband 2.0 / CAS / Cinema Pro 2.0) */}
+              <div className="px-2 space-y-1">
+                <div className="text-[10px] font-bold text-zinc-400 flex items-center justify-between">
+                  <span className="inline-flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-rose-400" />
+                    Покращення відео (Deband / CAS / Pro 2.0)
+                  </span>
+                </div>
+                <div className="grid grid-cols-5 gap-1">
+                  {(
+                    [
+                      { id: "off", label: "Вимк", hud: "Покращення: Вимкнено" },
+                      { id: "deband", label: "Deband", hud: "Покращення: Blue-Noise Deband 2.0" },
+                      { id: "cas", label: "CAS", hud: "Покращення: Чіткість (CAS)" },
+                      { id: "max", label: "Макс", hud: "Покращення: Макс (Deband 2.0 + CAS)" },
+                      { id: "cinema_hdr", label: "Pro 2.0", hud: "🌑 Cinema Pro 2.0 (Fake-HDR + Vibrance)" },
+                    ] as { id: VideoEnhanceMode; label: string; hud: string }[]
+                  ).map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => {
+                        setShaderReady(false);
+                        updateLabsSettings({ videoEnhance: opt.id });
+                        showHud(`✨ ${opt.hud}`);
+                      }}
+                      className={cn(
+                        "py-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-colors",
+                        labs.raw.videoEnhance === opt.id
+                          ? "bg-rose-600 text-white"
+                          : "bg-white/5 hover:bg-white/15 text-zinc-300"
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {/* 1. Frame Boost */}
               <div className="px-2 space-y-1">
@@ -5118,8 +4898,60 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </div>
               </div>
 
-              {/* 3. Quick Toggles: Ambilight, Dialogue 2.0, Eco Mode */}
+              {/* 3. Quick Toggles: Fake-HDR, Vibrance, Ambilight, Dialogue 2.0, Eco Mode */}
               <div className="px-1 space-y-0.5 pt-0.5">
+                <button
+                  onClick={() => {
+                    const next = !labs.raw.hdrToneMap;
+                    updateLabsSettings({ hdrToneMap: next });
+                    showHud(
+                      next
+                        ? "🌑 Fake-HDR: Увімкнено (витягування темних сцен)"
+                        : "🌑 Fake-HDR: Вимкнено"
+                    );
+                  }}
+                  className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-white/10 text-zinc-200 cursor-pointer transition-colors"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Contrast className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Fake-HDR (Темні сцени)</span>
+                  </span>
+                  <span
+                    className={cn(
+                      "text-[10px] font-bold font-mono",
+                      labs.raw.hdrToneMap ? "text-emerald-400" : "text-zinc-500"
+                    )}
+                  >
+                    {labs.raw.hdrToneMap ? "Увімк" : "Вимк"}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    const next = !labs.raw.smartVibrance;
+                    updateLabsSettings({ smartVibrance: next });
+                    showHud(
+                      next
+                        ? "🎨 Smart Vibrance: Увімкнено (захист тону шкіри)"
+                        : "🎨 Smart Vibrance: Вимкнено"
+                    );
+                  }}
+                  className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-white/10 text-zinc-200 cursor-pointer transition-colors"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Palette className="w-3.5 h-3.5 text-fuchsia-400" />
+                    <span>Smart Vibrance (Skin-Guard)</span>
+                  </span>
+                  <span
+                    className={cn(
+                      "text-[10px] font-bold font-mono",
+                      labs.raw.smartVibrance ? "text-emerald-400" : "text-zinc-500"
+                    )}
+                  >
+                    {labs.raw.smartVibrance ? "Увімк" : "Вимк"}
+                  </span>
+                </button>
+
                 <button
                   onClick={() => {
                     const next = !labs.raw.ambilight;

@@ -13,6 +13,7 @@
 import { useEffect, useState } from "react";
 import { initThemes } from "./theme";
 
+export type VideoEnhanceMode = "off" | "deband" | "cas" | "max" | "cinema_hdr";
 export type FrameBoostMode = "off" | "smooth" | "flow";
 export type SmartUpscaleMode = "off" | "auto" | "cinema" | "anime";
 export type IntroSkipMode = "off" | "button" | "auto";
@@ -21,15 +22,21 @@ export type EcoPowerMode = "off" | "on" | "auto_battery";
 export interface LabsSettings {
   /** Master kill-switch. When false, every experimental feature is inactive. */
   enabled: boolean;
+  /** WebGL video enhancement preset (Deband 2.0, CAS, Max, Cinema Pro 2.0) */
+  videoEnhance: VideoEnhanceMode;
   /** Real-time 24fps -> 48/60fps interpolation */
   frameBoost: FrameBoostMode;
   /** Vendor-agnostic GLSL spatial upscaling (Intel iGPU / NVIDIA / AMD / Apple) */
   smartUpscale: SmartUpscaleMode;
-  /** Dynamic 32x18 Cinema Ambilight behind black letterbox/pillarbox bars */
+  /** Pure-GPU 32x18 Cinema Ambilight in letterbox/pillarbox bars */
   ambilight: boolean;
+  /** Fake-HDR Auto Shadow-Lift & Highlight Roll-off for dark scenes on IPS laptops */
+  hdrToneMap: boolean;
+  /** Smart Vibrance with Skin-Tone Guard (vivid colors without orange faces) */
+  smartVibrance: boolean;
   /** WebVTT sprite perceptual dHash intro detection + manual season memory */
   introSkip: IntroSkipMode;
-  /** Mid/Side center speech enhancer + compressor with silence watchdog */
+  /** Speech clarity boost + compressor with WebKitGTK gesture unlock & silence guard */
   dialogueBoost: boolean;
   /** Laptop battery saver (OLED #000000 + 720p cap + GPU shader pause) */
   ecoMode: EcoPowerMode;
@@ -41,9 +48,12 @@ export interface EffectiveLabsState {
   ecoActive: boolean;
   batteryLevel: number | null;
   batteryCharging: boolean | null;
+  videoEnhance: VideoEnhanceMode;
   frameBoost: FrameBoostMode;
   smartUpscale: SmartUpscaleMode;
   ambilight: boolean;
+  hdrToneMap: boolean;
+  smartVibrance: boolean;
   introSkip: IntroSkipMode;
   dialogueBoost: boolean;
 }
@@ -53,9 +63,12 @@ const CHANGE_EVENT = "rdx:labs-changed";
 
 export const DEFAULT_LABS_SETTINGS: LabsSettings = {
   enabled: false,
+  videoEnhance: "off",
   frameBoost: "off",
   smartUpscale: "off",
   ambilight: false,
+  hdrToneMap: false,
+  smartVibrance: false,
   introSkip: "off",
   dialogueBoost: false,
   ecoMode: "off",
@@ -70,6 +83,13 @@ function sanitizeSettings(input: Partial<LabsSettings> | null | undefined): Labs
   if (!input || typeof input !== "object") {
     return { ...DEFAULT_LABS_SETTINGS };
   }
+  const videoEnhance: VideoEnhanceMode =
+    input.videoEnhance === "deband" ||
+    input.videoEnhance === "cas" ||
+    input.videoEnhance === "max" ||
+    input.videoEnhance === "cinema_hdr"
+      ? input.videoEnhance
+      : "off";
   const frameBoost: FrameBoostMode =
     input.frameBoost === "smooth" || input.frameBoost === "flow" ? input.frameBoost : "off";
   const smartUpscale: SmartUpscaleMode =
@@ -85,9 +105,12 @@ function sanitizeSettings(input: Partial<LabsSettings> | null | undefined): Labs
 
   return {
     enabled: Boolean(input.enabled),
+    videoEnhance,
     frameBoost,
     smartUpscale,
     ambilight: Boolean(input.ambilight),
+    hdrToneMap: Boolean(input.hdrToneMap),
+    smartVibrance: Boolean(input.smartVibrance),
     introSkip,
     dialogueBoost: Boolean(input.dialogueBoost),
     ecoMode,
@@ -185,9 +208,12 @@ export function getEffectiveLabsState(): EffectiveLabsState {
       ecoActive: false,
       batteryLevel: currentBatteryLevel,
       batteryCharging: currentBatteryCharging,
+      videoEnhance: "off",
       frameBoost: "off",
       smartUpscale: "off",
       ambilight: false,
+      hdrToneMap: false,
+      smartVibrance: false,
       introSkip: "off",
       dialogueBoost: false,
     };
@@ -202,10 +228,13 @@ export function getEffectiveLabsState(): EffectiveLabsState {
     ecoActive,
     batteryLevel: currentBatteryLevel,
     batteryCharging: currentBatteryCharging,
-    // Eco mode pauses GPU-intensive visual shaders & Ambilight to extend battery life
+    // Eco mode pauses GPU-intensive shaders to extend laptop battery life
+    videoEnhance: ecoActive ? "off" : raw.videoEnhance,
     frameBoost: ecoActive ? "off" : raw.frameBoost,
     smartUpscale: ecoActive ? "off" : raw.smartUpscale,
     ambilight: ecoActive ? false : raw.ambilight,
+    hdrToneMap: ecoActive ? false : raw.hdrToneMap,
+    smartVibrance: ecoActive ? false : raw.smartVibrance,
     introSkip: raw.introSkip,
     dialogueBoost: raw.dialogueBoost,
   };
@@ -227,9 +256,12 @@ export function updateLabsSettings(patch: Partial<LabsSettings>): EffectiveLabsS
 export function applyRecommendedLabsPreset(): EffectiveLabsState {
   return updateLabsSettings({
     enabled: true,
+    videoEnhance: "max",
     frameBoost: "smooth",
     smartUpscale: "auto",
     ambilight: true,
+    hdrToneMap: true,
+    smartVibrance: true,
     introSkip: "button",
     dialogueBoost: false,
     ecoMode: "auto_battery",
@@ -250,9 +282,12 @@ export function resetLabsSettings(): EffectiveLabsState {
 export function countActiveLabsFeatures(state: EffectiveLabsState): number {
   if (!state.isActive) return 0;
   let count = 0;
+  if (state.videoEnhance !== "off") count++;
   if (state.frameBoost !== "off") count++;
   if (state.smartUpscale !== "off") count++;
   if (state.ambilight) count++;
+  if (state.hdrToneMap) count++;
+  if (state.smartVibrance) count++;
   if (state.introSkip !== "off") count++;
   if (state.dialogueBoost) count++;
   if (state.raw.ecoMode !== "off") count++;
