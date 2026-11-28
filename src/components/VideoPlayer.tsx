@@ -2866,12 +2866,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       return;
     }
 
+    let disposed = false;
     let unlistenAction: (() => void) | undefined;
     let unlistenSeek: (() => void) | undefined;
     let unlistenPosition: (() => void) | undefined;
     let unlistenRemote: (() => void) | undefined;
 
     listen<string>("mpris-action", (event) => {
+      if (disposed) return;
       const video = videoRef.current;
       if (!video) return;
 
@@ -2905,26 +2907,41 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           break;
       }
     }).then((un) => {
-      unlistenAction = un;
+      if (disposed) {
+        un();
+      } else {
+        unlistenAction = un;
+      }
     });
 
     listen<number>("mpris-seek", (event) => {
+      if (disposed) return;
       seekDeltaRef.current(event.payload);
     }).then((un) => {
-      unlistenSeek = un;
+      if (disposed) {
+        un();
+      } else {
+        unlistenSeek = un;
+      }
     });
 
     listen<number>("mpris-set-position", (event) => {
+      if (disposed) return;
       const targetTime = event.payload;
       if (Number.isFinite(targetTime) && targetTime >= 0) {
         commitSeekRef.current(targetTime);
         syncMprisRef.current(true, undefined, targetTime);
       }
     }).then((un) => {
-      unlistenPosition = un;
+      if (disposed) {
+        un();
+      } else {
+        unlistenPosition = un;
+      }
     });
 
     listen<RemoteCommandEvent>("remote://command", (event) => {
+      if (disposed) return;
       const video = videoRef.current;
       const cmd = event.payload;
       if (!video || !cmd) return;
@@ -2993,10 +3010,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
       }
     }).then((un) => {
-      unlistenRemote = un;
+      if (disposed) {
+        un();
+      } else {
+        unlistenRemote = un;
+      }
     });
 
     return () => {
+      disposed = true;
       unlistenAction?.();
       unlistenSeek?.();
       unlistenPosition?.();
