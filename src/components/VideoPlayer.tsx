@@ -1771,20 +1771,19 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       if (Hls.isSupported()) {
         let mediaErrorRecovered = false;
         let networkErrorRetries = 0;
-        let hasManifestParsed = false;
+        let hasFragLoaded = false;
         activeWatchdog = setTimeout(() => {
           if (
             hlsRef.current &&
-            !hasManifestParsed &&
-            video.readyState < 2 &&
-            (!hlsDurationRef.current || hlsDurationRef.current <= 0)
+            !hasFragLoaded &&
+            video.readyState < 2
           ) {
-            console.warn(`HLS manifest/level (${selectedQuality.label}) timed out after 14s`);
+            console.warn(`HLS startup (${selectedQuality.label}) timed out after 8s`);
             hls.destroy();
             hlsRef.current = null;
             failHls();
           }
-        }, 14000);
+        }, 8000);
 
         const hls = new Hls({
           enableWorker: true,
@@ -1804,8 +1803,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         hls.attachMedia(video);
 
         hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
-          hasManifestParsed = true;
-          clearWatchdog();
           const totalDur = data.details?.totalduration;
           if (totalDur && Number.isFinite(totalDur) && totalDur > 0) {
             hlsDurationRef.current = totalDur;
@@ -1819,8 +1816,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         });
 
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          hasManifestParsed = true;
-          clearWatchdog();
           if (prevTime > 0) {
             setCurrentTime(prevTime);
             if (!hasAppliedInitialPositionRef.current && initialPositionSec > 0 && prevTime === initialPositionSec) {
@@ -1834,7 +1829,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         });
 
         hls.on(Hls.Events.FRAG_LOADED, () => {
-          // Reset transient error counters whenever segments stream normally
+          // Clear startup watchdog & reset transient error counters once fragments flow
+          hasFragLoaded = true;
+          clearWatchdog();
           networkErrorRetries = 0;
           mediaErrorRecovered = false;
         });
@@ -1844,12 +1841,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             console.warn("HLS fatal error:", data.type, data.details);
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR: {
-                const maxRetries = hasManifestParsed ? 5 : 2;
+                const maxRetries = hasFragLoaded ? 4 : 1;
                 if (
                   networkErrorRetries < maxRetries &&
-                  (hasManifestParsed ||
+                  (hasFragLoaded ||
                     (data.details !== Hls.ErrorDetails.MANIFEST_LOAD_ERROR &&
-                      data.details !== Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT))
+                      data.details !== Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT &&
+                      data.details !== Hls.ErrorDetails.LEVEL_LOAD_ERROR &&
+                      data.details !== Hls.ErrorDetails.LEVEL_LOAD_TIMEOUT))
                 ) {
                   networkErrorRetries++;
                   hls.startLoad();
