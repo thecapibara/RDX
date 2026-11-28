@@ -54,6 +54,8 @@ import {
   setBgTheme,
   getDetailsCardStyle,
   setDetailsCardStyle,
+  getOledCare,
+  setOledCare,
   ACCENT_OPTIONS,
   type AccentColor,
   type BgTheme,
@@ -177,6 +179,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
   });
   const [accentColor, setAccentColorState] = useState<AccentColor>(() => getAccentColor());
   const [bgTheme, setBgThemeState] = useState<BgTheme>(() => getBgTheme());
+  const [oledCare, setOledCareState] = useState<boolean>(() => getOledCare());
   const [detailsCardStyle, setDetailsCardStyleState] = useState<DetailsCardStyle>(() => getDetailsCardStyle());
   const [windowControlsMode, setWindowControlsMode] = useState<WindowControlsMode>(() => {
     try {
@@ -1761,6 +1764,39 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                         </div>
                       </div>
                     </button>
+                  </div>
+
+                  {/* OLED Care (Soft UI Text) */}
+                  <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-white flex items-center gap-2">
+                        OLED Care (м'який текст)
+                        <span className="text-[10px] font-medium text-zinc-400 bg-white/5 px-1.5 py-0.5 rounded border border-white/10">
+                          82% білого
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400 mt-0.5 leading-relaxed">
+                        Приглушує чисто-білий текст і субтитри проти ореолу/вигоряння на OLED. Постери та відео лишаються на 100% яскравості.
+                      </p>
+                    </div>
+                    <label
+                      role="switch"
+                      aria-checked={oledCare}
+                      className="relative inline-flex items-center cursor-pointer flex-shrink-0"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={oledCare}
+                        onChange={(e) => {
+                          const next = e.target.checked;
+                          setOledCareState(next);
+                          setOledCare(next);
+                          playHoverSound();
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+                    </label>
                   </div>
                 </div>
 

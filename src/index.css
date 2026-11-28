@@ -151,3 +151,33 @@
   -ms-overflow-style: none !important;
   scrollbar-width: none !important;
 }
+
+/* OLED Care: softens pure #FFFFFF UI text (~82% luminance) & harsh glows to eliminate OLED halation/fringing
+   and reduce static UI burn-in while keeping posters (<img>) and video (<video>/<canvas>) at 100% brightness */
+html[data-oled-care="on"] {
+  --color-white: #d4d4dc;
+}
+
+html[data-oled-care="on"] .text-white {
+  color: #d4d4dc !important;
+}
+
+html[data-oled-care="on"] .text-zinc-50,
+html[data-oled-care="on"] .text-zinc-100 {
+  color: #c8c8d2 !important;
+}
+
+html[data-oled-care="on"] .text-zinc-200 {
+  color: #bcbcc8 !important;
+}
+
+html[data-oled-care="on"] h1,
+html[data-oled-care="on"] h2,
+html[data-oled-care="on"] h3,
+html[data-oled-care="on"] h4 {
+  text-shadow: none !important;
+}
+
+html[data-oled-care="on"] video::cue {
+  color: #d4d4dc !important;
+}
