@@ -1828,12 +1828,56 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           video.play().catch(() => {});
         });
 
+        let didSnapToInitialBuffer = false;
+
+        const snapIntoHlsBuffer = () => {
+          if (
+            isEffectCleanedUp ||
+            didSnapToInitialBuffer ||
+            video.readyState < 1 ||
+            !video.buffered ||
+            video.buffered.length === 0
+          ) {
+            return;
+          }
+          const bufStart = video.buffered.start(0);
+          const bufEnd = video.buffered.end(0);
+          if (video.currentTime >= bufStart - 0.5 && video.currentTime <= bufEnd + 0.5) {
+            didSnapToInitialBuffer = true;
+            return;
+          }
+          if (bufStart > 1 && video.currentTime < bufStart - 0.5) {
+            const snapTarget =
+              prevTime >= bufStart && prevTime < bufEnd - 0.5
+                ? prevTime
+                : bufStart + 0.05;
+            try {
+              video.currentTime = snapTarget;
+              if (video.currentTime >= bufStart - 1.0) {
+                didSnapToInitialBuffer = true;
+                setCurrentTime(snapTarget);
+              }
+            } catch {}
+            video.play().catch(() => {});
+          }
+        };
+
+        video.addEventListener("loadedmetadata", snapIntoHlsBuffer);
+        video.addEventListener("waiting", snapIntoHlsBuffer);
+
         hls.on(Hls.Events.FRAG_LOADED, () => {
           // Clear startup watchdog & reset transient error counters once fragments flow
           hasFragLoaded = true;
           clearWatchdog();
           networkErrorRetries = 0;
           mediaErrorRecovered = false;
+        });
+
+        hls.on(Hls.Events.FRAG_BUFFERED, snapIntoHlsBuffer);
+        hls.on(Hls.Events.BUFFER_APPENDED, snapIntoHlsBuffer);
+        hls.on(Hls.Events.DESTROYING, () => {
+          video.removeEventListener("loadedmetadata", snapIntoHlsBuffer);
+          video.removeEventListener("waiting", snapIntoHlsBuffer);
         });
 
         hls.on(Hls.Events.ERROR, (_, data) => {
