@@ -4,8 +4,18 @@ use std::io::{Read, Write};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+pub const DEFAULT_DISCORD_CLIENT_ID: &str = "1576167329119735900";
 pub const RDX_LOGO_URL: &str =
     "https://raw.githubusercontent.com/thecapibara/RDX/main/public/logo.png";
+
+fn resolve_client_id(client_id: &str) -> &str {
+    let trimmed = client_id.trim();
+    if trimmed.is_empty() {
+        DEFAULT_DISCORD_CLIENT_ID
+    } else {
+        trimmed
+    }
+}
 
 const OP_HANDSHAKE: u32 = 0;
 const OP_FRAME: u32 = 1;
@@ -62,7 +72,7 @@ impl DiscordRpcState {
     }
 
     pub fn status(&self, enabled: bool, client_id: &str) -> DiscordRpcStatus {
-        let trimmed = client_id.trim();
+        let trimmed = resolve_client_id(client_id);
         let has_client_id = !trimmed.is_empty() && trimmed.chars().all(|c| c.is_ascii_digit());
         if !enabled {
             return DiscordRpcStatus {
@@ -108,7 +118,7 @@ impl DiscordRpcState {
             self.clear_activity();
             return;
         }
-        let trimmed = client_id.trim();
+        let trimmed = resolve_client_id(client_id);
         if trimmed.is_empty() || !trimmed.chars().all(|c| c.is_ascii_digit()) {
             return;
         }

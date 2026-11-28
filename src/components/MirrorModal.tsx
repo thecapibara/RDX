@@ -1498,7 +1498,7 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                           type="text"
                           value={discordClientId}
                           onChange={(e) => setDiscordClientId(e.target.value)}
-                          placeholder="Discord Application ID (наприклад 1234567890123456789)"
+                          placeholder="Вбудований RDX ID (необов'язково)"
                           className="flex-1 bg-zinc-950/80 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-rose-500 font-mono"
                         />
                         <button
