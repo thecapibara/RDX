@@ -1812,7 +1812,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
 
       if (Hls.isSupported()) {
-        let mediaErrorRecovered = false;
+        let mediaErrorRecoveryCount = 0;
         let networkErrorRetries = 0;
         let hasFragLoaded = false;
         activeWatchdog = setTimeout(() => {
@@ -1910,15 +1910,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           }
         };
 
+        const onPlayingResetRecovery = () => {
+          // Only reset mediaError recovery budget once frames actually decode & play,
+          // preventing an infinite FRAG_LOADED -> MEDIA_ERR_DECODE -> recoverMediaError loop.
+          mediaErrorRecoveryCount = 0;
+        };
+
         video.addEventListener("loadedmetadata", snapIntoHlsBuffer);
         video.addEventListener("waiting", snapIntoHlsBuffer);
+        video.addEventListener("playing", onPlayingResetRecovery);
 
         hls.on(Hls.Events.FRAG_LOADED, () => {
-          // Clear startup watchdog & reset transient error counters once fragments flow
+          // Clear startup watchdog & reset transient network error counter once fragments flow
           hasFragLoaded = true;
           clearWatchdog();
           networkErrorRetries = 0;
-          mediaErrorRecovered = false;
         });
 
         hls.on(Hls.Events.FRAG_BUFFERED, snapIntoHlsBuffer);
@@ -1926,6 +1932,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         hls.on(Hls.Events.DESTROYING, () => {
           video.removeEventListener("loadedmetadata", snapIntoHlsBuffer);
           video.removeEventListener("waiting", snapIntoHlsBuffer);
+          video.removeEventListener("playing", onPlayingResetRecovery);
         });
 
         hls.on(Hls.Events.ERROR, (_, data) => {
@@ -1952,8 +1959,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 break;
               }
               case Hls.ErrorTypes.MEDIA_ERROR:
-                if (!mediaErrorRecovered) {
-                  mediaErrorRecovered = true;
+                if (mediaErrorRecoveryCount < 2) {
+                  mediaErrorRecoveryCount++;
                   const resumePos =
                     video.currentTime > 1
                       ? video.currentTime

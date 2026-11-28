@@ -82,14 +82,16 @@ fn main() {
         }
 
         // 3. On Linux, WebKitGTK's GStreamer `vah264dec` (rank 257) has a known DMABUF surface pool
-        // synchronization bug that causes H.264 frames to jump backward and forward every few seconds.
-        // Prioritizing `avdec_h264` (multi-threaded FFmpeg decoder) eliminates frame reordering stutter
-        // and works reliably across Wayland, X11 (LXDE/Lubuntu/XFCE), and older GPUs.
+        // synchronization bug that causes H.264 frames to jump backward and forward every few seconds,
+        // and `avdec_h264` (gst-libav) hits `gst_ffmpegviddec_get_buffer2: Couldn't get codec frame !`
+        // (`MEDIA_ERR_DECODE`) on WebKitGTK MSE seeks/resumes with H.264 High@L4.1 streams.
+        // Prioritizing `openh264dec:MAX` with `avdec_h264:MARGINAL` fallback eliminates both bugs
+        // while keeping playback working on distros without `gstreamer-plugin-openh264`.
         if std::env::var_os("GST_PLUGIN_FEATURE_RANK").is_none() {
             unsafe {
                 std::env::set_var(
                     "GST_PLUGIN_FEATURE_RANK",
-                    "vah264dec:NONE,vah265dec:NONE,vaav1dec:NONE,qsvh264dec:NONE,msdkh264dec:NONE,avdec_h264:MAX",
+                    "vah264dec:NONE,vah265dec:NONE,vaav1dec:NONE,qsvh264dec:NONE,msdkh264dec:NONE,openh264dec:MAX,avdec_h264:MARGINAL",
                 );
             }
         }
