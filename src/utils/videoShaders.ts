@@ -376,6 +376,8 @@ void main() {
             return;
         }
         vidUV = (v_uv - u_videoRect.xy) / max(u_videoRect.zw - u_videoRect.xy, vec2(0.001));
+        // Trim ~0.55% (~2-3px) vertical H.264 macroblock padding so no dark seam sits between the video and Ambilight glow
+        vidUV.y = mix(0.0055, 0.9945, vidUV.y);
     }
 
     if (u_splitCompare == 1) {
