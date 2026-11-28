@@ -1310,6 +1310,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const commitSeekToVideo = useCallback(
     (targetSec: number) => {
       if (!Number.isFinite(targetSec)) return;
+      userHasSeekedRef.current = true;
       const effDur = getEffectiveDuration();
       const clamped =
         effDur > 0 ? Math.max(0, Math.min(effDur, targetSec)) : Math.max(0, targetSec);
@@ -1348,6 +1349,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const seekPointerDownXRef = useRef<number>(0);
   const didDragSeekRef = useRef<boolean>(false);
   const lastCommittedSeekSecRef = useRef<number>(-1);
+  const userHasSeekedRef = useRef<boolean>(false);
 
   const handleSeekPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
@@ -1833,7 +1835,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           maxBufferLength: labs.ecoActive ? 150 : turboBufferEnabled ? 90 : 45,
           maxMaxBufferLength: labs.ecoActive ? 240 : turboBufferEnabled ? 180 : 90,
           backBufferLength: 30,
-          progressive: true,
+          // Keep progressive=false on WebKitGTK MSE so rapid timeline seeks never feed truncated
+          // mid-download MPEG-TS packets into GStreamer SourceBuffer (which caused MEDIA_ERROR -> 0:00 reset).
+          progressive: false,
           maxBufferHole: 1.2,
           highBufferWatchdogPeriod: 2,
           nudgeOffset: 0.2,
@@ -1869,12 +1873,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           video.play().catch(() => {});
         });
 
-        let didSnapToInitialBuffer = false;
+        userHasSeekedRef.current = false;
+        let didSnapToInitialBuffer = prevTime <= 1;
 
         const snapIntoHlsBuffer = () => {
           if (
             isEffectCleanedUp ||
             didSnapToInitialBuffer ||
+            userHasSeekedRef.current ||
+            prevTime <= 1 ||
             video.readyState < 1 ||
             !video.buffered ||
             video.buffered.length === 0
@@ -1947,7 +1954,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               case Hls.ErrorTypes.MEDIA_ERROR:
                 if (!mediaErrorRecovered) {
                   mediaErrorRecovered = true;
+                  const resumePos =
+                    video.currentTime > 1
+                      ? video.currentTime
+                      : lastCommittedSeekSecRef.current > 0
+                      ? lastCommittedSeekSecRef.current
+                      : prevTime;
                   hls.recoverMediaError();
+                  if (resumePos > 1) {
+                    setTimeout(() => {
+                      if (!isEffectCleanedUp && video.readyState >= 1 && video.currentTime < 1) {
+                        try {
+                          video.currentTime = resumePos;
+                          setCurrentTime(resumePos);
+                        } catch {}
+                      }
+                    }, 300);
+                  }
                 } else {
                   hls.destroy();
                   hlsRef.current = null;
