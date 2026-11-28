@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Info, X } from "lucide-react";
 import { cn } from "../lib/utils";
 import type { VideoEnhanceMode, ResolvedUpscaleMode } from "../utils/videoShaders";
@@ -66,6 +66,11 @@ export const StreamStatsOverlay: React.FC<StreamStatsOverlayProps> = React.memo(
     onClose,
   }) => {
     const [, setTick] = useState(0);
+    const lastDimsRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
+
+    useEffect(() => {
+      lastDimsRef.current = { w: 0, h: 0 };
+    }, [title, activeSeason, activeEpisode]);
 
     useEffect(() => {
       const id = window.setInterval(() => {
@@ -77,8 +82,13 @@ export const StreamStatsOverlay: React.FC<StreamStatsOverlayProps> = React.memo(
     }, []);
 
     const video = videoRef.current;
-    const vw = video?.videoWidth || 0;
-    const vh = video?.videoHeight || 0;
+    const rawVw = video?.videoWidth || 0;
+    const rawVh = video?.videoHeight || 0;
+    if (rawVw > 0 && rawVh > 0) {
+      lastDimsRef.current = { w: rawVw, h: rawVh };
+    }
+    const vw = rawVw > 0 ? rawVw : lastDimsRef.current.w;
+    const vh = rawVh > 0 ? rawVh : lastDimsRef.current.h;
     const renderFps = telemetryRef.current?.renderFps || 0;
     const streamFps = telemetryRef.current?.streamFps || 0;
 

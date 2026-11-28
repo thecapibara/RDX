@@ -255,6 +255,25 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [currentTime, setCurrentTime] = useState(initialPositionSec || 0);
   const [duration, setDuration] = useState(0);
   const [isBuffering, setIsBuffering] = useState(false);
+  const bufferingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleBufferingIndicator = useCallback(() => {
+    if (bufferingTimerRef.current) return;
+    bufferingTimerRef.current = setTimeout(() => {
+      bufferingTimerRef.current = null;
+      if (videoRef.current && !videoRef.current.paused && videoRef.current.readyState < 3) {
+        setIsBuffering(true);
+      }
+    }, 350);
+  }, []);
+
+  const clearBufferingIndicator = useCallback(() => {
+    if (bufferingTimerRef.current) {
+      clearTimeout(bufferingTimerRef.current);
+      bufferingTimerRef.current = null;
+    }
+    setIsBuffering((prev) => (prev ? false : prev));
+  }, []);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -3071,21 +3090,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           )}
           style={getVideoStyle()}
           onWaiting={() => {
-            if (!videoRef.current?.paused) setIsBuffering(true);
+            if (!videoRef.current?.paused) scheduleBufferingIndicator();
           }}
           onPlaying={() => {
-            setIsBuffering(false);
+            clearBufferingIndicator();
             if (!isSeekingRef.current) setIsPlaying(true);
             syncDialogueBoost();
           }}
           onCanPlay={() => {
             syncDurationFromVideo();
-            setIsBuffering(false);
+            clearBufferingIndicator();
             syncDialogueBoost();
           }}
           onTimeUpdate={() => {
             if (!videoRef.current) return;
-            setIsBuffering((prev) => (prev ? false : prev));
+            clearBufferingIndicator();
             const time = videoRef.current.currentTime;
             if (Number.isFinite(time) && introSegment && labs.introSkip !== "off") {
               const insideIntro =
@@ -3130,7 +3149,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             setIsSeeking(false);
             if (videoRef.current && !videoRef.current.paused) {
               setIsPlaying(true);
-              setIsBuffering(false);
+              clearBufferingIndicator();
             }
             syncMprisState(true);
           }}
