@@ -2978,7 +2978,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {/* Real-time WebGL Deband + CAS + RDX Labs (Frame Boost, Smart Upscaler & GPU Ambilight) Canvas */}
         {isShaderPipelineActive && (
           <canvas
-            key={`shader-v15-${details.id}-${activeSeason ?? 0}-${activeEpisode ?? 0}`}
+            key={`shader-v16-${details.id}-${activeSeason ?? 0}-${activeEpisode ?? 0}`}
             ref={shaderCanvasRef}
             aria-hidden="true"
             className={cn(

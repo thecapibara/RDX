@@ -460,7 +460,7 @@ interface PassProgram {
 }
 
 export class VideoShaderRenderer {
-  public static readonly VERSION = 15;
+  public static readonly VERSION = 16;
   public readonly version = VideoShaderRenderer.VERSION;
 
   private canvas: HTMLCanvasElement;
@@ -534,6 +534,10 @@ export class VideoShaderRenderer {
   private animFrameId: number | null = null;
   private rvfcId: number | null = null;
   private newVideoFrameAvailable = true;
+  private readyBitmap: ImageBitmap | null = null;
+  private readyBitmapMediaTime = -1;
+  private bitmapInFlight = false;
+  private bitmapEpoch = 0;
   private isDestroyed = false;
   private isRunning = false;
   private listenersAttached = false;
@@ -917,6 +921,62 @@ export class VideoShaderRenderer {
     if (this.isPipelineActive) this.renderFrame(true);
   }
 
+  private clearPendingBitmap() {
+    this.bitmapEpoch++;
+    this.bitmapInFlight = false;
+    if (this.readyBitmap) {
+      try {
+        this.readyBitmap.close();
+      } catch {}
+      this.readyBitmap = null;
+    }
+    this.readyBitmapMediaTime = -1;
+  }
+
+  private scheduleAsyncVideoCapture() {
+    if (
+      this.isDestroyed ||
+      !this.isRunning ||
+      this.bitmapInFlight ||
+      typeof createImageBitmap !== "function" ||
+      this.video.readyState < 2 ||
+      this.video.seeking ||
+      this.video.videoWidth <= 0
+    ) {
+      return;
+    }
+    const epoch = this.bitmapEpoch;
+    const captureMediaTime = this.video.currentTime;
+    this.bitmapInFlight = true;
+
+    createImageBitmap(this.video)
+      .then((bmp) => {
+        if (this.isDestroyed || !this.isRunning || epoch !== this.bitmapEpoch) {
+          try {
+            bmp.close();
+          } catch {}
+          return;
+        }
+        this.bitmapInFlight = false;
+        if (this.readyBitmap) {
+          try {
+            this.readyBitmap.close();
+          } catch {}
+        }
+        this.readyBitmap = bmp;
+        this.readyBitmapMediaTime = captureMediaTime;
+        this.newVideoFrameAvailable = true;
+        if (!document.hidden && this.isPipelineActive && this.animFrameId === null) {
+          this.animFrameId = requestAnimationFrame(this.renderLoop);
+        }
+      })
+      .catch(() => {
+        if (epoch === this.bitmapEpoch) {
+          this.bitmapInFlight = false;
+        }
+      });
+  }
+
   private setupRvfc(forceReset = false) {
     if (forceReset) this.teardownRvfc();
     if (this.rvfcId !== null) return;
@@ -936,8 +996,14 @@ export class VideoShaderRenderer {
           }
         }
         this.lastVideoFrameWallTime = now;
-        this.newVideoFrameAvailable = true;
         this.decodedFrameCounter++;
+
+        // Offload slow WebKitGTK YUV/SAR->RGBA conversion (especially 1281x534 odd SAR!) off main thread
+        if (typeof createImageBitmap === "function" && !this.video.paused) {
+          this.scheduleAsyncVideoCapture();
+        } else {
+          this.newVideoFrameAvailable = true;
+        }
 
         if (!document.hidden && this.isPipelineActive && this.animFrameId === null) {
           this.animFrameId = requestAnimationFrame(this.renderLoop);
@@ -992,6 +1058,7 @@ export class VideoShaderRenderer {
 
   private handleVideoSeeked = () => {
     if (this.isRunning && !this.isDestroyed && this.isPipelineActive) {
+      this.clearPendingBitmap();
       this.hasPrevFrame = false;
       this.ambiPrimed = false;
       this.lowFpsStrikeCount = 0;
@@ -1067,6 +1134,7 @@ export class VideoShaderRenderer {
 
   public stop() {
     this.isRunning = false;
+    this.clearPendingBitmap();
     this.detachListeners();
     this.teardownRvfc();
     if (this.animFrameId !== null) {
@@ -1325,7 +1393,9 @@ export class VideoShaderRenderer {
     const resized = prevOutW !== this.allocatedOutWidth || prevOutH !== this.allocatedOutHeight;
 
     const curMediaTime = this.video.currentTime;
-    let shouldUploadNewVideoFrame = force || resized || this.lastRenderedMediaTime === -1;
+    const hasAsyncBitmap = this.readyBitmap !== null;
+    let shouldUploadNewVideoFrame =
+      force || resized || this.lastRenderedMediaTime === -1 || hasAsyncBitmap;
 
     if (!shouldUploadNewVideoFrame) {
       const minFrameDelta = 0.033 * Math.max(0.5, this.video.playbackRate || 1);
@@ -1335,7 +1405,11 @@ export class VideoShaderRenderer {
       if (this.rvfcId !== null && sinceLastFrame < 95) {
         shouldUploadNewVideoFrame = this.newVideoFrameAvailable;
       } else if (mediaAdvanced) {
-        shouldUploadNewVideoFrame = true;
+        if (typeof createImageBitmap === "function" && !this.video.paused) {
+          this.scheduleAsyncVideoCapture();
+        } else {
+          shouldUploadNewVideoFrame = true;
+        }
         if (this.lastVideoFrameWallTime > 0 && sinceLastFrame >= 14 && sinceLastFrame <= 80) {
           this.avgVideoFrameIntervalMs =
             this.avgVideoFrameIntervalMs * 0.82 + sinceLastFrame * 0.18;
@@ -1355,6 +1429,11 @@ export class VideoShaderRenderer {
     }
 
     if (shouldUploadNewVideoFrame) {
+      const bmpToUpload = this.readyBitmap;
+      const uploadMediaTime = bmpToUpload ? this.readyBitmapMediaTime : curMediaTime;
+      this.readyBitmap = null;
+      this.readyBitmapMediaTime = -1;
+
       if (this.lastRenderedMediaTime !== -1 && !force && !resized) {
         const tmp = this.prevTexture;
         this.prevTexture = this.currTexture;
@@ -1362,18 +1441,24 @@ export class VideoShaderRenderer {
         this.hasPrevFrame = true;
       }
 
+      const uploadSource: TexImageSource = bmpToUpload || this.video;
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, this.currTexture);
       try {
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.video);
-        this.lastRenderedMediaTime = curMediaTime;
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, uploadSource);
+        this.lastRenderedMediaTime = uploadMediaTime;
         this.newVideoFrameAvailable = false;
       } catch (err) {
         try {
-          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.video);
-          this.lastRenderedMediaTime = curMediaTime;
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, uploadSource);
+          this.lastRenderedMediaTime = uploadMediaTime;
           this.newVideoFrameAvailable = false;
         } catch (err2) {
+          if (bmpToUpload) {
+            try {
+              bmpToUpload.close();
+            } catch {}
+          }
           console.warn("RDX VideoShaders frame upload blocked:", err, err2);
           if (this.onFrameError) this.onFrameError();
           return;
@@ -1384,12 +1469,18 @@ export class VideoShaderRenderer {
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.prevTexture);
         try {
-          gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.video);
+          gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, uploadSource);
         } catch {
           try {
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.video);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, uploadSource);
           } catch {}
         }
+      }
+
+      if (bmpToUpload) {
+        try {
+          bmpToUpload.close();
+        } catch {}
       }
 
       if (activeBoost === "flow") {
