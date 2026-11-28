@@ -65,9 +65,14 @@ import {
   type SmartUpscaleMode,
 } from "../services/labs";
 import {
+  AUDIO_PRESET_META,
   DialogueEnhancerController,
+  getSavedAudioPreset,
+  saveAudioPreset,
   unlockSharedAudioContext,
+  type AudioPreset,
 } from "../utils/dialogueEnhancer";
+import type { RemoteCommandEvent } from "../types";
 import {
   detectSeriesIntro,
   saveSeasonIntro,
@@ -557,7 +562,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     open: boolean;
     x: number;
     y: number;
-    page: "main" | "translators" | "episodes" | "quality" | "speed" | "aspect" | "sleep" | "subtitles" | "boost" | "labs";
+    page: "main" | "translators" | "episodes" | "quality" | "speed" | "aspect" | "sleep" | "subtitles" | "boost" | "audio_eq" | "labs";
   } | null>(null);
 
   // 1. True Fullscreen State & Sync
@@ -897,21 +902,38 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     activeEpisode,
   ]);
 
-  // Dialogue Boost 2.0 lifecycle (with automatic bypass when Labs or toggle turns OFF)
+  // Cinema Audio EQ & Dialogue Boost lifecycle (5 presets: off, dialogue, cinema, night, headphones)
+  const [audioPreset, setAudioPreset] = useState<AudioPreset>(() => getSavedAudioPreset());
+  const effectiveAudioPreset: AudioPreset =
+    audioPreset !== "off" ? audioPreset : labs.dialogueBoost ? "dialogue" : "off";
+
+  const handleSelectAudioPreset = useCallback((preset: AudioPreset) => {
+    if (preset !== "off") {
+      unlockSharedAudioContext();
+    }
+    setAudioPreset(preset);
+    saveAudioPreset(preset);
+    if (preset !== "dialogue" && labs.raw.dialogueBoost) {
+      updateLabsSettings({ dialogueBoost: false });
+    }
+    const meta = AUDIO_PRESET_META.find((p) => p.id === preset);
+    showHud(`🔊 Звук: ${meta ? meta.label : "Стандарт"}`);
+  }, [labs.raw.dialogueBoost]);
+
   const syncDialogueBoost = useCallback(() => {
     if (!videoRef.current) return;
-    if (!labs.dialogueBoost) {
-      dialogueControllerRef.current?.sync(false);
+    if (effectiveAudioPreset === "off") {
+      dialogueControllerRef.current?.syncPreset("off");
       return;
     }
     if (!dialogueControllerRef.current) {
       dialogueControllerRef.current = new DialogueEnhancerController(
         videoRef.current,
-        (reason) => showHud(`🎙️ ${reason}`)
+        (reason) => showHud(`🔊 ${reason}`)
       );
     }
-    dialogueControllerRef.current.sync(true);
-  }, [labs.dialogueBoost]);
+    dialogueControllerRef.current.syncPreset(effectiveAudioPreset);
+  }, [effectiveAudioPreset]);
 
   useEffect(() => {
     syncDialogueBoost();
@@ -2092,6 +2114,36 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           isPlaying: playing,
         })
         .catch(() => {});
+
+      const subtitleText = isSeries
+        ? `S${activeSeason || 1}E${activeEpisode || 1}${currentTranslator?.name ? ` • ${currentTranslator.name}` : ""}`
+        : currentTranslator?.name || details.orig_title || "RDX Cinema";
+
+      api
+        .updateDiscordPresence({
+          title: details.title,
+          subtitle: subtitleText,
+          poster_url: details.poster || null,
+          is_playing: playing,
+          position_sec: currentPos >= 0 ? currentPos : 0,
+          duration_sec: effDur > 0 ? effDur : 0,
+        })
+        .catch(() => {});
+
+      api
+        .updateRemoteState({
+          active: true,
+          title: details.title,
+          subtitle: subtitleText,
+          is_series: isSeries,
+          is_playing: playing,
+          position_sec: currentPos >= 0 ? currentPos : 0,
+          duration_sec: effDur > 0 ? effDur : 0,
+          volume: videoRef.current?.volume ?? volume,
+          muted: videoRef.current?.muted ?? isMuted,
+          audio_preset: effectiveAudioPreset,
+        })
+        .catch(() => {});
     },
     [
       details.title,
@@ -2102,6 +2154,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       activeEpisode,
       currentTranslator?.name,
       isPlaying,
+      volume,
+      isMuted,
+      effectiveAudioPreset,
       getEffectiveDuration,
     ]
   );
@@ -2149,8 +2204,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       } catch {}
     }
 
-    // Instantly remove player card from Linux / OS system shade
+    // Instantly remove player card from Linux / OS system shade, Discord RPC & Wi-Fi Remote
     api.clearMprisState().catch(() => {});
+    api.clearDiscordPresence().catch(() => {});
+    api.clearRemoteState().catch(() => {});
 
     // 1. Auto-save current watch progress
     saveCurrentProgress();
@@ -2749,8 +2806,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   handlePrevEpisodeRef.current = handlePrevEpisode;
   const isSeriesRef = useRef(isSeries);
   isSeriesRef.current = isSeries;
+  const toggleFullscreenRef = useRef(toggleFullscreen);
+  toggleFullscreenRef.current = toggleFullscreen;
+  const handleSelectAudioPresetRef = useRef(handleSelectAudioPreset);
+  handleSelectAudioPresetRef.current = handleSelectAudioPreset;
 
-  // MPRIS Remote Actions from OS (keyboard media keys, system shade, lockscreen)
+  // MPRIS & Wi-Fi Phone Remote Actions
   useEffect(() => {
     if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
       return;
@@ -2759,6 +2820,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     let unlistenAction: (() => void) | undefined;
     let unlistenSeek: (() => void) | undefined;
     let unlistenPosition: (() => void) | undefined;
+    let unlistenRemote: (() => void) | undefined;
 
     listen<string>("mpris-action", (event) => {
       const video = videoRef.current;
@@ -2813,10 +2875,85 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       unlistenPosition = un;
     });
 
+    listen<RemoteCommandEvent>("remote://command", (event) => {
+      const video = videoRef.current;
+      const cmd = event.payload;
+      if (!video || !cmd) return;
+
+      switch (cmd.action) {
+        case "toggle_play":
+          if (video.paused) {
+            video.play().catch(() => {});
+            setIsPlaying(true);
+            syncMprisRef.current(true, true);
+          } else {
+            video.pause();
+            setIsPlaying(false);
+            syncMprisRef.current(true, false);
+          }
+          break;
+        case "seek_delta":
+          if (typeof cmd.value === "number" && Number.isFinite(cmd.value)) {
+            seekDeltaRef.current(cmd.value);
+          }
+          break;
+        case "seek_to":
+          if (typeof cmd.value === "number" && Number.isFinite(cmd.value) && cmd.value >= 0) {
+            commitSeekRef.current(cmd.value);
+            syncMprisRef.current(true, undefined, cmd.value);
+          }
+          break;
+        case "set_volume":
+          if (typeof cmd.value === "number" && Number.isFinite(cmd.value)) {
+            const clamped = Math.max(0, Math.min(1, cmd.value));
+            video.volume = clamped;
+            video.muted = clamped === 0;
+            setVolume(clamped);
+            setIsMuted(clamped === 0);
+            syncMprisRef.current(true);
+          }
+          break;
+        case "toggle_mute": {
+          const nextMuted = !video.muted;
+          video.muted = nextMuted;
+          setIsMuted(nextMuted);
+          syncMprisRef.current(true);
+          break;
+        }
+        case "next_episode":
+          if (isSeriesRef.current) handleNextEpisodeRef.current();
+          break;
+        case "prev_episode":
+          if (isSeriesRef.current) handlePrevEpisodeRef.current();
+          break;
+        case "toggle_fullscreen":
+          toggleFullscreenRef.current();
+          break;
+        case "set_audio_preset": {
+          const p = cmd.str_value;
+          if (
+            p === "off" ||
+            p === "dialogue" ||
+            p === "cinema" ||
+            p === "night" ||
+            p === "headphones"
+          ) {
+            handleSelectAudioPresetRef.current(p);
+          }
+          break;
+        }
+      }
+    }).then((un) => {
+      unlistenRemote = un;
+    });
+
     return () => {
       unlistenAction?.();
       unlistenSeek?.();
       unlistenPosition?.();
+      unlistenRemote?.();
+      api.clearDiscordPresence().catch(() => {});
+      api.clearRemoteState().catch(() => {});
     };
   }, []);
 
@@ -4305,6 +4442,35 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </div>
               </button>
 
+              {/* Audio Equalizer Presets Submenu */}
+              <button
+                onClick={() => setContextMenu({ ...contextMenu, page: "audio_eq" })}
+                className="w-full flex items-center justify-between gap-3 px-3 py-2 text-zinc-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer group"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Volume2
+                    className={cn(
+                      "w-4 h-4 flex-shrink-0 transition-colors",
+                      effectiveAudioPreset !== "off" ? "text-sky-400" : "text-zinc-400 group-hover:text-zinc-300"
+                    )}
+                  />
+                  <span className="truncate">Звук / Еквалайзер</span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-zinc-400 font-medium">
+                  <span
+                    className={cn(
+                      "px-1.5 py-0.5 rounded-md text-[10px] font-medium",
+                      effectiveAudioPreset !== "off"
+                        ? "bg-sky-500/20 text-sky-300 border border-sky-500/30"
+                        : "bg-white/5 text-zinc-400"
+                    )}
+                  >
+                    {AUDIO_PRESET_META.find((p) => p.id === effectiveAudioPreset)?.shortLabel || "Станд."}
+                  </span>
+                  <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
+                </div>
+              </button>
+
               {/* RDX Labs Experimental Submenu (Visible ONLY when Labs Master Switch is ON) */}
               {labs.isActive && (
                 <button
@@ -4860,6 +5026,51 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Submenu: Audio Equalizer Presets */}
+          {contextMenu.page === "audio_eq" && (
+            <div className="space-y-1">
+              <button
+                onClick={() => setContextMenu({ ...contextMenu, page: "main" })}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer font-semibold text-[11px]"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Звук / Еквалайзер</span>
+              </button>
+              <div className="h-px bg-white/10 my-1 mx-2" />
+              {AUDIO_PRESET_META.map((item) => {
+                const isSelected = effectiveAudioPreset === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      handleSelectAudioPreset(item.id);
+                      setContextMenu(null);
+                    }}
+                    className={cn(
+                      "w-full flex items-center justify-between px-3 py-2 rounded-xl text-left cursor-pointer transition-colors",
+                      isSelected
+                        ? "bg-rose-600 text-white"
+                        : "text-zinc-300 hover:bg-white/10"
+                    )}
+                  >
+                    <div>
+                      <div className="text-xs font-semibold">{item.label}</div>
+                      <div
+                        className={cn(
+                          "text-[10px]",
+                          isSelected ? "text-rose-100" : "text-zinc-400"
+                        )}
+                      >
+                        {item.desc}
+                      </div>
+                    </div>
+                    {isSelected && <Check className="w-4 h-4 flex-shrink-0 ml-2" />}
+                  </button>
+                );
+              })}
             </div>
           )}
 

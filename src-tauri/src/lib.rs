@@ -2,10 +2,12 @@ pub mod audio;
 pub mod cdn;
 pub mod client;
 pub mod commands;
+pub mod discord_rpc;
 pub mod downloader;
 pub mod mirror;
 pub mod mpris;
 pub mod parser;
+pub mod remote;
 pub mod storage;
 pub mod stream_proxy;
 pub mod tmdb;
@@ -40,8 +42,18 @@ pub fn run() {
     let mpris = Arc::new(MprisState::new());
     let downloader = Arc::new(downloader::DownloadManager::new(storage.clone()));
     let tmdb = Arc::new(tmdb::TmdbService::new());
+    let discord = Arc::new(discord_rpc::DiscordRpcState::new());
+    let remote = Arc::new(remote::RemoteControlState::new());
 
-    let state = AppState { storage, client, mpris, downloader, tmdb };
+    let state = AppState {
+        storage,
+        client,
+        mpris,
+        downloader,
+        tmdb,
+        discord,
+        remote,
+    };
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -65,6 +77,16 @@ pub fn run() {
 
             if startup_sound_enabled {
                 crate::audio::play_startup_sound(Some(0.55));
+            }
+
+            // 3. Auto-start Wi-Fi Phone Remote ONLY if user explicitly enabled it in Settings
+            let remote_enabled = state
+                .storage
+                .get_settings()
+                .map(|s| s.remote_enabled)
+                .unwrap_or(false);
+            if remote_enabled {
+                let _ = state.remote.start(app.handle().clone());
             }
 
             #[cfg(target_os = "linux")]
@@ -138,6 +160,13 @@ pub fn run() {
             commands::get_franchise_posters,
             commands::get_system_time,
             commands::is_tiling_wm,
+            commands::get_discord_rpc_status,
+            commands::update_discord_presence,
+            commands::clear_discord_presence,
+            commands::get_remote_info,
+            commands::set_remote_enabled,
+            commands::update_remote_state,
+            commands::clear_remote_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

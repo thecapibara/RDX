@@ -8,6 +8,51 @@ export interface AppSettings {
   autoplay_next?: boolean;
   start_fullscreen?: boolean;
   hide_premium?: boolean;
+  discord_rpc?: boolean;
+  discord_client_id?: string;
+  remote_enabled?: boolean;
+}
+
+export interface DiscordActivityPayload {
+  title: string;
+  subtitle?: string | null;
+  poster_url?: string | null;
+  is_playing: boolean;
+  position_sec: number;
+  duration_sec: number;
+}
+
+export interface DiscordRpcStatus {
+  enabled: boolean;
+  connected: boolean;
+  has_client_id: boolean;
+  message: string;
+}
+
+export interface RemotePlaybackState {
+  active: boolean;
+  title: string;
+  subtitle: string;
+  is_series: boolean;
+  is_playing: boolean;
+  position_sec: number;
+  duration_sec: number;
+  volume: number;
+  muted: boolean;
+  audio_preset: string;
+}
+
+export interface RemoteCommandEvent {
+  action: string;
+  value?: number | null;
+  str_value?: string | null;
+}
+
+export interface RemoteServerInfo {
+  running: boolean;
+  url: string;
+  qr_svg: string;
+  port: number;
 }
 
 export interface EpisodeProgress {

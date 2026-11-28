@@ -872,4 +872,60 @@ export const api = {
       minute: "2-digit",
     });
   },
+
+  // Discord Rich Presence
+  getDiscordRpcStatus: async () => {
+    if (isTauri) {
+      try {
+        return await invoke<import("../types").DiscordRpcStatus>("get_discord_rpc_status");
+      } catch {}
+    }
+    return {
+      enabled: false,
+      connected: false,
+      has_client_id: false,
+      message: "Тільки у нативному додатку",
+    };
+  },
+
+  updateDiscordPresence: async (payload: import("../types").DiscordActivityPayload): Promise<void> => {
+    if (isTauri) {
+      await invoke<void>("update_discord_presence", { payload }).catch(() => {});
+    }
+  },
+
+  clearDiscordPresence: async (): Promise<void> => {
+    if (isTauri) {
+      await invoke<void>("clear_discord_presence").catch(() => {});
+    }
+  },
+
+  // Wi-Fi Phone Remote Control
+  getRemoteInfo: async (): Promise<import("../types").RemoteServerInfo> => {
+    if (isTauri) {
+      try {
+        return await invoke<import("../types").RemoteServerInfo>("get_remote_info");
+      } catch {}
+    }
+    return { running: false, url: "", qr_svg: "", port: 0 };
+  },
+
+  setRemoteEnabled: async (enabled: boolean): Promise<import("../types").RemoteServerInfo> => {
+    if (isTauri) {
+      return await invoke<import("../types").RemoteServerInfo>("set_remote_enabled", { enabled });
+    }
+    return { running: false, url: "", qr_svg: "", port: 0 };
+  },
+
+  updateRemoteState: async (payload: import("../types").RemotePlaybackState): Promise<void> => {
+    if (isTauri) {
+      await invoke<void>("update_remote_state", { payload }).catch(() => {});
+    }
+  },
+
+  clearRemoteState: async (): Promise<void> => {
+    if (isTauri) {
+      await invoke<void>("clear_remote_state").catch(() => {});
+    }
+  },
 };

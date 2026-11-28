@@ -26,8 +26,16 @@ import {
   EyeOff,
   Tv,
   FlaskConical,
+  Smartphone,
+  Gamepad2,
+  Copy,
 } from "lucide-react";
-import type { AppSettings, MirrorStatus } from "../types";
+import type {
+  AppSettings,
+  DiscordRpcStatus,
+  MirrorStatus,
+  RemoteServerInfo,
+} from "../types";
 import { api } from "../services/api";
 import { cn } from "../lib/utils";
 import type { WindowControlsMode } from "./WindowControls";
@@ -150,6 +158,13 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
       return false;
     }
   });
+  const [discordRpc, setDiscordRpc] = useState<boolean>(false);
+  const [discordClientId, setDiscordClientId] = useState<string>("");
+  const [discordStatus, setDiscordStatus] = useState<DiscordRpcStatus | null>(null);
+  const [remoteEnabled, setRemoteEnabled] = useState<boolean>(false);
+  const [remoteInfo, setRemoteInfo] = useState<RemoteServerInfo | null>(null);
+  const [remoteCopied, setRemoteCopied] = useState<boolean>(false);
+  const [remoteError, setRemoteError] = useState<string | null>(null);
   const [startupSound, setStartupSound] = useState<boolean>(() => {
     try {
       return localStorage.getItem("rdx_startup_sound") !== "false";
@@ -216,6 +231,11 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
       setStartFullscreen(isStartFs);
       const isHidePrem = Boolean(s.hide_premium);
       setHidePremium(isHidePrem);
+      setDiscordRpc(Boolean(s.discord_rpc));
+      setDiscordClientId(s.discord_client_id || "");
+      setRemoteEnabled(Boolean(s.remote_enabled));
+      api.getDiscordRpcStatus().then(setDiscordStatus).catch(() => {});
+      api.getRemoteInfo().then(setRemoteInfo).catch(() => {});
       try {
         localStorage.setItem("rdx_autoplay_next", String(isAutoNext));
         localStorage.setItem("rdx_start_fullscreen", String(isStartFs));
@@ -1402,6 +1422,215 @@ export const MirrorModal: React.FC<MirrorModalProps> = ({
                       <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
                     </label>
                   </div>
+                </div>
+
+                {/* Discord Rich Presence Card (Default OFF) */}
+                <div className="p-4.5 rounded-2xl bg-[var(--bg-elevated,#1e1f2b)]/60 border border-[var(--border-subtle,rgba(255,255,255,0.08))] space-y-3.5 transition-colors duration-250">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-indigo-500/15 border border-indigo-500/25 flex items-center justify-center text-indigo-400 flex-shrink-0 mt-0.5">
+                        <Gamepad2 className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="text-sm font-bold text-white">Discord Rich Presence</h4>
+                          {discordRpc && discordStatus && (
+                            <span
+                              className={cn(
+                                "px-1.5 py-0.5 rounded text-[10px] font-bold border",
+                                discordStatus.connected
+                                  ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                                  : "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                              )}
+                            >
+                              {discordStatus.connected ? "Підключено" : "Очікування"}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
+                          Показує у статусі Discord поточний фільм/серію, логотип RDX та прогрес перегляду (за замовчуванням вимкнено)
+                        </p>
+                      </div>
+                    </div>
+
+                    <label
+                      role="switch"
+                      aria-checked={discordRpc}
+                      className="relative inline-flex items-center cursor-pointer flex-shrink-0"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={discordRpc}
+                        onChange={async (e) => {
+                          const enabled = e.target.checked;
+                          setDiscordRpc(enabled);
+                          playHoverSound();
+                          if (settings) {
+                            const updated: AppSettings = {
+                              ...settings,
+                              discord_rpc: enabled,
+                              discord_client_id: discordClientId.trim(),
+                            };
+                            setSettings(updated);
+                            await api.updateSettings(updated).catch(() => {});
+                            if (!enabled) {
+                              await api.clearDiscordPresence();
+                            }
+                            const st = await api.getDiscordRpcStatus();
+                            setDiscordStatus(st);
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+                    </label>
+                  </div>
+
+                  {discordRpc && (
+                    <div className="pt-2 border-t border-white/10 space-y-2.5">
+                      <div className="flex items-center gap-2">
+                        <img
+                          src="/logo.png"
+                          alt="RDX"
+                          className="w-7 h-7 rounded-lg object-cover border border-white/15 flex-shrink-0"
+                        />
+                        <input
+                          type="text"
+                          value={discordClientId}
+                          onChange={(e) => setDiscordClientId(e.target.value)}
+                          placeholder="Discord Application ID (наприклад 1234567890123456789)"
+                          className="flex-1 bg-zinc-950/80 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-rose-500 font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!settings) return;
+                            const updated: AppSettings = {
+                              ...settings,
+                              discord_rpc: discordRpc,
+                              discord_client_id: discordClientId.trim(),
+                            };
+                            setSettings(updated);
+                            await api.updateSettings(updated).catch(() => {});
+                            const st = await api.getDiscordRpcStatus();
+                            setDiscordStatus(st);
+                            playHoverSound();
+                          }}
+                          className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold cursor-pointer transition-colors flex-shrink-0"
+                        >
+                          Зберегти
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-[11px] text-zinc-400">
+                        <span className="truncate">
+                          {discordStatus?.message || "Лого RDX підтягується автоматично з репозиторію"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => api.openUrl("https://discord.com/developers/applications")}
+                          className="inline-flex items-center gap-1 text-indigo-400 hover:text-indigo-300 font-semibold flex-shrink-0 cursor-pointer"
+                        >
+                          <span>Отримати ID</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Wi-Fi Phone Remote Control via QR Code (Default OFF) */}
+                <div className="p-4.5 rounded-2xl bg-[var(--bg-elevated,#1e1f2b)]/60 border border-[var(--border-subtle,rgba(255,255,255,0.08))] space-y-3.5 transition-colors duration-250">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center text-emerald-400 flex-shrink-0 mt-0.5">
+                        <Smartphone className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="text-sm font-bold text-white">Wi-Fi Пульт з телефона (QR-код)</h4>
+                          {remoteInfo?.running && (
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
+                              Активний
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
+                          Керуйте плеєром із браузера смартфона в домашній Wi-Fi мережі (пауза, перемотка, гучність, серії, еквалайзер)
+                        </p>
+                      </div>
+                    </div>
+
+                    <label
+                      role="switch"
+                      aria-checked={remoteEnabled}
+                      className="relative inline-flex items-center cursor-pointer flex-shrink-0"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={remoteEnabled}
+                        onChange={async (e) => {
+                          const enabled = e.target.checked;
+                          setRemoteEnabled(enabled);
+                          setRemoteError(null);
+                          playHoverSound();
+                          try {
+                            const info = await api.setRemoteEnabled(enabled);
+                            setRemoteInfo(info);
+                            if (settings) {
+                              setSettings({ ...settings, remote_enabled: enabled });
+                            }
+                          } catch (err) {
+                            setRemoteError(String(err));
+                            setRemoteEnabled(false);
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+                    </label>
+                  </div>
+
+                  {remoteError && (
+                    <div className="text-xs text-rose-400 bg-rose-950/40 border border-rose-500/30 rounded-xl px-3 py-2">
+                      {remoteError}
+                    </div>
+                  )}
+
+                  {remoteEnabled && remoteInfo?.running && (
+                    <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row items-center gap-4">
+                      {remoteInfo.qr_svg && (
+                        <div
+                          className="w-32 h-32 rounded-2xl bg-white p-2 shadow-xl flex-shrink-0 overflow-hidden [&_svg]:w-full [&_svg]:h-full"
+                          dangerouslySetInnerHTML={{ __html: remoteInfo.qr_svg }}
+                        />
+                      )}
+                      <div className="flex-1 min-w-0 space-y-2 text-center sm:text-left">
+                        <div className="text-xs font-semibold text-white">
+                          Наведіть камеру телефона на QR-код або відкрийте адресу:
+                        </div>
+                        <div className="flex items-center gap-2 justify-center sm:justify-start">
+                          <code className="px-2.5 py-1.5 rounded-xl bg-zinc-950/90 border border-white/10 text-emerald-300 font-mono text-xs select-all">
+                            {remoteInfo.url}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard?.writeText(remoteInfo.url).catch(() => {});
+                              setRemoteCopied(true);
+                              setTimeout(() => setRemoteCopied(false), 1800);
+                            }}
+                            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white cursor-pointer transition-colors"
+                            title="Скопіювати адресу"
+                          >
+                            {remoteCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-zinc-400">
+                          Телефон і ПК мають бути в одній Wi-Fi мережі. Коли перемикач вимкнено — сервер повністю зупиняється.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
               </div>

@@ -16,6 +16,8 @@ pub struct AppState {
     pub mpris: Arc<crate::mpris::MprisState>,
     pub downloader: Arc<DownloadManager>,
     pub tmdb: Arc<crate::tmdb::TmdbService>,
+    pub discord: Arc<crate::discord_rpc::DiscordRpcState>,
+    pub remote: Arc<crate::remote::RemoteControlState>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,6 +37,9 @@ pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, Str
 #[tauri::command]
 pub async fn update_settings(state: State<'_, AppState>, settings: AppSettings) -> Result<(), String> {
     state.client.set_proxy(Some(&settings.proxy_url));
+    if !settings.discord_rpc {
+        state.discord.disconnect();
+    }
     state.storage.update_settings(&settings).map_err(|e| e.to_string())
 }
 
@@ -1299,6 +1304,75 @@ pub async fn get_tmdb_recommendations(
 #[tauri::command]
 pub fn get_system_time() -> String {
     chrono::Local::now().format("%H:%M").to_string()
+}
+
+// ==================== Discord Rich Presence Commands ====================
+
+#[tauri::command]
+pub fn get_discord_rpc_status(
+    state: State<'_, AppState>,
+) -> Result<crate::discord_rpc::DiscordRpcStatus, String> {
+    let settings = state.storage.get_settings().map_err(|e| e.to_string())?;
+    Ok(state
+        .discord
+        .status(settings.discord_rpc, &settings.discord_client_id))
+}
+
+#[tauri::command]
+pub fn update_discord_presence(
+    state: State<'_, AppState>,
+    payload: crate::discord_rpc::DiscordActivityPayload,
+) -> Result<(), String> {
+    let settings = state.storage.get_settings().map_err(|e| e.to_string())?;
+    state
+        .discord
+        .update_activity(settings.discord_rpc, &settings.discord_client_id, &payload);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn clear_discord_presence(state: State<'_, AppState>) {
+    state.discord.clear_activity();
+}
+
+// ==================== Wi-Fi Phone Remote Control Commands ====================
+
+#[tauri::command]
+pub fn get_remote_info(state: State<'_, AppState>) -> crate::remote::RemoteServerInfo {
+    state.remote.info()
+}
+
+#[tauri::command]
+pub fn set_remote_enabled(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<crate::remote::RemoteServerInfo, String> {
+    let mut settings = state.storage.get_settings().map_err(|e| e.to_string())?;
+    settings.remote_enabled = enabled;
+    state
+        .storage
+        .update_settings(&settings)
+        .map_err(|e| e.to_string())?;
+
+    if enabled {
+        state.remote.start(app)
+    } else {
+        Ok(state.remote.stop())
+    }
+}
+
+#[tauri::command]
+pub fn update_remote_state(
+    state: State<'_, AppState>,
+    payload: crate::remote::RemotePlaybackState,
+) {
+    state.remote.update_playback(payload);
+}
+
+#[tauri::command]
+pub fn clear_remote_state(state: State<'_, AppState>) {
+    state.remote.clear_playback();
 }
 
 /// Detects whether the app is running under a Linux tiling window manager

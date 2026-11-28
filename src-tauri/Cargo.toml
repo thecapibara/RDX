@@ -32,6 +32,7 @@ chrono = { version = "0.4", features = ["serde"] }
 dirs = "5"
 souvlaki = "0.9.3"
 rodio = { version = "0.19", default-features = false, features = ["symphonia-mp3"] }
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = "2.0.2"

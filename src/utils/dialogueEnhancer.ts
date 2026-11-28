@@ -1,26 +1,84 @@
 /**
- * DialogueEnhancerController v3 — RDX Labs Speech Clarity & Night Leveler
+ * Cinema Audio Engine & DialogueEnhancerController v4
  *
- * Root cause of the Linux WebKitGTK mute bug in v2 (proven via WebKit2GTK 4.1 + PipeWire test):
- * 1. Toggling "Чіткі діалоги" in React updated state and invoked `new AudioContext()` + `ctx.resume()`
- *    inside an async `useEffect` / `onPlaying` callback — AFTER WebKitGTK's synchronous
- *    `UserGestureIndicator` had already expired!
- * 2. WebKitGTK created the `AudioContext` stuck in `"suspended"` state, while
- *    `ctx.createMediaElementSource(video)` immediately detached `<video>`'s native GStreamer
- *    audio sink into that suspended context — muting the entire film!
+ * Supports 5 instant zero-lag WebAudio EQ & Dynamics presets:
+ * - "off"        — Стандарт (bit-transparent bypass, 0% DSP)
+ * - "dialogue"   — Чіткі діалоги 2.0 (135Hz HPF, +6.5dB @ 1.85kHz, +4dB @ 3.3kHz, 8:1 compressor)
+ * - "cinema"     — Кінотеатр (глибокий теплий бас +5.5dB @ 85Hz, чиста середина, +3.5dB air @ 8.5kHz)
+ * - "night"      — Нічний режим (сильна компресія 12:1 @ -30dB, приглушені вибухи, чіткий шепіт)
+ * - "headphones" — Навушники (об'ємний бас +3.5dB @ 75Hz, +3dB presence, +4dB кришталеві високі @ 10kHz)
  *
- * How v3 guarantees 100% working dialogue normalization & zero mute risk:
- * 1. Global capture-phase User Gesture Unlocker (`pointerdown` / `keydown` / `click`) + explicit
- *    synchronous `unlockSharedAudioContext()` on toggle clicks ensures a single shared `AudioContext`
- *    is already `"running"` BEFORE `VideoPlayer` or `useEffect` ever touches `<video>`.
- * 2. Hard Gate: NEVER calls `createMediaElementSource(video)` unless `sharedCtx.state === "running"`.
- *    If still suspended, waits for `statechange -> "running"` while keeping native `<video>` sound intact!
- * 3. Universal Stereo/Mono/5.1 Serial Speech Chain (no fragile ChannelSplitter phase/mono bugs):
- *    - `140 Hz` High-Pass + `110 Hz` `-4.5 dB` Low-Shelf (tames booming explosions & sub-bass rumble)
- *    - `1850 Hz` `+6.5 dB` Peaking + `3300 Hz` `+4.0 dB` Peaking (brings actor voices & diction forward)
- *    - `DynamicsCompressorNode` (`-26 dB`, `8:1` ratio) + `1.45x` (`+3.2 dB`) Makeup Gain so quiet
- *      whispers become noticeably louder while gunshots/screams are smoothly clamped.
+ * Linux WebKitGTK Safeguards:
+ * - Uses `{ latencyHint: "interactive" }` + `outputGate` GainNode (0ms mute on pause/seeking,
+ *   14ms click-free linear ramp on play/seeked) eliminating PipeWire ringbuffer tails.
+ * - Global capture-phase gesture unlocker + hard `ctx.state === "running"` gate guarantees
+ *   `<video>` is NEVER muted by a suspended AudioContext.
  */
+
+export type AudioPreset = "off" | "dialogue" | "cinema" | "night" | "headphones";
+
+export const AUDIO_PRESET_META: {
+  id: AudioPreset;
+  label: string;
+  shortLabel: string;
+  desc: string;
+}[] = [
+  {
+    id: "off",
+    label: "Стандарт",
+    shortLabel: "Станд.",
+    desc: "Оригінальна звукова доріжка без обробки",
+  },
+  {
+    id: "dialogue",
+    label: "🎙️ Чіткі діалоги",
+    shortLabel: "Діалоги",
+    desc: "Виділяє голоси акторів та згладжує гучні перепади",
+  },
+  {
+    id: "cinema",
+    label: "🎬 Кінотеатр",
+    shortLabel: "Кіно",
+    desc: "Глибокий об'ємний бас, чиста середина та кришталеві деталі",
+  },
+  {
+    id: "night",
+    label: "🌙 Нічний режим",
+    shortLabel: "Ніч",
+    desc: "Тихі вибухи й музика, але добре чути навіть шепіт",
+  },
+  {
+    id: "headphones",
+    label: "🎧 Навушники",
+    shortLabel: "Навушн.",
+    desc: "Теплий низ + повітряна чіткість для перегляду в навушниках",
+  },
+];
+
+const AUDIO_PRESET_STORAGE_KEY = "rdx_audio_preset";
+
+export function getSavedAudioPreset(): AudioPreset {
+  if (typeof window === "undefined") return "off";
+  try {
+    const raw = localStorage.getItem(AUDIO_PRESET_STORAGE_KEY);
+    if (
+      raw === "dialogue" ||
+      raw === "cinema" ||
+      raw === "night" ||
+      raw === "headphones"
+    ) {
+      return raw;
+    }
+  } catch {}
+  return "off";
+}
+
+export function saveAudioPreset(preset: AudioPreset): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(AUDIO_PRESET_STORAGE_KEY, preset);
+  } catch {}
+}
 
 let sharedAudioCtx: AudioContext | null = null;
 let unlockListenersAttached = false;
@@ -45,7 +103,6 @@ export function unlockSharedAudioContext(): AudioContext | null {
 
   if (!sharedAudioCtx || sharedAudioCtx.state === "closed") {
     try {
-      // Request lowest-latency interactive PipeWire/PulseAudio quantum (~10-20ms instead of ~180ms)
       try {
         sharedAudioCtx = new AudioCtx({ latencyHint: "interactive" });
       } catch {
@@ -90,21 +147,21 @@ export function installGlobalAudioUnlock(): void {
   window.addEventListener("click", onUserGesture, { capture: true, passive: true });
 }
 
-// Install immediately when module loads so clicking "Дивитися" or any UI button unlocks WebAudio
 installGlobalAudioUnlock();
 
 interface VideoAudioGraph {
   ctx: AudioContext;
   source: MediaElementAudioSourceNode;
-  highPass: BiquadFilterNode;
-  bassTame: BiquadFilterNode;
-  presencePeak: BiquadFilterNode;
-  clarityPeak: BiquadFilterNode;
+  band1: BiquadFilterNode; // Highpass / Low-shelf
+  band2: BiquadFilterNode; // Low-mid shelf / mud cut
+  band3: BiquadFilterNode; // Vocal presence peak
+  band4: BiquadFilterNode; // Clarity / Air high-shelf
   compressor: DynamicsCompressorNode;
   makeupGain: GainNode;
   analyser: AnalyserNode;
   outputGate: GainNode;
   mode: "bypass" | "enhanced";
+  activePreset: AudioPreset;
 }
 
 type VideoWithAudioGraph = HTMLVideoElement & { __rdxAudioGraph?: VideoAudioGraph };
@@ -131,8 +188,123 @@ export function isStreamSafeForWebAudio(video: HTMLVideoElement): boolean {
   ) {
     return true;
   }
-  // Remote stream is also safe if <video crossorigin="anonymous"> succeeded
   return video.crossOrigin === "anonymous" && video.readyState >= 2;
+}
+
+function applyPresetParameters(graph: VideoAudioGraph, preset: AudioPreset): void {
+  const t = graph.ctx.currentTime;
+  const setParam = (p: AudioParam, v: number) => {
+    try {
+      p.setTargetAtTime(v, t, 0.015);
+    } catch {
+      p.value = v;
+    }
+  };
+
+  if (preset === "dialogue") {
+    graph.band1.type = "highpass";
+    setParam(graph.band1.frequency, 135);
+    setParam(graph.band1.Q, 0.7);
+    setParam(graph.band1.gain, 0);
+
+    graph.band2.type = "lowshelf";
+    setParam(graph.band2.frequency, 180);
+    setParam(graph.band2.gain, -3.5);
+
+    graph.band3.type = "peaking";
+    setParam(graph.band3.frequency, 1850);
+    setParam(graph.band3.Q, 0.85);
+    setParam(graph.band3.gain, 6.5);
+
+    graph.band4.type = "peaking";
+    setParam(graph.band4.frequency, 3300);
+    setParam(graph.band4.Q, 1.0);
+    setParam(graph.band4.gain, 4.0);
+
+    setParam(graph.compressor.threshold, -26);
+    setParam(graph.compressor.knee, 22);
+    setParam(graph.compressor.ratio, 8);
+    setParam(graph.compressor.attack, 0.003);
+    setParam(graph.compressor.release, 0.2);
+    setParam(graph.makeupGain.gain, 1.42);
+  } else if (preset === "cinema") {
+    graph.band1.type = "lowshelf";
+    setParam(graph.band1.frequency, 85);
+    setParam(graph.band1.gain, 5.5);
+
+    graph.band2.type = "peaking";
+    setParam(graph.band2.frequency, 320);
+    setParam(graph.band2.Q, 0.9);
+    setParam(graph.band2.gain, -1.8);
+
+    graph.band3.type = "peaking";
+    setParam(graph.band3.frequency, 2800);
+    setParam(graph.band3.Q, 0.9);
+    setParam(graph.band3.gain, 2.6);
+
+    graph.band4.type = "highshelf";
+    setParam(graph.band4.frequency, 8500);
+    setParam(graph.band4.gain, 3.5);
+
+    setParam(graph.compressor.threshold, -14);
+    setParam(graph.compressor.knee, 16);
+    setParam(graph.compressor.ratio, 3);
+    setParam(graph.compressor.attack, 0.008);
+    setParam(graph.compressor.release, 0.22);
+    setParam(graph.makeupGain.gain, 1.08);
+  } else if (preset === "night") {
+    graph.band1.type = "highpass";
+    setParam(graph.band1.frequency, 120);
+    setParam(graph.band1.Q, 0.7);
+    setParam(graph.band1.gain, 0);
+
+    graph.band2.type = "lowshelf";
+    setParam(graph.band2.frequency, 145);
+    setParam(graph.band2.gain, -5.5);
+
+    graph.band3.type = "peaking";
+    setParam(graph.band3.frequency, 2000);
+    setParam(graph.band3.Q, 0.8);
+    setParam(graph.band3.gain, 4.5);
+
+    graph.band4.type = "highshelf";
+    setParam(graph.band4.frequency, 7500);
+    setParam(graph.band4.gain, -1.5);
+
+    setParam(graph.compressor.threshold, -30);
+    setParam(graph.compressor.knee, 26);
+    setParam(graph.compressor.ratio, 12);
+    setParam(graph.compressor.attack, 0.002);
+    setParam(graph.compressor.release, 0.25);
+    setParam(graph.makeupGain.gain, 1.55);
+  } else if (preset === "headphones") {
+    graph.band1.type = "lowshelf";
+    setParam(graph.band1.frequency, 75);
+    setParam(graph.band1.gain, 3.8);
+
+    graph.band2.type = "peaking";
+    setParam(graph.band2.frequency, 450);
+    setParam(graph.band2.Q, 0.85);
+    setParam(graph.band2.gain, -1.2);
+
+    graph.band3.type = "peaking";
+    setParam(graph.band3.frequency, 2600);
+    setParam(graph.band3.Q, 0.9);
+    setParam(graph.band3.gain, 3.0);
+
+    graph.band4.type = "highshelf";
+    setParam(graph.band4.frequency, 10000);
+    setParam(graph.band4.gain, 4.2);
+
+    setParam(graph.compressor.threshold, -20);
+    setParam(graph.compressor.knee, 18);
+    setParam(graph.compressor.ratio, 4);
+    setParam(graph.compressor.attack, 0.005);
+    setParam(graph.compressor.release, 0.2);
+    setParam(graph.makeupGain.gain, 1.15);
+  }
+
+  graph.activePreset = preset;
 }
 
 function getOrCreateGraph(
@@ -144,46 +316,15 @@ function getOrCreateGraph(
 
   try {
     const source = ctx.createMediaElementSource(video);
-
-    // 1. Cut deep sub-bass rumble (< 135 Hz) & tame boominess so explosions don't drown speech
-    const highPass = ctx.createBiquadFilter();
-    highPass.type = "highpass";
-    highPass.frequency.value = 135;
-    highPass.Q.value = 0.7;
-
-    const bassTame = ctx.createBiquadFilter();
-    bassTame.type = "lowshelf";
-    bassTame.frequency.value = 180;
-    bassTame.gain.value = -3.5;
-
-    // 2. Boost core human vocal fundamentals & consonant intelligibility (1.8 kHz & 3.3 kHz)
-    const presencePeak = ctx.createBiquadFilter();
-    presencePeak.type = "peaking";
-    presencePeak.frequency.value = 1850;
-    presencePeak.Q.value = 0.85;
-    presencePeak.gain.value = 6.5;
-
-    const clarityPeak = ctx.createBiquadFilter();
-    clarityPeak.type = "peaking";
-    clarityPeak.frequency.value = 3300;
-    clarityPeak.Q.value = 1.0;
-    clarityPeak.gain.value = 4.0;
-
-    // 3. Night Dynamic Range Compressor + Makeup Gain (whispers up, gunshots clamped)
+    const band1 = ctx.createBiquadFilter();
+    const band2 = ctx.createBiquadFilter();
+    const band3 = ctx.createBiquadFilter();
+    const band4 = ctx.createBiquadFilter();
     const compressor = ctx.createDynamicsCompressor();
-    compressor.threshold.value = -26;
-    compressor.knee.value = 22;
-    compressor.ratio.value = 8;
-    compressor.attack.value = 0.003;
-    compressor.release.value = 0.2;
-
     const makeupGain = ctx.createGain();
-    makeupGain.gain.value = 1.45; // +3.2 dB post-compressor vocal lift
-
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 256;
 
-    // Zero-lag output gate: cuts WebAudio ringbuffer/compressor tail immediately on pause & seek
     const outputGate = ctx.createGain();
     outputGate.gain.value = video.paused ? 0 : 1;
 
@@ -214,49 +355,48 @@ function getOrCreateGraph(
     video.addEventListener("playing", unmuteGateSmooth);
     video.addEventListener("seeked", unmuteGateSmooth);
 
-    // Wire internal serial stereo/mono-compatible filter chain once
-    highPass.connect(bassTame);
-    bassTame.connect(presencePeak);
-    presencePeak.connect(clarityPeak);
-    clarityPeak.connect(compressor);
+    band1.connect(band2);
+    band2.connect(band3);
+    band3.connect(band4);
+    band4.connect(compressor);
     compressor.connect(makeupGain);
     makeupGain.connect(analyser);
 
-    // Default initial state: bit-transparent bypass routed through zero-lag outputGate
     source.connect(outputGate);
     outputGate.connect(ctx.destination);
 
     const graph: VideoAudioGraph = {
       ctx,
       source,
-      highPass,
-      bassTame,
-      presencePeak,
-      clarityPeak,
+      band1,
+      band2,
+      band3,
+      band4,
       compressor,
       makeupGain,
       analyser,
       outputGate,
       mode: "bypass",
+      activePreset: "off",
     };
     setCachedGraph(video, graph);
     return graph;
   } catch (err) {
-    console.warn("RDX DialogueEnhancer init skipped:", err);
+    console.warn("RDX Cinema Audio Engine init skipped:", err);
     return null;
   }
 }
 
 export class DialogueEnhancerController {
   private video: HTMLVideoElement;
-  private wantEnabled = false;
+  private wantPreset: AudioPreset = "off";
   private watchdogTimer: number | null = null;
   private silentStrikes = 0;
   private onUnavailable?: (reason: string) => void;
   private onNeedElementReset?: () => void;
   private onCtxUnlocked = () => {
-    if (this.wantEnabled) {
-      this.sync(true);
+    if (this.wantPreset !== "off") {
+      this.syncPreset(this.wantPreset);
     }
   };
 
@@ -271,11 +411,16 @@ export class DialogueEnhancerController {
     stateListeners.add(this.onCtxUnlocked);
   }
 
+  /** Legacy boolean helper (maps true -> "dialogue", false -> "off") */
   public sync(enabled: boolean): boolean {
-    this.wantEnabled = enabled;
+    return this.syncPreset(enabled ? "dialogue" : "off");
+  }
+
+  public syncPreset(preset: AudioPreset): boolean {
+    this.wantPreset = preset;
     this.clearWatchdog();
 
-    if (!enabled) {
+    if (preset === "off") {
       const existing = getCachedGraph(this.video);
       if (existing) {
         if (existing.ctx.state === "suspended") {
@@ -287,13 +432,13 @@ export class DialogueEnhancerController {
             existing.analyser.disconnect();
             existing.source.connect(existing.outputGate);
             existing.mode = "bypass";
+            existing.activePreset = "off";
           } catch {}
         }
       }
       return false;
     }
 
-    // Wait until <video> actually has decoded media data before attaching MediaElementSource
     if (this.video.readyState < 2 || !isStreamSafeForWebAudio(this.video)) {
       return false;
     }
@@ -301,9 +446,6 @@ export class DialogueEnhancerController {
     const ctx = unlockSharedAudioContext();
     if (!ctx) return false;
 
-    // CRITICAL WEBKITGTK GUARD:
-    // Never hijack <video> via createMediaElementSource while AudioContext is still "suspended"!
-    // Keep native GStreamer audio playing until the user's next click unlocks `ctx` to "running".
     if (ctx.state !== "running") {
       ctx.resume().catch(() => {});
       return false;
@@ -312,12 +454,14 @@ export class DialogueEnhancerController {
     const graph = getOrCreateGraph(this.video, ctx);
     if (!graph) return false;
 
+    applyPresetParameters(graph, preset);
+
     if (graph.mode !== "enhanced") {
       try {
         graph.source.disconnect();
         graph.analyser.disconnect();
 
-        graph.source.connect(graph.highPass);
+        graph.source.connect(graph.band1);
         graph.analyser.connect(graph.outputGate);
         graph.mode = "enhanced";
       } catch {
@@ -358,15 +502,13 @@ export class DialogueEnhancerController {
 
       if (maxAbs < 1e-6) {
         this.silentStrikes++;
-        // 6 consecutive checks (3.0s) of exact digital 0.000000 (not quiet room tone, true broken pipe)
         if (this.silentStrikes >= 6) {
-          this.wantEnabled = false;
-          this.sync(false);
+          this.wantPreset = "off";
+          this.syncPreset("off");
           this.onUnavailable?.("Відновлено прямий аудіоканал для цього кодека");
           this.onNeedElementReset?.();
         }
       } else {
-        // Real non-zero audio samples confirmed flowing through DSP!
         this.clearWatchdog();
       }
     }, 500);
@@ -380,7 +522,7 @@ export class DialogueEnhancerController {
   }
 
   public destroy() {
-    this.wantEnabled = false;
+    this.wantPreset = "off";
     stateListeners.delete(this.onCtxUnlocked);
     this.clearWatchdog();
     const existing = getCachedGraph(this.video);
@@ -390,6 +532,7 @@ export class DialogueEnhancerController {
         existing.analyser.disconnect();
         existing.source.connect(existing.outputGate);
         existing.mode = "bypass";
+        existing.activePreset = "off";
       } catch {}
     }
   }

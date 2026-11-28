@@ -18,6 +18,12 @@ pub struct AppSettings {
     pub start_fullscreen: bool,
     #[serde(default)]
     pub hide_premium: bool,
+    #[serde(default)]
+    pub discord_rpc: bool,
+    #[serde(default)]
+    pub discord_client_id: String,
+    #[serde(default)]
+    pub remote_enabled: bool,
 }
 
 fn default_true() -> bool {
@@ -40,6 +46,9 @@ impl Default for AppSettings {
             autoplay_next: true,
             start_fullscreen: false,
             hide_premium: false,
+            discord_rpc: false,
+            discord_client_id: "".to_string(),
+            remote_enabled: false,
         }
     }
 }
